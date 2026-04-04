@@ -30,7 +30,8 @@
         "bierner.markdown-mermaid",
         "ms-azuretools.vscode-containers",
         "openai.chatgpt",
-        "Anthropic.claude-code"
+        "Anthropic.claude-code",
+        "undefined_publisher.drm-copilot"
       ],
       "settings": {
         "dotnet.defaultSolution": "OpenClaw.MailBridge.sln",

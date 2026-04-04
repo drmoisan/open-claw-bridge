@@ -126,10 +126,13 @@ create_project_config_if_missing() {
 # Adjust only if your team has a defined Codex policy.
 
 # Example:
-# profile = "default"
+# model = "gpt-5.4"
+# approval_policy = "on-request"
+# sandbox_mode = "workspace-write"
 
-[projects]
-trusted = true
+# Trust is configured in ~/.codex/config.toml under
+# [projects."/absolute/path/to/project"], because Codex only loads this
+# project-scoped file after the project is already trusted.
 EOF
 
     say "Created $config_path"
