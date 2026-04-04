@@ -90,7 +90,7 @@ public class CodexWebSetupScriptTests
         result.StdOut.Should().Contain("==> Remote default branch guess: trunk");
     }
 
-    private const string ExpectedProjectConfig = """
+    private static readonly string ExpectedProjectConfig = """
 # Project-scoped Codex configuration
 # See:
 #   https://developers.openai.com/codex/config-basic/
@@ -107,12 +107,15 @@ public class CodexWebSetupScriptTests
 # Trust is configured in ~/.codex/config.toml under
 # [projects."/absolute/path/to/project"], because Codex only loads this
 # project-scoped file after the project is already trusted.
-""".ReplaceLineEndings("\n");
+""".ReplaceLineEndings("\n") + "\n";
 }
 
 internal sealed class CodexWebSetupScriptHarness : IDisposable
 {
     private readonly Dictionary<string, string?> _environment;
+    private static readonly string BashExecutablePath = ResolveBashExecutablePath();
+    private string FakeGitScriptPath => Path.Combine(BinDirectory, "git");
+    private string BashEnvironmentPath => Path.Combine(BinDirectory, "bash-env.sh");
 
     public CodexWebSetupScriptHarness(Dictionary<string, string?>? environmentOverrides = null)
     {
@@ -126,6 +129,7 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
         Directory.CreateDirectory(BinDirectory);
 
         CreateFakeGitScript();
+        CreateBashEnvironmentScript();
 
         _environment = new Dictionary<string, string?>
         {
@@ -169,7 +173,7 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "bash",
+                FileName = BashExecutablePath,
                 WorkingDirectory = RepositoryRoot,
                 RedirectStandardInput = true,
                 RedirectStandardOutput = true,
@@ -178,12 +182,15 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
             }
         };
 
-        process.StartInfo.ArgumentList.Add(ScriptPath);
-        process.StartInfo.Environment["PATH"] = $"{BinDirectory}:{Environment.GetEnvironmentVariable("PATH")}";
+        process.StartInfo.ArgumentList.Add("--noprofile");
+        process.StartInfo.ArgumentList.Add("--norc");
+        process.StartInfo.ArgumentList.Add(GetScriptPathForShell());
+        process.StartInfo.Environment["BASH_ENV"] = GetBashEnvironmentPathForShell();
+        process.StartInfo.Environment["FAKE_GIT_SCRIPT_PATH"] = GetFakeGitScriptPathForShell();
 
         foreach (var entry in _environment)
         {
-            process.StartInfo.Environment[entry.Key] = entry.Value;
+            process.StartInfo.Environment[entry.Key] = ConvertEnvironmentValueForShell(entry.Key, entry.Value);
         }
 
         process.Start();
@@ -217,7 +224,6 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
 
     private void CreateFakeGitScript()
     {
-        var scriptPath = Path.Combine(BinDirectory, "git");
         const string script = """
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -252,7 +258,7 @@ case "${1:-}" in
     ;;
 
   remote)
-    if [[ $# -eq 0 ]]; then
+    if [[ $# -eq 1 ]]; then
       if [[ -n "${FAKE_GIT_REMOTES:-}" ]]; then
         printf '%b\n' "${FAKE_GIT_REMOTES}"
       fi
@@ -302,13 +308,83 @@ printf 'unexpected git invocation: %s\n' "$*" >&2
 exit 99
 """;
 
-        File.WriteAllText(scriptPath, script);
-        Process.Start(new ProcessStartInfo
+        File.WriteAllText(FakeGitScriptPath, script);
+    }
+
+    private void CreateBashEnvironmentScript()
+    {
+        const string script = """
+git() {
+  bash "$FAKE_GIT_SCRIPT_PATH" "$@"
+}
+""";
+
+        File.WriteAllText(BashEnvironmentPath, script);
+    }
+
+    private string GetScriptPathForShell() =>
+        OperatingSystem.IsWindows() ? ToBashPath(ScriptPath) : ScriptPath;
+
+    private string GetBashEnvironmentPathForShell() =>
+        OperatingSystem.IsWindows() ? ToBashPath(BashEnvironmentPath) : BashEnvironmentPath;
+
+    private string GetFakeGitScriptPathForShell() =>
+        OperatingSystem.IsWindows() ? ToBashPath(FakeGitScriptPath) : FakeGitScriptPath;
+
+    private static string? ConvertEnvironmentValueForShell(string key, string? value)
+    {
+        if (!OperatingSystem.IsWindows() || string.IsNullOrEmpty(value))
         {
-            FileName = "chmod",
-            ArgumentList = { "+x", scriptPath },
-            UseShellExecute = false
-        })!.WaitForExit();
+            return value;
+        }
+
+        return key switch
+        {
+            "FAKE_GIT_ROOT" or "FAKE_GIT_LOG" => ToBashPath(value),
+            _ => value
+        };
+    }
+
+    private static string ResolveBashExecutablePath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return "bash";
+        }
+
+        string[] candidates =
+        {
+            @"C:\Program Files\Git\bin\bash.exe",
+            @"C:\Program Files\Git\usr\bin\bash.exe"
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return "bash";
+    }
+
+    private static string ToBashPath(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var root = Path.GetPathRoot(fullPath)
+            ?? throw new InvalidOperationException($"Could not determine path root for '{path}'.");
+
+        if (root.Length < 2 || root[1] != ':')
+        {
+            return fullPath.Replace('\\', '/');
+        }
+
+        var driveLetter = char.ToLowerInvariant(root[0]);
+        var relativePath = fullPath[root.Length..].Replace('\\', '/');
+        return string.IsNullOrEmpty(relativePath)
+            ? $"/{driveLetter}"
+            : $"/{driveLetter}/{relativePath}";
     }
 
     private static string? FindRepositoryRoot()

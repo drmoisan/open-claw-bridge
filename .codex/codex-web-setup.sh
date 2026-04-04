@@ -44,7 +44,7 @@ require_cmd() {
 }
 
 is_interactive() {
-    [[ -t 0 && -t 1 && -z "${CI:-}" && -z "${CODEX_WEB_SETUP_NONINTERACTIVE:-}" ]]
+    [[ -z "${CI:-}" && -z "${CODEX_WEB_SETUP_NONINTERACTIVE:-}" ]]
 }
 
 confirm() {
