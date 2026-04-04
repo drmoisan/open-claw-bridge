@@ -1,0 +1,45 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch MailBridge",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/OpenClaw.MailBridge/bin/Debug/net10.0-windows/OpenClaw.MailBridge.dll",
+      "cwd": "${workspaceFolder}/src/OpenClaw.MailBridge",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "justMyCode": true,
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "hotReloadEnabled": false
+    },
+    {
+      "name": "Launch Client",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/src/OpenClaw.MailBridge.Client/bin/Debug/net10.0-windows/OpenClaw.MailBridge.Client.dll",
+      "cwd": "${workspaceFolder}/src/OpenClaw.MailBridge.Client",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "justMyCode": true,
+      "args": [
+        "--pipe-name",
+        "openclaw-mail-bridge",
+        "--message",
+        "ping"
+      ],
+      "hotReloadEnabled": false
+    },
+    {
+      "name": "Attach to running MailBridge",
+      "type": "coreclr",
+      "request": "attach",
+      "processId": "${command:pickProcess}"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "folders": [
+    {
+      "path": "."
+    },
+    {
+      "path": "src"
+    },
+    {
+      "path": "tests"
+    },
+    {
+      "path": "scripts"
+    },
+    {
+      "path": "docs"
+    }
+  ],
+  "settings": {
+    "dotnet.defaultSolution": "OpenClaw.MailBridge.sln",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+    "editor.formatOnSave": true,
+    "csharp.experimental.debug.hotReload": false,
+    "csharp.debug.hotReloadOnSave": false,
+    "powershell.cwd": "scripts"
+  },
+  "extensions": {
+    "recommendations": [
+      "ms-dotnettools.csharp",
+      "ms-dotnettools.csdevkit",
+      "ms-vscode.powershell"
+    ]
+  }
+}

@@ -1,0 +1,66 @@
+# Build outputs
+[Bb]in/
+[Oo]bj/
+out/
+publish/
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]enchmark[Dd]ot[Nn]et.Artifacts/
+coverage/
+coverage-*/
+*.coverage
+*.coveragexml
+
+# Logs
+*.log
+.log/
+logs/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio
+.vs/
+
+# VS Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Rider / ReSharper
+.idea/
+*.sln.iml
+_ReSharper*/
+*.[Rr]e[Ss]harper
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+
+# .NET generated files
+GeneratedFiles/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Tooling
+*.tmp
+*.temp
+*.cache
+.github/

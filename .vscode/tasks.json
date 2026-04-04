@@ -1,0 +1,111 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "clean",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "clean",
+        "${workspaceFolder}\\OpenClaw.MailBridge.sln"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "build",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}\\OpenClaw.MailBridge.sln",
+        "-c",
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "clean"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "test",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}\\OpenClaw.MailBridge.sln",
+        "-c",
+        "Debug",
+        "--no-build"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "build"
+      ],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run-bridge",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}\\src\\OpenClaw.MailBridge\\OpenClaw.MailBridge.csproj",
+        "--configuration",
+        "Debug"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "ASPNETCORE_ENVIRONMENT": "Development",
+          "DOTNET_ENVIRONMENT": "Development"
+        }
+      },
+      "dependsOn": [
+        "build"
+      ],
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "run-client",
+      "type": "shell",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}\\src\\OpenClaw.MailBridge.Client\\OpenClaw.MailBridge.Client.csproj",
+        "--configuration",
+        "Debug",
+        "--",
+        "--pipe-name",
+        "openclaw-mail-bridge",
+        "--message",
+        "ping"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "dependsOn": [
+        "build"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}

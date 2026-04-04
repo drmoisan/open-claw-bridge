@@ -1,0 +1,15 @@
+{
+  "editor.formatOnSave": true,
+  "dotnet.defaultSolution": "OpenClaw.MailBridge.sln",
+  "dotnet.formatting.organizeImportsOnFormat": true,
+  "dotnet.test.runTestsInContext": true,
+  "dotnet.test.debugTestsInContext": true,
+  "dotnet.testWindow.disableAutoDiscovery": false,
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "files.associations": {
+    "*.ps1": "powershell"
+  },
+  "powershell.integratedConsole.showOnStartup": false,
+  "csharp.experimental.debug.hotReload": false,
+  "csharp.debug.hotReloadOnSave": false
+}
