@@ -40,7 +40,7 @@ public class CodexWebSetupScriptTests
     }
 
     [Test]
-    public async Task Setup_script_should_fail_when_no_github_remote_exists()
+    public async Task Setup_script_should_warn_and_skip_remote_steps_when_no_github_remote_exists()
     {
         using var harness = new CodexWebSetupScriptHarness(new Dictionary<string, string?>
         {
@@ -49,8 +49,12 @@ public class CodexWebSetupScriptTests
 
         var result = await harness.RunAsync(string.Empty);
 
-        result.ExitCode.Should().Be(1);
-        result.StdErr.Should().Contain("ERROR: No GitHub remote found.");
+        result.ExitCode.Should().Be(0, result.CombinedOutput);
+        result.CombinedOutput.Should().Contain("WARN: No GitHub remote found. Skipping fetch/push steps.");
+        result.StdOut.Should().Contain("Remote:  (not configured)");
+        result.StdOut.Should().Contain("No GitHub remote was configured in this checkout, so fetch/push steps were skipped.");
+        harness.ReadGitLog().Should().NotContain(line => line.StartsWith("fetch", StringComparison.Ordinal));
+        harness.ReadGitLog().Should().NotContain(line => line.StartsWith("push", StringComparison.Ordinal));
     }
 
     [Test]
@@ -67,6 +71,23 @@ public class CodexWebSetupScriptTests
         result.ExitCode.Should().Be(0, result.CombinedOutput);
         result.StdOut.Should().Contain("URL:     https://github.com/octo/example");
         result.StdOut.Should().Contain("Branch:  https://github.com/octo/example/tree/feature/codex-web");
+    }
+
+    [Test]
+    public async Task Setup_script_should_guess_default_branch_from_the_selected_remote_name()
+    {
+        using var harness = new CodexWebSetupScriptHarness(new Dictionary<string, string?>
+        {
+            ["FAKE_GIT_REMOTES"] = "upstream",
+            ["FAKE_GIT_REMOTE_NAME"] = "upstream",
+            ["FAKE_GIT_REMOTE_URL"] = "https://github.com/octo/example.git",
+            ["FAKE_GIT_DEFAULT_BRANCH"] = "trunk"
+        });
+
+        var result = await harness.RunAsync("n\nn\nn\n");
+
+        result.ExitCode.Should().Be(0, result.CombinedOutput);
+        result.StdOut.Should().Contain("==> Remote default branch guess: trunk");
     }
 
     private const string ExpectedProjectConfig = """
@@ -112,6 +133,7 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
             ["FAKE_GIT_LOG"] = GitLogPath,
             ["FAKE_GIT_BRANCH"] = "main",
             ["FAKE_GIT_DEFAULT_BRANCH"] = "main",
+            ["FAKE_GIT_REMOTE_NAME"] = "origin",
             ["FAKE_GIT_REMOTE_URL"] = "https://github.com/example/repo.git",
             ["FAKE_GIT_REMOTES"] = "origin",
             ["FAKE_GIT_HAS_INITIAL_COMMIT"] = "1",
@@ -135,6 +157,11 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
     public string BinDirectory { get; }
 
     public string GitLogPath { get; }
+
+    public IReadOnlyList<string> ReadGitLog() =>
+        File.Exists(GitLogPath)
+            ? File.ReadAllLines(GitLogPath)
+            : Array.Empty<string>();
 
     public async Task<ProcessResult> RunAsync(string standardInput)
     {
@@ -216,8 +243,8 @@ case "${1:-}" in
     ;;
 
   symbolic-ref)
-    if [[ "${2:-}" == "refs/remotes/origin/HEAD" && -n "${FAKE_GIT_DEFAULT_BRANCH:-}" ]]; then
-      printf 'refs/remotes/origin/%s\n' "${FAKE_GIT_DEFAULT_BRANCH}"
+    if [[ "${2:-}" == "refs/remotes/${FAKE_GIT_REMOTE_NAME:-origin}/HEAD" && -n "${FAKE_GIT_DEFAULT_BRANCH:-}" ]]; then
+      printf 'refs/remotes/%s/%s\n' "${FAKE_GIT_REMOTE_NAME:-origin}" "${FAKE_GIT_DEFAULT_BRANCH}"
       exit 0
     fi
 
@@ -235,7 +262,7 @@ case "${1:-}" in
 
     if [[ "${2:-}" == "get-url" ]]; then
       case "${3:-}" in
-        origin)
+        "${FAKE_GIT_REMOTE_NAME:-origin}")
           printf '%s\n' "${FAKE_GIT_REMOTE_URL:-https://github.com/example/repo.git}"
           exit 0
           ;;

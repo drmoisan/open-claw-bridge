@@ -9,10 +9,10 @@ set -Eeuo pipefail
 # What it does:
 #   - Verifies local prerequisites
 #   - Verifies current directory is a git repo
-#   - Verifies a GitHub remote exists
 #   - Ensures there is at least one commit
 #   - Optionally creates .codex/ scaffolding
-#   - Pushes the current branch to GitHub
+#   - Uses a GitHub remote when one is configured
+#   - Pushes the current branch to GitHub when requested
 #   - Prints next manual steps for Codex Web
 #
 # What it does NOT do:
@@ -43,9 +43,18 @@ require_cmd() {
     command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
 }
 
+is_interactive() {
+    [[ -t 0 && -t 1 && -z "${CI:-}" && -z "${CODEX_WEB_SETUP_NONINTERACTIVE:-}" ]]
+}
+
 confirm() {
     local prompt="${1:-Continue?}"
     local reply
+
+    if ! is_interactive; then
+        return 1
+    fi
+
     read -r -p "$prompt [y/N]: " reply || true
     [[ "${reply:-}" =~ ^[Yy]$ ]]
 }
@@ -63,8 +72,9 @@ current_branch() {
 }
 
 default_branch_guess() {
-    git symbolic-ref "refs/remotes/origin/HEAD" 2>/dev/null |
-        sed 's@^refs/remotes/origin/@@' ||
+    local remote_name="${1:-origin}"
+    git symbolic-ref "refs/remotes/${remote_name}/HEAD" 2>/dev/null |
+    sed "s@^refs/remotes/${remote_name}/@@" ||
         true
 }
 
@@ -172,7 +182,8 @@ print_summary() {
     local repo_url="$2"
     local branch="$3"
 
-    cat <<EOF
+    if [[ -n "$repo_url" ]]; then
+        cat <<EOF
 
 Setup complete.
 
@@ -196,6 +207,29 @@ Notes
   - Repo/project configuration can also live in .codex/config.toml.
 
 EOF
+        return 0
+    fi
+
+    cat <<EOF
+
+Setup complete.
+
+Repository
+  Remote:  (not configured)
+  Branch:  $branch
+
+Next steps for Codex Web
+  1. Open Codex Web.
+  2. Connect your GitHub account there if you have not already.
+  3. Select this repository from the Codex web interface.
+  4. If you want this script to publish branches, add a GitHub remote locally and rerun it.
+
+Notes
+  - No GitHub remote was configured in this checkout, so fetch/push steps were skipped.
+  - This can be expected in some cloud setup environments.
+  - Repo/project configuration can also live in .codex/config.toml.
+
+EOF
 }
 
 main() {
@@ -213,19 +247,22 @@ main() {
         die "Repository has no commits yet. Create an initial commit first."
     fi
 
-    local remote_name
-    remote_name="$(github_remote_name || true)"
-    [[ -n "${remote_name:-}" ]] || die "No GitHub remote found."
-
-    local repo_url
-    repo_url="$(github_repo_web_url "$remote_name")"
-
     local branch
     branch="$(current_branch)"
     [[ "$branch" != "HEAD" ]] || die "Detached HEAD is not supported by this setup script."
 
-    say "==> GitHub remote: $remote_name"
-    say "==> GitHub repo:   $repo_url"
+    local remote_name
+    remote_name="$(github_remote_name || true)"
+
+    local repo_url=""
+    if [[ -n "${remote_name:-}" ]]; then
+        repo_url="$(github_repo_web_url "$remote_name")"
+        say "==> GitHub remote: $remote_name"
+        say "==> GitHub repo:   $repo_url"
+    else
+        warn "No GitHub remote found. Skipping fetch/push steps."
+    fi
+
     say "==> Branch:        $branch"
 
     if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -244,11 +281,16 @@ main() {
         create_agents_md_if_missing
     fi
 
+    if [[ -z "${remote_name:-}" ]]; then
+        print_summary "" "" "$branch"
+        return 0
+    fi
+
     say "==> Fetching remote refs"
     git fetch "$remote_name" --prune
 
     local origin_default
-    origin_default="$(default_branch_guess || true)"
+    origin_default="$(default_branch_guess "$remote_name" || true)"
     if [[ -z "${origin_default:-}" ]]; then
         origin_default="$DEFAULT_BRANCH_FALLBACK"
     fi
