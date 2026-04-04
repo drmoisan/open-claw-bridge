@@ -28,7 +28,9 @@
         "humao.rest-client",
         "bierner.markdown-preview-github-styles",
         "bierner.markdown-mermaid",
-        "ms-azuretools.vscode-containers"
+        "ms-azuretools.vscode-containers",
+        "openai.chatgpt",
+        "Anthropic.claude-code"
       ],
       "settings": {
         "dotnet.defaultSolution": "OpenClaw.MailBridge.sln",

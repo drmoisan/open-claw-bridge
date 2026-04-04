@@ -1,0 +1,16 @@
+# Normalize text files and let Git handle platform-specific working-tree line endings.
+* text=auto
+
+# Common binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.nupkg binary
+*.snupkg binary
