@@ -7,7 +7,7 @@
       "command": "dotnet",
       "args": [
         "clean",
-        "${workspaceFolder}\\OpenClaw.MailBridge.sln"
+        "${workspaceFolder}/OpenClaw.MailBridge.sln"
       ],
       "options": {
         "cwd": "${workspaceFolder}"
@@ -20,7 +20,7 @@
       "command": "dotnet",
       "args": [
         "build",
-        "${workspaceFolder}\\OpenClaw.MailBridge.sln",
+        "${workspaceFolder}/OpenClaw.MailBridge.sln",
         "-c",
         "Debug"
       ],
@@ -42,7 +42,7 @@
       "command": "dotnet",
       "args": [
         "test",
-        "${workspaceFolder}\\OpenClaw.MailBridge.sln",
+        "${workspaceFolder}/OpenClaw.MailBridge.sln",
         "-c",
         "Debug",
         "--no-build"
@@ -66,7 +66,7 @@
       "args": [
         "run",
         "--project",
-        "${workspaceFolder}\\src\\OpenClaw.MailBridge\\OpenClaw.MailBridge.csproj",
+        "${workspaceFolder}/src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj",
         "--configuration",
         "Debug"
       ],
@@ -90,7 +90,7 @@
       "args": [
         "run",
         "--project",
-        "${workspaceFolder}\\src\\OpenClaw.MailBridge.Client\\OpenClaw.MailBridge.Client.csproj",
+        "${workspaceFolder}/src/OpenClaw.MailBridge.Client/OpenClaw.MailBridge.Client.csproj",
         "--configuration",
         "Debug",
         "--",

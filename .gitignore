@@ -17,6 +17,9 @@ coverage-*/
 .log/
 logs/
 
+# Artifacts
+artifacts/
+
 # User-specific files
 *.rsuser
 *.suo

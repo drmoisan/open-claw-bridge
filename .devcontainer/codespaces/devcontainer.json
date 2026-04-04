@@ -1,0 +1,97 @@
+{
+  "$schema": "https://containers.dev/schemas/devcontainer.schema.json",
+  "name": "OpenClaw MailBridge (Codespaces)",
+  "build": {
+    "context": "../..",
+    "dockerfile": "../Dockerfile"
+  },
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "containerEnv": {
+    "TZ": "America/New_York",
+    "DOTNET_CLI_TELEMETRY_OPTOUT": "1",
+    "DOTNET_NOLOGO": "1",
+    "DOTNET_SKIP_FIRST_TIME_EXPERIENCE": "1",
+    "EnableWindowsTargeting": "true",
+    "NUGET_XMLDOC_MODE": "skip"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.csdevkit",
+        "ms-vscode.powershell",
+        "github.vscode-pull-request-github",
+        "github.vscode-github-actions",
+        "eamodio.gitlens",
+        "editorconfig.editorconfig",
+        "humao.rest-client",
+        "bierner.markdown-preview-github-styles",
+        "bierner.markdown-mermaid",
+        "ms-azuretools.vscode-containers"
+      ],
+      "settings": {
+        "dotnet.defaultSolution": "OpenClaw.MailBridge.sln",
+        "editor.formatOnSave": true,
+        "dotnet.formatting.organizeImportsOnFormat": true,
+        "dotnet.test.runTestsInContext": true,
+        "dotnet.test.debugTestsInContext": true,
+        "files.associations": {
+          "*.ps1": "powershell"
+        },
+        "files.watcherExclude": {
+          "**/bin/**": true,
+          "**/obj/**": true,
+          "**/TestResults/**": true
+        },
+        "search.exclude": {
+          "**/bin": true,
+          "**/obj": true,
+          "**/TestResults": true
+        },
+        "powershell.codeFormatting.preset": "OTBS",
+        "powershell.integratedConsole.showOnStartup": false,
+        "terminal.integrated.defaultProfile.linux": "pwsh",
+        "terminal.integrated.profiles.linux": {
+          "bash": {
+            "icon": "terminal-bash",
+            "path": "/bin/bash"
+          },
+          "pwsh": {
+            "args": [
+              "-NoLogo"
+            ],
+            "icon": "terminal-powershell",
+            "path": "/usr/bin/pwsh"
+          }
+        }
+      }
+    }
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installOhMyZsh": false,
+      "installZsh": false,
+      "upgradePackages": true,
+      "username": "vscode"
+    },
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "10.0.201"
+    },
+    "ghcr.io/devcontainers/features/powershell:1": {
+      "modules": "PSScriptAnalyzer,Pester",
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    }
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb"
+  },
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
+}
