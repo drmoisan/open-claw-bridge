@@ -1,6 +1,9 @@
 # Normalize text files and let Git handle platform-specific working-tree line endings.
 * text=auto
 
+# Shell scripts must stay LF so bash/sh tooling remains portable.
+*.sh text eol=lf
+
 # Common binary assets
 *.png binary
 *.jpg binary
