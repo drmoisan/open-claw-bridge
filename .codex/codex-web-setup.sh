@@ -17,6 +17,7 @@ set -Eeuo pipefail
 #   - Prints basic repo/runtime diagnostics
 #   - Detects common package manager manifests
 #   - Runs conservative dependency install steps when appropriate
+#   - Restores repo .NET SDK/tools/packages when a .NET solution is present
 #   - Optionally runs a repo-provided bootstrap hook if present
 #
 # What it does NOT do:
@@ -35,6 +36,16 @@ have() {
     command -v "$1" >/dev/null 2>&1
 }
 
+is_windows() {
+    [[ "${OS:-}" == "Windows_NT" ]]
+}
+
+prepend_path() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 0
+    [[ ":$PATH:" == *":$dir:"* ]] || export PATH="$dir:$PATH"
+}
+
 repo_root() {
     git rev-parse --show-toplevel 2>/dev/null || pwd
 }
@@ -50,6 +61,161 @@ head_sha() {
 maybe_run() {
     say "==> $*"
     "$@"
+}
+
+download_to() {
+    local url="$1"
+    local output_path="$2"
+
+    if have curl; then
+        maybe_run curl -fsSL "$url" -o "$output_path"
+        return 0
+    fi
+
+    if have wget; then
+        maybe_run wget -qO "$output_path" "$url"
+        return 0
+    fi
+
+    err "Neither curl nor wget is available to download $url"
+    return 1
+}
+
+find_solution_file() {
+    local solutions=()
+
+    shopt -s nullglob
+    solutions=( *.sln )
+    shopt -u nullglob
+
+    if (( ${#solutions[@]} == 1 )); then
+        printf '%s\n' "${solutions[0]}"
+    fi
+}
+
+has_dotnet_projects() {
+    compgen -G "*.sln" >/dev/null || compgen -G "*.csproj" >/dev/null || [[ -f global.json ]]
+}
+
+required_dotnet_sdk() {
+    [[ -f global.json ]] || return 0
+
+    sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' global.json | head -n 1
+}
+
+repo_targets_windows() {
+    find . -type f \( -name '*.csproj' -o -name '*.props' -o -name '*.targets' \) -print0 2>/dev/null |
+    xargs -0 grep -El '<TargetFrameworks?>[^<]*-windows|<UseWPF>true</UseWPF>|<UseWindowsForms>true</UseWindowsForms>' >/dev/null 2>&1
+}
+
+activate_dotnet_from_common_locations() {
+    local dotnet_root=""
+
+    if [[ -n "${DOTNET_ROOT:-}" && -x "${DOTNET_ROOT}/dotnet" ]]; then
+        dotnet_root="${DOTNET_ROOT}"
+    elif [[ -x "${HOME}/.dotnet/dotnet" ]]; then
+        dotnet_root="${HOME}/.dotnet"
+    elif [[ -x "/usr/share/dotnet/dotnet" ]]; then
+        dotnet_root="/usr/share/dotnet"
+    fi
+
+    if [[ -n "$dotnet_root" ]]; then
+        export DOTNET_ROOT="$dotnet_root"
+        prepend_path "$DOTNET_ROOT"
+        prepend_path "$DOTNET_ROOT/tools"
+    fi
+
+    have dotnet
+}
+
+bootstrap_dotnet_sdk() {
+    local required_sdk="$1"
+    local install_dir="${DOTNET_INSTALL_DIR:-${HOME}/.dotnet}"
+    local installer
+
+    mkdir -p "$install_dir"
+    installer="$(mktemp)"
+
+    download_to "https://dot.net/v1/dotnet-install.sh" "$installer" || {
+        rm -f "$installer"
+        return 1
+    }
+
+    chmod +x "$installer"
+    maybe_run bash "$installer" --version "$required_sdk" --install-dir "$install_dir" --no-path
+    rm -f "$installer"
+
+    export DOTNET_ROOT="$install_dir"
+    prepend_path "$DOTNET_ROOT"
+    prepend_path "$DOTNET_ROOT/tools"
+    hash -r
+}
+
+install_dotnet() {
+    has_dotnet_projects || return 0
+
+    local resolved_sdk=""
+    local required_sdk=""
+    local restore_target=""
+    local -a restore_args=( restore )
+
+    required_sdk="$(required_dotnet_sdk || true)"
+    restore_target="$(find_solution_file || true)"
+
+    say "==> .NET repository detected"
+    if [[ -n "$required_sdk" ]]; then
+        say "==> global.json SDK: $required_sdk"
+    fi
+
+    if ! activate_dotnet_from_common_locations; then
+        [[ -n "$required_sdk" ]] || {
+            err ".NET repo detected but dotnet is not installed and no global.json SDK version was found."
+            return 1
+        }
+
+        say "==> dotnet not found on PATH; installing SDK $required_sdk"
+        bootstrap_dotnet_sdk "$required_sdk" || {
+            err "Failed to install .NET SDK $required_sdk."
+            return 1
+        }
+    fi
+
+    if ! resolved_sdk="$(dotnet --version 2>/dev/null)"; then
+        if [[ -n "$required_sdk" ]]; then
+            say "==> Installed dotnet could not satisfy global.json; retrying with SDK $required_sdk"
+            bootstrap_dotnet_sdk "$required_sdk" || {
+                err "Failed to install a compatible .NET SDK for global.json version $required_sdk."
+                return 1
+            }
+            resolved_sdk="$(dotnet --version 2>/dev/null)" || true
+        fi
+    fi
+
+    if [[ -z "$resolved_sdk" ]]; then
+        err "dotnet is installed but no compatible SDK could be resolved for this repository."
+        if [[ -n "$required_sdk" ]]; then
+            err "Install a compatible SDK for global.json version $required_sdk."
+        fi
+        return 1
+    fi
+
+    say "==> dotnet SDK: $resolved_sdk"
+    maybe_run dotnet --list-sdks
+
+    if [[ -f .config/dotnet-tools.json ]]; then
+        maybe_run dotnet tool restore
+    fi
+
+    if ! is_windows && repo_targets_windows; then
+        say "==> Enabling Windows targeting for non-Windows restore"
+        restore_args+=( -p:EnableWindowsTargeting=true )
+    fi
+
+    if [[ -n "$restore_target" ]]; then
+        restore_args+=( "$restore_target" )
+    fi
+
+    maybe_run dotnet "${restore_args[@]}"
 }
 
 install_node() {
@@ -234,6 +400,7 @@ main() {
     fi
 
     install_node
+    install_dotnet
     install_python
     install_ruby
     install_go
