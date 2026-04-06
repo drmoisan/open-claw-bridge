@@ -1,66 +1,120 @@
 ---
 name: feature-promotion-lifecycle
-description: 'Deterministic promotion workflow from potential item to issue, branch, and active feature folder. Use when orchestration must initialize delivery state in Codex without duplicating host-specific automation logic.'
+description: Deterministic promotion workflow from potential feature/bug entry to issue, branch, active feature folder, and downstream spec/research handoffs. Prefer VS Code extension command execution when extension tools are available; use underlying scripts only as fallback.
 ---
 
 # Feature Promotion Lifecycle
 
-Canonical variable model and promotion sequence for initializing active feature delivery.
+Canonical variable model and command sequence for promoting potential feature/bug entries and initializing active feature delivery.
 
-## Required Shared Skills
+## When to Use This Skill
 
-Always use:
-- `repo-automation-adapter`
-- `evidence-and-timestamp-conventions`
+Use this skill when:
+- A large-scope change requires feature/bug promotion workflow.
+- A short-path workflow still requires promotion/folder initialization before delegated implementation.
+- An orchestrator must create potential docs, promote to issue, branch, and active feature folder.
+- Downstream research/spec agents depend on deterministic paths and identifiers.
+
+## Extension-First Execution Rule
+
+When the agent has access to the VS Code extension tool surface (in particular `vscode/runCommand` plus extension access), execute the lifecycle through the contributed extension commands first.
+
+Canonical extension command invocations:
+- feature potential entry: `drmCopilotExtension.newPotentialEntry` with `[`"-ShortName"`, `"${short-name}"`]`
+- bug potential entry: `drmCopilotExtension.newPotentialBugEntry` with `[`"--short-name"`, `"${short-name}"`]`
+- potential-to-issue promotion: `drmCopilotExtension.potentialToIssue` with `[`"--potential-path"`, `"${relativeFile}"`, `"--promotion-type"`, `"${promotion-type}"`, `"--work-mode"`, `"${work-mode}"`]`
+- active feature folder creation: `drmCopilotExtension.newActiveFeatureFolder` with `[`"--feature-name"`, `"${long-name}"`, `"--type"`, `"${promotion-type}"`, `"--issue-number"`, `"${issue-num}"`, `"--work-mode"`, `"${work-mode}"`]`
+
+Fallback rule:
+- Use the direct script/CLI commands below only when the agent host cannot invoke VS Code extension commands directly.
+- When falling back, preserve the same variable model, flags, and work-mode semantics.
 
 ## Canonical Variables
 
 - `${promotion-type}`: `feature` or `bug`
-- `${short-name}`: lowercase hyphenated slug
-- `${relativeFile}`: workspace-relative path to the potential entry
+- `${short-name}`: lowercase slug, hyphen-separated
+- `${relativeFile}`: workspace-relative path to created potential entry markdown
 - `${long-name}`: `${relativeFile}` filename without `.md`
 - `${issue-num}`: promoted GitHub issue number
 - `${feature-folder}`: active feature folder path
-- `${plan-path}`: canonical plan file path
-- `${work-mode}`: `minor-audit`, `full-feature`, or `full-bug`
+- `${plan-path}`: single canonical plan file path reused across planning and preflight revisions
+- `${work-mode}`: `minor-audit`, `full-feature`, or `full-bug` (legacy `full` is accepted only as an alias for `full-feature`)
+- `${short-path-flag}`: `--work-mode minor-audit` (mandatory for short-path promotion/folder creation)
 
-## Workflow
+## Canonical Fallback Command Sequence
 
-1. Create the potential entry.
-2. Promote the potential entry to an issue.
-3. Create the branch.
-4. Create the active feature folder.
-5. Resolve and persist the canonical `plan-path`.
-6. Delegate planning to `atomic-planner`.
-7. Require `atomic-executor` preflight before execution.
+1) Create potential entry by type:
+- feature: `${workspaceFolder}/scripts/dev-tools/new-potential-entry.ps1 -ShortName ${short-name}`
+- bug: `${workspaceFolder}/scripts/dev_tools/new_potential_bug_entry.py --short-name ${short-name}`
 
-## Canonical Branch Name
+2) Promote potential doc:
+- `poetry run python -m scripts.dev_tools.potential_to_issue --potential-path ${relativeFile} --promotion-type ${promotion-type} --work-mode ${work-mode}`
 
+3) Create branch:
 - `${promotion-type}/${short-name}-${issue-num}`
 
-If the branch already exists, reuse it instead of inventing an alternate branch name.
+4) Create active feature folder:
+- `poetry run python -m scripts.dev_tools.new_active_feature_folder --feature-name ${long-name} --type ${promotion-type} --issue-number ${issue-num} --work-mode ${work-mode}`
 
-## Plan Path Resolution
+## Canonical Fallback Short-Path Sequence (Minor Audit Mode)
 
-The canonical active plan path must use the timestamped form `plan.<timestamp>.md`.
+When orchestrator routing selects short path, promotion/folder initialization still occurs and MUST use `minor-audit` mode.
 
-Resolve `${plan-path}` in this order:
+1) Promote potential doc with short-path flag:
+- `poetry run python -m scripts.dev_tools.potential_to_issue --potential-path ${relativeFile} --promotion-type ${promotion-type} --work-mode minor-audit`
 
-1. If one or more `plan*.md` files already exist under `${feature-folder}`, reuse the earliest existing timestamped `plan.<timestamp>.md`.
-2. If no timestamped plan exists but a legacy `plan.md` exists, treat that as a migration defect to be corrected; do not keep both `plan.md` and a new timestamped plan as competing active-plan candidates.
-3. If no plan file exists, create exactly one new `plan.<timestamp>.md` using the timestamp format from `evidence-and-timestamp-conventions` and persist that path as `${plan-path}`.
+2) Create branch:
+- `${promotion-type}/${short-name}-${issue-num}`
 
-## Codex Execution Rule
+3) Create active feature folder with short-path flag:
+- `poetry run python -m scripts.dev_tools.new_active_feature_folder --feature-name ${long-name} --type ${promotion-type} --issue-number ${issue-num} --work-mode minor-audit`
 
-Do not encode host-specific implementation details here.
+3a) Verify minor-audit folder integrity before proceeding:
+- `${feature-folder}/issue.md` exists and contains `- Work Mode: minor-audit`
+- `${feature-folder}/issue.md` contains an explicit `## Acceptance Criteria` section
+- `${feature-folder}/spec.md` does not exist
+- `${feature-folder}/user-story.md` does not exist
+- if any check fails, stop and remediate before planning
 
-For each lifecycle step:
-- use `repo-automation-adapter` to choose the direct repo automation path,
-- use a deterministic local fallback only when explicitly supported,
-- otherwise stop and report the missing automation dependency.
+4) Delegate minimal-audit plan creation to `atomic_planner` with directive:
+- `DIRECTIVE: MINIMAL-AUDIT PLAN REQUIRED`
 
-## Mode-Aware Expectations
+4a) Resolve and persist `${plan-path}` before delegation:
+- reuse the earliest existing `plan*.md` in `${feature-folder}` when present
+- otherwise create exactly one canonical plan file path and reuse it for all revisions
 
-- `minor-audit`: `issue.md` is authoritative and `spec.md` / `user-story.md` are intentionally absent
-- `full-feature`: `issue.md`, `spec.md`, and `user-story.md` are expected
-- `full-bug`: `issue.md` and `spec.md` are expected
+5) Require preflight validation via `atomic_executor` until:
+- `PREFLIGHT: ALL CLEAR`
+
+6) Execute plan Phase 0 only via executor and checkpoint evidence.
+
+7) Branch:
+- manual bootstrap: save state and stop,
+- non-bootstrap: continue with constrained small-path development.
+
+8) Validate delivery via executor against `issue.md`, then run reduced audit/remediation loop until ready-to-merge.
+
+## Required Outputs for Downstream Handoffs
+
+Before delegating research/spec/planning, provide:
+- `${feature-folder}/issue.md`
+- `${feature-folder}/spec.md` (or expected target path)
+- `${feature-folder}/user-story.md` (or explicit `NONE`)
+- latest research artifact path(s)
+- constraints/APIs/invariants to preserve
+
+Mode-aware expectations:
+- For `minor-audit`, the explicit `## Acceptance Criteria` section in `issue.md` is the primary acceptance-criteria source and `spec.md`/`user-story.md` may be intentionally absent by design.
+- For `minor-audit`, do not infer acceptance criteria from other `issue.md` sections such as verification notes, next steps, or severity checklists.
+- For `minor-audit`, `spec.md`/`user-story.md` must be treated as integrity failures when they appear unexpectedly in the active folder.
+- For `full-feature`, `spec.md` and `user-story.md` are expected alongside `issue.md`.
+- For `full-bug`, `spec.md` is expected alongside `issue.md`; `user-story.md` should be absent unless the requirements explicitly justify it.
+
+Selected-mode persistence requirements:
+- Producer outputs MUST persist exactly one marker in `issue.md` metadata above the first `##` heading:
+	- `- Work Mode: minor-audit`
+	- `- Work Mode: full-feature`
+	- `- Work Mode: full-bug`
+- Persisted marker MUST represent selected mode after eligibility checks, not requested mode.
+- If a legacy requested `full` path is accepted, tooling MUST normalize it to `full-feature` before persistence.
+- If a requested `minor-audit` path is rejected by eligibility checks, tooling MUST fail closed to `full-feature`, emit fallback reason, and persist `- Work Mode: full-feature`.

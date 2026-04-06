@@ -44,12 +44,15 @@ Review constraints:
 Acceptance and remediation rules:
 - Trigger remediation if policy audit has FAIL or meaningful PARTIAL findings, toolchain checks fail, blockers exist in code review, or required acceptance criteria are not fully met.
 - When remediation is triggered, generate remediation-inputs first.
-- Then delegate remediation planning to the atomic-planner agent or equivalent workflow.
+- Then automatically delegate remediation planning to the atomic-planner agent; do not leave remediation as a manual follow-up.
+- Create the remediation plan target file on disk before the planning handoff.
 - Remediation planning must treat remediation-inputs as the primary requirements source.
+- The delegated remediation context package must include remediation inputs, canonical PR-context artifacts, review artifacts, and the original feature plan file(s).
 
 Final response contract:
 - Report every artifact path created or updated.
 - Provide a one-paragraph go/no-go recommendation for PR readiness.
 - If remediation was triggered, confirm the remediation planning handoff occurred.
 - Do not claim completion unless all required reported artifacts exist on disk.
+- Do not claim completion when remediation is triggered unless the remediation plan file exists on disk.
 """

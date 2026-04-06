@@ -36,6 +36,7 @@ Mode and policy behavior:
 
 Mandatory orchestration rule:
 - Before finalizing any plan, explicitly spawn the `atomic-executor` subagent in preflight-validation-only mode.
+- The delegated prompt MUST include the exact directive `DIRECTIVE: PREFLIGHT VALIDATION ONLY`.
 - Pass the current draft plan file as the plan of record for validation.
 - Wait for one of exactly two outcomes:
   - `PREFLIGHT: ALL CLEAR`
@@ -48,6 +49,7 @@ Preflight loop behavior:
 - Preserve the caller-provided target path when one is supplied.
 - Do not create extra sibling plan files when an authoritative target file exists.
 - Treat executor preflight findings as binding plan defects to be corrected before finalization.
+- Reuse the same target plan file for every preflight revision iteration in the same planning cycle.
 
 Self-checking:
 - Before each executor preflight pass, confirm zero placeholders, atomic tasks only, canonical phase headings, canonical checkbox syntax, machine-verifiable acceptance criteria, and policy compatibility.

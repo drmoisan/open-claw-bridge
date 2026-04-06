@@ -29,6 +29,10 @@ Policy and preflight rules:
 - Blocking is allowed only during preflight, before the first task executes.
 - If the plan is invalid, non-atomic, non-verifiable, or conflicts with repo policy, stop at preflight and provide a precise plan delta for correction.
 - After execution begins, do not block mid-plan; continue to completion within the allowed scope of the current tasks.
+- If the handoff includes `DIRECTIVE: PREFLIGHT VALIDATION ONLY`, perform validation only and return exactly one of `PREFLIGHT: ALL CLEAR` or `PREFLIGHT: REVISIONS REQUIRED`.
+- When returning `PREFLIGHT: REVISIONS REQUIRED`, include a precise plan delta that can be applied to the same plan file.
+- When returning `PREFLIGHT: REVISIONS REQUIRED`, automatically hand off back to `atomic-planner` and request that it apply the delta to the same plan file and resubmit that same file for validation-only again.
+- Continue the validate -> delta -> planner-revise -> validate loop until preflight can return `PREFLIGHT: ALL CLEAR`.
 
 Execution behavior:
 - Execute tasks one by one, in order.
