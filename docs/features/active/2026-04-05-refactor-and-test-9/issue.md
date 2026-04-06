@@ -7,6 +7,8 @@
 - Issue URL: https://github.com/drmoisan/open-claw-bridge/issues/9
 - Last Updated: 2026-04-06
 
+- Work Mode: full-feature
+
 ## Problem / Why
 
 The bridge host currently concentrates multiple production classes inside `src/OpenClaw.MailBridge/Program.cs`, which puts the file well over the repository's 500-line guidance and makes targeted changes harder to review, test, and reason about. The test project is also out of policy alignment because it uses NUnit instead of MSTest and does not provide focused regression coverage for the host bootstrapping, state management, and request-handling logic that now lives in the monolithic file.
