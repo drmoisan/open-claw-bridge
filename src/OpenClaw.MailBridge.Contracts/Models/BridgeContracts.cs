@@ -2,8 +2,20 @@ using System.Text.Json.Serialization;
 
 namespace OpenClaw.MailBridge.Contracts.Models;
 
-public enum BridgeState { starting, waiting_for_outlook, ready, degraded, error }
-public enum BridgeMode { safe, enhanced }
+public enum BridgeState
+{
+    starting,
+    waiting_for_outlook,
+    ready,
+    degraded,
+    error,
+}
+
+public enum BridgeMode
+{
+    safe,
+    enhanced,
+}
 
 public static class BridgeMethods
 {
@@ -15,26 +27,38 @@ public static class BridgeMethods
     public const string GetEvent = "get_event";
 
     public static readonly HashSet<string> All =
-    [GetStatus, ListRecentMessages, GetMessage, ListRecentMeetingRequests, ListCalendarWindow, GetEvent];
+    [
+        GetStatus,
+        ListRecentMessages,
+        GetMessage,
+        ListRecentMeetingRequests,
+        ListCalendarWindow,
+        GetEvent,
+    ];
 }
 
 public sealed record RpcRequest(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("method")] string Method,
-    [property: JsonPropertyName("params")] Dictionary<string, string>? Params);
+    [property: JsonPropertyName("params")] Dictionary<string, string>? Params
+);
 
 public sealed record RpcError(
     [property: JsonPropertyName("code")] string Code,
-    [property: JsonPropertyName("message")] string Message);
+    [property: JsonPropertyName("message")] string Message
+);
 
 public sealed record RpcResponse(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("ok")] bool Ok,
     [property: JsonPropertyName("result")] object? Result,
-    [property: JsonPropertyName("error")] RpcError? Error)
+    [property: JsonPropertyName("error")] RpcError? Error
+)
 {
     public static RpcResponse Success(string id, object? result) => new(id, true, result, null);
-    public static RpcResponse Failure(string id, string code, string message) => new(id, false, null, new RpcError(code, message));
+
+    public static RpcResponse Failure(string id, string code, string message) =>
+        new(id, false, null, new RpcError(code, message));
 }
 
 public sealed record BridgeStatusDto(
@@ -44,7 +68,8 @@ public sealed record BridgeStatusDto(
     bool CacheStale,
     string? StaleReason,
     DateTimeOffset? LastInboxScanUtc,
-    DateTimeOffset? LastCalendarScanUtc);
+    DateTimeOffset? LastCalendarScanUtc
+);
 
 public sealed record MessageDto(
     string BridgeId,
@@ -63,7 +88,8 @@ public sealed record MessageDto(
     string? CcJson,
     string? BodyPreview,
     bool ProtectedFieldsAvailable,
-    bool IsRedacted);
+    bool IsRedacted
+);
 
 public sealed record EventDto(
     string BridgeId,
@@ -82,7 +108,8 @@ public sealed record EventDto(
     string? ResourcesJson,
     string? BodyPreview,
     bool ProtectedFieldsAvailable,
-    bool IsRedacted);
+    bool IsRedacted
+);
 
 public sealed record BridgeSettings(
     string PipeName,
@@ -95,10 +122,11 @@ public sealed record BridgeSettings(
     int CalendarFutureDays,
     int MaxItemsPerScan,
     int BodyPreviewMaxChars,
-    string LogLevel)
+    string LogLevel
+)
 {
-    public static BridgeSettings Default => new(
-        "openclaw_mailbridge_v1", "safe", true, 30, 300, 5, 14, 60, 500, 500, "Information");
+    public static BridgeSettings Default =>
+        new("openclaw_mailbridge_v1", "safe", true, 30, 300, 5, 14, 60, 500, 500, "Information");
 }
 
 public static class BridgeErrorCodes
