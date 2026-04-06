@@ -1,3 +1,4 @@
+<<<<<<< ours
 # 2026-04-05-refactor-and-test - Refactor Spec
 
 - **Issue:** #9
@@ -76,3 +77,19 @@ Upstream/downstream modules, CLIs, data paths, automation, or external consumers
 - [ ] Unit coverage areas: settings-path resolution, argument parsing, bridge state transitions, RPC request validation, oversized request rejection, and response-size fallback behavior.
 - [ ] Integration scenarios: host startup with valid settings, startup failure with invalid settings, and status RPC responses that reflect persisted scan-state timestamps.
 - [ ] CLI/API examples: `--config <path>` handling, `bridge.getStatus` request/response shape, and unsupported RPC method failures.
+=======
+# Specification: refactor-and-test
+
+## Scope
+- Refactor runtime classes from the monolithic `Program.cs` into dedicated files under `src/OpenClaw.MailBridge/`.
+- Preserve public/internal behaviors and dependency registration patterns.
+- Expand test coverage in `tests/OpenClaw.MailBridge.Tests` to cover refactored runtime classes.
+
+## Non-goals
+- No protocol or contract changes in `OpenClaw.MailBridge.Contracts`.
+- No behavioral feature additions beyond testability/structure improvements.
+
+## Validation
+- Build and test the solution.
+- Produce code coverage artifact with per-file percentages and verify ≥80% for targeted runtime files.
+>>>>>>> theirs
