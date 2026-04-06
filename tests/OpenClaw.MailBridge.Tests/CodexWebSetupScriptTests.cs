@@ -1,12 +1,13 @@
 using System.Diagnostics;
 using FluentAssertions;
-using NUnit.Framework;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace OpenClaw.MailBridge.Tests;
 
+[TestClass]
 public class CodexWebSetupScriptTests
 {
-    [Test]
+    [TestMethod]
     public async Task Setup_script_should_restore_the_solution_with_the_available_dotnet_sdk()
     {
         using var harness = new CodexWebSetupScriptHarness(
@@ -84,7 +85,7 @@ esac
             );
     }
 
-    [Test]
+    [TestMethod]
     public async Task Setup_script_should_restore_local_dotnet_tools_when_manifest_exists()
     {
         using var harness = new CodexWebSetupScriptHarness();
@@ -147,7 +148,7 @@ esac
         harness.ReadDotnetLog().Should().Contain(line => line == "tool restore");
     }
 
-    [Test]
+    [TestMethod]
     public async Task Setup_script_should_install_the_pinned_dotnet_sdk_when_dotnet_is_missing()
     {
         using var harness = new CodexWebSetupScriptHarness(
@@ -260,7 +261,7 @@ EOF
             );
     }
 
-    [Test]
+    [TestMethod]
     public async Task Setup_script_should_run_the_repo_bootstrap_hook_when_present()
     {
         using var harness = new CodexWebSetupScriptHarness();
@@ -282,7 +283,7 @@ printf 'hook-ran\n' > .codex/hook-result.txt
         harness.ReadFile(".codex/hook-result.txt").Should().Contain("hook-ran");
     }
 
-    [Test]
+    [TestMethod]
     public async Task Setup_script_should_report_git_metadata_and_status()
     {
         using var harness = new CodexWebSetupScriptHarness(
@@ -666,7 +667,7 @@ exit 99
 
     private static string? FindRepositoryRoot()
     {
-        var directory = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
 
         while (directory is not null)
         {

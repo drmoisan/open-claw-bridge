@@ -78,6 +78,18 @@ Files implicated during investigation:
 - Re-open the workspace and confirm automatic test discovery succeeds without requiring the .NET 8 runtime.
 - Confirm `vstest.console.exe tests\OpenClaw.MailBridge.Tests\bin\Debug\net10.0-windows\OpenClaw.MailBridge.Tests.dll /EnableCodeCoverage` passes.
 
+## Acceptance Criteria
+
+- [x] All MailBridge projects (`OpenClaw.MailBridge`, `OpenClaw.MailBridge.Contracts`, `OpenClaw.MailBridge.Client`, `OpenClaw.MailBridge.Tests`) target `net10.0-windows`.
+- [x] The test project (`OpenClaw.MailBridge.Tests`) uses MSTest packages and MSTest attributes (not NUnit).
+- [x] All existing test scenarios pass on `net10.0-windows` (no test removed or weakened).
+- [x] The `DOTNET_*` harness isolation behavior in `CodexWebSetupScriptTests.cs` is preserved.
+- [x] `csharpier .` reports no formatting changes.
+- [x] `dotnet msbuild` with `EnableNETAnalyzers=true` and `EnforceCodeStyleInBuild=true` passes clean.
+- [x] `dotnet msbuild` with `Nullable=enable` and `TreatWarningsAsErrors=true` passes clean.
+- [x] `dotnet test tests\OpenClaw.MailBridge.Tests\OpenClaw.MailBridge.Tests.csproj -v minimal` passes all tests.
+- [x] `vstest.console.exe tests\OpenClaw.MailBridge.Tests\bin\Debug\net10.0-windows\OpenClaw.MailBridge.Tests.dll /EnableCodeCoverage` passes all tests.
+
 ## Next Step
 
 - [ ] Promote to GitHub issue (bug-report template)

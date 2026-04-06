@@ -1,12 +1,13 @@
 using FluentAssertions;
-using NUnit.Framework;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.MailBridge.Contracts.Models;
 
 namespace OpenClaw.MailBridge.Tests;
 
+[TestClass]
 public class MailBridgeTests
 {
-    [Test]
+    [TestMethod]
     public void Bridge_id_codec_should_follow_spec_prefixes()
     {
         BridgeIdCodec.MessageId("abc", false).Should().StartWith("msg:");
@@ -17,14 +18,14 @@ public class MailBridgeTests
             .StartWith("evt:");
     }
 
-    [Test]
+    [TestMethod]
     public void Settings_validator_rejects_invalid_mode()
     {
         var s = BridgeSettings.Default with { Mode = "bad" };
         BridgeSettingsValidator.Validate(s).Should().Contain(x => x.Contains("mode"));
     }
 
-    [Test]
+    [TestMethod]
     public void Body_sanitizer_removes_html_and_paths()
     {
         var input = "<b>Hello</b> C:\\secret\\file.txt";
