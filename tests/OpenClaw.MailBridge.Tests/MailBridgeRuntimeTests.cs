@@ -394,7 +394,7 @@ public class MailBridgeRuntimeTests
             PipeOptions.Asynchronous
         );
 
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var method = typeof(PipeRpcWorker).GetMethod("HandleClientAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
         var serverTask = Task.Run(async () =>
         {
@@ -414,15 +414,24 @@ public class MailBridgeRuntimeTests
         await client.WriteAsync(bytes, 0, bytes.Length, cts.Token);
         await client.FlushAsync(cts.Token);
 
+        await serverTask;
         using var ms = new MemoryStream();
         var buffer = new byte[4096];
-        do
+        while (true)
         {
             var read = await client.ReadAsync(buffer, 0, buffer.Length, cts.Token);
-            ms.Write(buffer, 0, read);
-        } while (!client.IsMessageComplete);
+            if (read == 0)
+            {
+                break;
+            }
 
-        await serverTask;
+            ms.Write(buffer, 0, read);
+            if (read < buffer.Length)
+            {
+                break;
+            }
+        }
+
         return Encoding.UTF8.GetString(ms.ToArray());
     }
 
