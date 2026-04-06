@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace OpenClaw.MailBridge;
@@ -26,9 +27,7 @@ internal class ComActiveObject
     {
         try
         {
-            CLSIDFromProgID(progId, out var clsid);
-            GetActiveObject(ref clsid, nint.Zero, out var obj);
-            return obj;
+            return TryGetCore(progId);
         }
         catch
         {
@@ -37,11 +36,30 @@ internal class ComActiveObject
         }
     }
 
+    [ExcludeFromCodeCoverage]
+    protected virtual object TryGetCore(string progId)
+    {
+        CLSIDFromProgID(progId, out var clsid);
+        GetActiveObject(ref clsid, nint.Zero, out var obj);
+        return obj;
+    }
+
     /// <summary>
     /// Creates a new Outlook application instance and performs MAPI logon.
     /// </summary>
     /// <returns>The activated Outlook COM application object.</returns>
     public virtual object CreateAndLogonOutlook()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("Outlook COM activation requires Windows.");
+        }
+
+        return CreateAndLogonOutlookCore();
+    }
+
+    [ExcludeFromCodeCoverage]
+    protected virtual object CreateAndLogonOutlookCore()
     {
         var t =
             Type.GetTypeFromProgID("Outlook.Application", false)

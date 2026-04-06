@@ -289,6 +289,20 @@ public class MailBridgeRuntimeTests
             .Should().NotBeNull();
     }
 
+
+    [TestMethod]
+    public void Com_active_object_create_and_logon_should_throw_on_non_windows()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("This test targets non-Windows behavior only.");
+        }
+
+        var sut = new ComActiveObject();
+        var act = () => sut.CreateAndLogonOutlook();
+        act.Should().Throw<PlatformNotSupportedException>();
+    }
+
     [TestMethod]
     public void Com_active_object_try_get_should_return_null_for_unknown_prog_id()
     {
