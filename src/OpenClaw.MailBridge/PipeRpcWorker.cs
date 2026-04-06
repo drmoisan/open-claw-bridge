@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -10,30 +9,17 @@ using OpenClaw.MailBridge.Contracts.Models;
 
 namespace OpenClaw.MailBridge;
 
-/// <summary>
-/// Hosts the named-pipe RPC endpoint that exposes bridge status and cache-backed metadata to clients.
-/// </summary>
-/// <param name="settings">Bridge settings that define the named-pipe endpoint.</param>
-/// <param name="state">Shared bridge state returned by status requests.</param>
-/// <param name="repo">Repository used to read persisted scan-state timestamps.</param>
-/// <param name="logger">Logger used to record request-processing failures.</param>
-[ExcludeFromCodeCoverage]
 internal sealed class PipeRpcWorker(
     BridgeSettings settings,
     BridgeStateStore state,
-    CacheRepository repo,
+    IScanStateRepository repo,
     ILogger<PipeRpcWorker> logger
 ) : BackgroundService
 {
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
-    /// <summary>
-    /// Accepts named-pipe client connections until the host is asked to stop.
-    /// </summary>
-    /// <param name="stoppingToken">Cancellation token signaled during host shutdown.</param>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        // Accept one connection per server instance and immediately spin up the next listener.
         while (!stoppingToken.IsCancellationRequested)
         {
             await using var server = CreateServer();
@@ -42,11 +28,7 @@ internal sealed class PipeRpcWorker(
         }
     }
 
-    /// <summary>
-    /// Creates a named-pipe server with the repository's ACL expectations.
-    /// </summary>
-    /// <returns>A configured named-pipe server stream.</returns>
-    private NamedPipeServerStream CreateServer()
+    internal NamedPipeServerStream CreateServer()
     {
         var sec = BuildPipeSecurity();
         return NamedPipeServerStreamAcl.Create(
@@ -61,11 +43,7 @@ internal sealed class PipeRpcWorker(
         );
     }
 
-    /// <summary>
-    /// Builds the pipe ACL that permits local service accounts while blocking network-originated access.
-    /// </summary>
-    /// <returns>The named-pipe security descriptor used for each listener instance.</returns>
-    private static PipeSecurity BuildPipeSecurity()
+    internal PipeSecurity BuildPipeSecurity()
     {
         var security = new PipeSecurity();
         security.AddAccessRule(
@@ -82,21 +60,17 @@ internal sealed class PipeRpcWorker(
                 AccessControlType.Allow
             )
         );
-        security.AddAccessRule(
-            new PipeAccessRule(
-                WindowsIdentity.GetCurrent().User!,
-                PipeAccessRights.ReadWrite,
-                AccessControlType.Allow
-            )
-        );
 
-        // Keep the service account rule explicit so deployments can swap the identity without widening access.
+        var currentUser = WindowsIdentity.GetCurrent().User;
+        if (currentUser is not null)
+        {
+            security.AddAccessRule(
+                new PipeAccessRule(currentUser, PipeAccessRights.ReadWrite, AccessControlType.Allow)
+            );
+        }
+
         security.AddAccessRule(
-            new PipeAccessRule(
-                new NTAccount("openclaw-svc"),
-                PipeAccessRights.ReadWrite,
-                AccessControlType.Allow
-            )
+            new PipeAccessRule(new NTAccount("openclaw-svc"), PipeAccessRights.ReadWrite, AccessControlType.Allow)
         );
         security.AddAccessRule(
             new PipeAccessRule(
@@ -108,11 +82,6 @@ internal sealed class PipeRpcWorker(
         return security;
     }
 
-    /// <summary>
-    /// Reads, validates, and responds to a single named-pipe request.
-    /// </summary>
-    /// <param name="server">Connected named-pipe server stream.</param>
-    /// <param name="ct">Cancellation token for the request lifecycle.</param>
     private async Task HandleClientAsync(NamedPipeServerStream server, CancellationToken ct)
     {
         try
@@ -120,7 +89,6 @@ internal sealed class PipeRpcWorker(
             using var ms = new MemoryStream();
             var buffer = new byte[4096];
 
-            // Assemble the full payload before deserializing so request validation works on complete JSON.
             do
             {
                 var read = await server.ReadAsync(buffer, ct);
@@ -145,7 +113,6 @@ internal sealed class PipeRpcWorker(
                 _json
             );
 
-            // Reject unknown methods before dispatch so handlers can assume a valid contract.
             if (req is null || !BridgeMethods.All.Contains(req.Method))
             {
                 await WriteResponse(
@@ -169,14 +136,8 @@ internal sealed class PipeRpcWorker(
         }
     }
 
-    /// <summary>
-    /// Executes a validated RPC request and returns the corresponding response payload.
-    /// </summary>
-    /// <param name="req">Validated request to execute.</param>
-    /// <returns>The response payload to write back to the client.</returns>
-    private async Task<RpcResponse> Handle(RpcRequest req)
+    internal async Task<RpcResponse> Handle(RpcRequest req)
     {
-        // Route status requests to the persisted scan-state path; all other methods currently return an empty result envelope.
         if (req.Method == BridgeMethods.GetStatus)
         {
             state.LastInboxScanUtc = await repo.GetScanStateAsync("last_inbox_scan_utc");
@@ -198,17 +159,9 @@ internal sealed class PipeRpcWorker(
         return RpcResponse.Success(req.Id, new { items = Array.Empty<object>() });
     }
 
-    /// <summary>
-    /// Serializes an RPC response and writes it to the connected stream.
-    /// </summary>
-    /// <param name="stream">Target stream for the serialized response.</param>
-    /// <param name="response">Response payload to send.</param>
-    /// <param name="ct">Cancellation token for the write operation.</param>
-    private async Task WriteResponse(Stream stream, RpcResponse response, CancellationToken ct)
+    internal async Task WriteResponse(Stream stream, RpcResponse response, CancellationToken ct)
     {
         var payload = JsonSerializer.SerializeToUtf8Bytes(response, _json);
-
-        // Downgrade oversized payloads to a compact failure response rather than breaking the pipe protocol.
         if (payload.Length > 1024 * 1024)
             response = RpcResponse.Failure(
                 response.Id,

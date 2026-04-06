@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 namespace OpenClaw.MailBridge;
@@ -6,8 +5,7 @@ namespace OpenClaw.MailBridge;
 /// <summary>
 /// Resolves COM automation objects that are already registered in the running object table.
 /// </summary>
-[ExcludeFromCodeCoverage]
-internal static class ComActiveObject
+internal class ComActiveObject
 {
     [DllImport("oleaut32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
     private static extern void CLSIDFromProgID(string progId, out Guid clsid);
@@ -24,7 +22,7 @@ internal static class ComActiveObject
     /// </summary>
     /// <param name="progId">Programmatic identifier for the COM server.</param>
     /// <returns>The active COM object when present; otherwise <see langword="null"/>.</returns>
-    public static object? TryGet(string progId)
+    public virtual object? TryGet(string progId)
     {
         try
         {
@@ -37,5 +35,30 @@ internal static class ComActiveObject
             // Treat lookup failures as a missing running instance because callers have a fallback path.
             return null;
         }
+    }
+
+    /// <summary>
+    /// Creates a new Outlook application instance and performs MAPI logon.
+    /// </summary>
+    /// <returns>The activated Outlook COM application object.</returns>
+    public virtual object CreateAndLogonOutlook()
+    {
+        var t =
+            Type.GetTypeFromProgID("Outlook.Application", false)
+            ?? throw new InvalidOperationException("Outlook COM unavailable");
+        var app =
+            Activator.CreateInstance(t)
+            ?? throw new InvalidOperationException("Outlook activation failed");
+        var ns = t.InvokeMember("GetNamespace", System.Reflection.BindingFlags.InvokeMethod, null, app, ["MAPI"]);
+        ns!
+            .GetType()
+            .InvokeMember(
+                "Logon",
+                System.Reflection.BindingFlags.InvokeMethod,
+                null,
+                ns,
+                ["", "", Type.Missing, Type.Missing]
+            );
+        return app;
     }
 }

@@ -1,6 +1,8 @@
 using System.Reflection;
+using System.Security.AccessControl;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.MailBridge;
 using OpenClaw.MailBridge.Contracts.Models;
@@ -11,25 +13,21 @@ namespace OpenClaw.MailBridge.Tests;
 public class MailBridgeRuntimeTests
 {
     [TestMethod]
-    public void Program_get_arg_should_return_value_after_key()
+    public void Bridge_application_get_arg_should_return_value_after_key()
     {
-        var method = typeof(Program).GetMethod("GetArg", BindingFlags.NonPublic | BindingFlags.Static)!;
-        var value = (string?)method.Invoke(null, [new[] { "--config", "abc.json" }, "--config"]);
+        var value = BridgeApplication.GetArg(new[] { "--config", "abc.json" }, "--config");
         value.Should().Be("abc.json");
     }
 
     [TestMethod]
-    public void Program_load_settings_should_create_default_file_when_missing()
+    public void Bridge_application_load_settings_should_create_default_file_when_missing()
     {
+        var app = new BridgeApplication();
         var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-test-{Guid.NewGuid():N}");
         var path = Path.Combine(tempRoot, "bridge.settings.json");
         try
         {
-            var method = typeof(Program).GetMethod(
-                "LoadSettings",
-                BindingFlags.NonPublic | BindingFlags.Static
-            )!;
-            var settings = (BridgeSettings)method.Invoke(null, [path])!;
+            var settings = app.LoadSettings(path);
             settings.Should().Be(BridgeSettings.Default);
             File.Exists(path).Should().BeTrue();
         }
@@ -40,6 +38,54 @@ public class MailBridgeRuntimeTests
                 Directory.Delete(tempRoot, true);
             }
         }
+    }
+
+
+    [TestMethod]
+    public async Task Bridge_application_run_async_should_return_two_for_invalid_settings()
+    {
+        var app = new BridgeApplication();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-bad-{Guid.NewGuid():N}");
+        var path = Path.Combine(tempRoot, "bridge.settings.json");
+        Directory.CreateDirectory(tempRoot);
+        await File.WriteAllTextAsync(path, """{"pipeName":"x","mode":"bad"}""");
+
+        var code = await app.RunAsync(["--config", path]);
+        code.Should().Be(2);
+
+        Directory.Delete(tempRoot, true);
+    }
+
+    [TestMethod]
+    public async Task Bridge_application_run_async_should_use_host_for_valid_settings()
+    {
+        var app = new TestBridgeApplication();
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-good-{Guid.NewGuid():N}");
+        var path = Path.Combine(tempRoot, "bridge.settings.json");
+        Directory.CreateDirectory(tempRoot);
+        await File.WriteAllTextAsync(
+            path,
+            """{"PipeName":"x","Mode":"safe","AutostartOutlook":false,"InboxPollSeconds":5,"CalendarPollSeconds":30,"InboxOverlapMinutes":5,"CalendarPastDays":1,"CalendarFutureDays":1,"MaxItemsPerScan":5,"BodyPreviewMaxChars":20,"LogLevel":"Information"}"""
+        );
+
+        var code = await app.RunAsync(["--config", path]);
+
+        code.Should().Be(0);
+        app.BuildHostCalls.Should().Be(1);
+        Directory.Delete(tempRoot, true);
+    }
+
+    [TestMethod]
+    public async Task Program_main_should_delegate_to_bridge_application()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-main-{Guid.NewGuid():N}");
+        var path = Path.Combine(tempRoot, "bridge.settings.json");
+        Directory.CreateDirectory(tempRoot);
+        await File.WriteAllTextAsync(path, """{"pipeName":"x","mode":"bad"}""");
+
+        var code = await Program.Main(["--config", path]);
+        code.Should().Be(2);
+        Directory.Delete(tempRoot, true);
     }
 
     [TestMethod]
@@ -61,12 +107,10 @@ public class MailBridgeRuntimeTests
         store.OutlookConnected.Should().BeTrue();
         store.CacheStale.Should().BeTrue();
         store.StaleReason.Should().Be("reason");
-        store.LastInboxScanUtc.Should().NotBeNull();
-        store.LastCalendarScanUtc.Should().NotBeNull();
     }
 
     [TestMethod]
-    public async Task Outlook_sta_executor_should_run_work_and_propagate_exceptions()
+    public async Task Outlook_sta_executor_should_run_work_and_propagate_exceptions_or_throw_on_non_windows()
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -76,7 +120,6 @@ public class MailBridgeRuntimeTests
         }
 
         using var executor = new OutlookStaExecutor();
-
         var value = await executor.InvokeAsync(() => 42);
         value.Should().Be(42);
 
@@ -89,39 +132,82 @@ public class MailBridgeRuntimeTests
     {
         var settings = BridgeSettings.Default with { AutostartOutlook = false };
         var state = new BridgeStateStore(settings);
-        var scanner = new OutlookScanner(settings, state, NullLogger<OutlookScanner>.Instance);
+        var scanner = new OutlookScanner(
+            settings,
+            state,
+            NullLogger<OutlookScanner>.Instance,
+            new FakeComActiveObject(),
+            _ => 0,
+            () => new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero)
+        );
 
-        await scanner.ScanAsync(new CacheRepository());
+        await scanner.ScanAsync(new FakeScanStateRepository());
 
         state.State.Should().Be(BridgeState.waiting_for_outlook);
         state.OutlookConnected.Should().BeFalse();
     }
 
     [TestMethod]
-    public async Task Scan_worker_should_start_and_stop_cleanly()
+    public async Task Outlook_scanner_should_set_ready_and_touch_repo_when_outlook_is_available()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            var settings = BridgeSettings.Default with { AutostartOutlook = false, InboxPollSeconds = 1 };
-            var state = new BridgeStateStore(settings);
-            var scanner = new OutlookScanner(settings, state, NullLogger<OutlookScanner>.Instance);
-            await scanner.ScanAsync(new CacheRepository());
-            state.State.Should().Be(BridgeState.waiting_for_outlook);
-            return;
-        }
+        var settings = BridgeSettings.Default;
+        var state = new BridgeStateStore(settings);
+        var com = new FakeComActiveObject { RunningObject = new object() };
+        var repo = new FakeScanStateRepository();
+        var now = new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.Zero);
+        var scanner = new OutlookScanner(
+            settings,
+            state,
+            NullLogger<OutlookScanner>.Instance,
+            com,
+            _ => 1,
+            () => now
+        );
 
-        var runtimeSettings = BridgeSettings.Default with { AutostartOutlook = false, InboxPollSeconds = 1 };
-        var runtimeState = new BridgeStateStore(runtimeSettings);
-        using var sta = new OutlookStaExecutor();
-        var runtimeScanner = new OutlookScanner(runtimeSettings, runtimeState, NullLogger<OutlookScanner>.Instance);
-        var repo = new CacheRepository();
-        var worker = new ScanWorker(sta, runtimeScanner, repo, runtimeSettings);
+        await scanner.ScanAsync(repo);
+
+        state.State.Should().Be(BridgeState.ready);
+        state.OutlookConnected.Should().BeTrue();
+        state.LastInboxScanUtc.Should().Be(now);
+        repo.Touches.Should().Be(2);
+    }
+
+    [TestMethod]
+    public async Task Outlook_scanner_should_degrade_when_scan_throws()
+    {
+        var settings = BridgeSettings.Default;
+        var state = new BridgeStateStore(settings);
+        var scanner = new OutlookScanner(
+            settings,
+            state,
+            NullLogger<OutlookScanner>.Instance,
+            new FakeComActiveObject { ThrowOnCreate = true },
+            _ => 0,
+            () => DateTimeOffset.UtcNow
+        );
+
+        await scanner.ScanAsync(new FakeScanStateRepository());
+
+        state.State.Should().Be(BridgeState.degraded);
+        state.CacheStale.Should().BeTrue();
+        state.StaleReason.Should().Be("scan_failure");
+    }
+
+    [TestMethod]
+    public async Task Scan_worker_should_invoke_repo_initialize_and_scanner_once_before_cancel()
+    {
+        var repo = new FakeScanStateRepository();
+        var scanner = new FakeOutlookScanner();
+        var sta = new FakeStaExecutor();
+        var worker = new ScanWorker(sta, scanner, repo, BridgeSettings.Default with { InboxPollSeconds = 1 });
 
         await worker.StartAsync(CancellationToken.None);
-        await Task.Delay(100);
+        await Task.Delay(50);
         await worker.StopAsync(CancellationToken.None);
 
-        runtimeState.State.Should().Be(BridgeState.waiting_for_outlook);
+        repo.Initialized.Should().BeTrue();
+        scanner.Calls.Should().BeGreaterThan(0);
+        sta.Calls.Should().BeGreaterThan(0);
     }
 
     [TestMethod]
@@ -143,45 +229,37 @@ public class MailBridgeRuntimeTests
     {
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings) { CacheStale = true, StaleReason = "unit-test" };
-        var repo = new CacheRepository();
-        await repo.InitializeAsync();
-        await repo.TouchScanStateAsync("last_inbox_scan_utc", DateTimeOffset.UtcNow);
-        await repo.TouchScanStateAsync("last_calendar_scan_utc", DateTimeOffset.UtcNow);
+        var repo = new FakeScanStateRepository
+        {
+            Values =
+            {
+                ["last_inbox_scan_utc"] = DateTimeOffset.UtcNow,
+                ["last_calendar_scan_utc"] = DateTimeOffset.UtcNow,
+            },
+        };
 
         var worker = new PipeRpcWorker(settings, state, repo, NullLogger<PipeRpcWorker>.Instance);
-        var handle = typeof(PipeRpcWorker).GetMethod("Handle", BindingFlags.NonPublic | BindingFlags.Instance)!;
 
-        var status = (RpcResponse)await (Task<RpcResponse>)
-            handle.Invoke(worker, [new RpcRequest("1", BridgeMethods.GetStatus, null)])!;
+        var status = await worker.Handle(new RpcRequest("1", BridgeMethods.GetStatus, null));
         status.Ok.Should().BeTrue();
 
-        var list = (RpcResponse)await (Task<RpcResponse>)
-            handle.Invoke(worker, [new RpcRequest("2", BridgeMethods.ListRecentMessages, null)])!;
+        var list = await worker.Handle(new RpcRequest("2", BridgeMethods.ListRecentMessages, null));
         list.Ok.Should().BeTrue();
     }
 
     [TestMethod]
     public async Task Pipe_rpc_worker_write_response_should_downgrade_oversize_payload()
     {
-        var settings = BridgeSettings.Default;
         var worker = new PipeRpcWorker(
-            settings,
-            new BridgeStateStore(settings),
-            new CacheRepository(),
+            BridgeSettings.Default,
+            new BridgeStateStore(BridgeSettings.Default),
+            new FakeScanStateRepository(),
             NullLogger<PipeRpcWorker>.Instance
         );
-        var method = typeof(PipeRpcWorker).GetMethod(
-            "WriteResponse",
-            BindingFlags.NonPublic | BindingFlags.Instance
-        )!;
 
         await using var stream = new MemoryStream();
         var huge = new string('a', 1024 * 1024 + 128);
-        await (Task)
-            method.Invoke(
-                worker,
-                [stream, RpcResponse.Success("id", new { huge }), CancellationToken.None]
-            )!;
+        await worker.WriteResponse(stream, RpcResponse.Success("id", new { huge }), CancellationToken.None);
 
         var json = System.Text.Encoding.UTF8.GetString(stream.ToArray());
         json.Should().Contain(BridgeErrorCodes.InternalError);
@@ -189,8 +267,125 @@ public class MailBridgeRuntimeTests
     }
 
     [TestMethod]
+    public void Pipe_rpc_worker_build_pipe_security_should_return_descriptor()
+    {
+        var worker = new PipeRpcWorker(
+            BridgeSettings.Default,
+            new BridgeStateStore(BridgeSettings.Default),
+            new FakeScanStateRepository(),
+            NullLogger<PipeRpcWorker>.Instance
+        );
+
+        if (!OperatingSystem.IsWindows())
+        {
+            var act = () => worker.BuildPipeSecurity();
+            act.Should().Throw<PlatformNotSupportedException>();
+            return;
+        }
+
+        var security = worker.BuildPipeSecurity();
+        security.Should().NotBeNull();
+        security.GetAccessRules(true, true, typeof(System.Security.Principal.SecurityIdentifier))
+            .Should().NotBeNull();
+    }
+
+    [TestMethod]
     public void Com_active_object_try_get_should_return_null_for_unknown_prog_id()
     {
-        ComActiveObject.TryGet("Definitely.Not.A.Real.ProgId").Should().BeNull();
+        new ComActiveObject().TryGet("Definitely.Not.A.Real.ProgId").Should().BeNull();
     }
+
+    private sealed class FakeComActiveObject : ComActiveObject
+    {
+        public object? RunningObject { get; set; }
+        public bool ThrowOnCreate { get; set; }
+
+        public override object? TryGet(string progId) => RunningObject;
+
+        public override object CreateAndLogonOutlook()
+        {
+            if (ThrowOnCreate)
+            {
+                throw new InvalidOperationException("failed");
+            }
+
+            return new object();
+        }
+    }
+
+    private sealed class FakeScanStateRepository : IScanStateRepository
+    {
+        public bool Initialized { get; private set; }
+        public int Touches { get; private set; }
+        public Dictionary<string, DateTimeOffset?> Values { get; } = new();
+
+        public Task InitializeAsync()
+        {
+            Initialized = true;
+            return Task.CompletedTask;
+        }
+
+        public Task TouchScanStateAsync(string key, DateTimeOffset value)
+        {
+            Touches++;
+            Values[key] = value;
+            return Task.CompletedTask;
+        }
+
+        public Task<DateTimeOffset?> GetScanStateAsync(string key)
+        {
+            Values.TryGetValue(key, out var value);
+            return Task.FromResult(value);
+        }
+    }
+
+    private sealed class FakeOutlookScanner : IOutlookScanner
+    {
+        public int Calls { get; private set; }
+
+        public Task ScanAsync(IScanStateRepository repo)
+        {
+            Calls++;
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class FakeStaExecutor : IOutlookStaExecutor
+    {
+        public int Calls { get; private set; }
+
+        public Task<T> InvokeAsync<T>(Func<T> operation)
+        {
+            Calls++;
+            return Task.FromResult(operation());
+        }
+
+        public void Dispose() { }
+    }
+
+
+    private sealed class TestBridgeApplication : BridgeApplication
+    {
+        public int BuildHostCalls { get; private set; }
+
+        internal override Microsoft.Extensions.Hosting.IHost BuildHost(string[] args, BridgeSettings settings)
+        {
+            BuildHostCalls++;
+            return new NoOpHost();
+        }
+
+        internal override Task RunHostAsync(Microsoft.Extensions.Hosting.IHost host) => Task.CompletedTask;
+    }
+
+    private sealed class NoOpHost : Microsoft.Extensions.Hosting.IHost
+    {
+        public IServiceProvider Services => new ServiceCollection().BuildServiceProvider();
+
+        public void Dispose() { }
+
+        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
 }

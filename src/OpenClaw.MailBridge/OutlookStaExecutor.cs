@@ -1,14 +1,17 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Collections.Concurrent;
 using System.Threading;
 
 namespace OpenClaw.MailBridge;
 
+internal interface IOutlookStaExecutor : IDisposable
+{
+    Task<T> InvokeAsync<T>(Func<T> operation);
+}
+
 /// <summary>
 /// Executes Outlook COM work on a dedicated STA thread so background services can call into Outlook safely.
 /// </summary>
-[ExcludeFromCodeCoverage]
-internal sealed class OutlookStaExecutor : IDisposable
+internal sealed class OutlookStaExecutor : IOutlookStaExecutor
 {
     private readonly BlockingCollection<(
         Func<object?> work,
@@ -26,12 +29,6 @@ internal sealed class OutlookStaExecutor : IDisposable
         _thread.Start();
     }
 
-    /// <summary>
-    /// Schedules work to run on the STA thread and returns the operation result asynchronously.
-    /// </summary>
-    /// <typeparam name="T">Type produced by the scheduled operation.</typeparam>
-    /// <param name="operation">Synchronous COM-bound work to execute.</param>
-    /// <returns>The value produced by <paramref name="operation"/>.</returns>
     public async Task<T> InvokeAsync<T>(Func<T> operation)
     {
         var tcs = new TaskCompletionSource<object?>(
@@ -42,12 +39,8 @@ internal sealed class OutlookStaExecutor : IDisposable
         return (T)value!;
     }
 
-    /// <summary>
-    /// Processes queued COM work items sequentially on the dedicated STA thread.
-    /// </summary>
     private void Run()
     {
-        // Serialize all COM calls through one apartment so Outlook sees a consistent threading model.
         foreach (var item in _queue.GetConsumingEnumerable())
         {
             try
@@ -61,8 +54,5 @@ internal sealed class OutlookStaExecutor : IDisposable
         }
     }
 
-    /// <summary>
-    /// Stops accepting new work and allows the STA thread to drain outstanding operations.
-    /// </summary>
     public void Dispose() => _queue.CompleteAdding();
 }
