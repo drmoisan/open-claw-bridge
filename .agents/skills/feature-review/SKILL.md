@@ -49,6 +49,17 @@ Write timestamped artifacts into the active feature folder:
 6. Check off passing acceptance criteria in the authoritative requirement sources per `acceptance-criteria-tracking`.
 7. If remediation is required, create remediation inputs first and then hand off plan creation using `remediation-handoff-atomic-planner`.
 
+### Enforced Remediation Handoff Contract
+
+When remediation is required:
+
+- create `remediation-inputs.<timestamp>.md` before any remediation planning handoff,
+- create the remediation plan target file on disk before delegating plan creation,
+- automatically delegate remediation planning to `atomic-planner`,
+- treat `remediation-inputs.<timestamp>.md` as the primary requirements source,
+- include the canonical PR-context summary and appendix, the review artifacts, and the original feature plan file(s) in the delegated context package,
+- do not claim review completion until the remediation plan file exists on disk.
+
 ## Review Constraints
 
 - Do not silently fix code during review.

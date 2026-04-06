@@ -1,30 +1,39 @@
 ---
 name: remediation-handoff-atomic-planner
-description: 'Reusable remediation trigger and atomic-planner handoff steps. Use when audits or validation workflows require remediation inputs and a delegated remediation plan.'
+description: 'Reusable remediation trigger and atomic_planner handoff steps. Use when audits require remediation inputs and a delegated remediation plan.'
 ---
 
-# Remediation Handoff To Atomic Planner
+# Remediation Handoff to atomic_planner
 
-Shared remediation workflow for agents that must create remediation inputs and delegate plan creation.
+Shared remediation workflow and handoff expectations for agents that delegate to `atomic_planner`.
 
-## Trigger Conditions
+## When to Use This Skill
+
+Use this skill when:
+- Audit findings require remediation.
+- You must create remediation inputs and delegate plan creation to `atomic_planner`.
+
+## Trigger Conditions (Generic)
 
 Trigger remediation when any of these are true:
-- audit artifacts contain `FAIL` or meaningful `PARTIAL` findings,
-- toolchain checks fail,
-- required acceptance criteria are unmet.
+- Audit artifacts contain FAIL or meaningful PARTIAL findings.
+- Toolchain checks fail.
+- Acceptance criteria are not met.
 
-## Required Inputs
+## Required Remediation Inputs
 
 Create `remediation-inputs.<timestamp>.md` with:
-- enumerated fixes,
-- exact file paths and expected behavior,
-- verification commands,
-- a clear do-not-do list.
+- Enumerated fix list with file paths, expected behavior, and verification commands.
+- A “do not do” list (no scope creep, no policy weakening, no silent skips).
 
-## Handoff
+## Plan Creation and Handoff
 
-1. Create the remediation plan target file.
-2. Delegate plan creation to `atomic-planner`.
-3. Treat remediation inputs as the primary requirements source.
-4. Preserve the authoritative target plan path across revisions.
+1) Create a remediation plan target file using the repo’s plan template.
+2) Delegate to `atomic_planner` with:
+   - `${spec}` pointing to remediation inputs (authoritative)
+   - `${file}` pointing to the remediation plan target file
+3) Require `atomic_planner` to output a deterministic, atomic plan with phases and `[P#-T#]` IDs.
+
+## Context Package (When Required)
+
+If the calling agent requires a context package, inline the specified audit artifacts, PR context artifacts, and any relevant plan files in the delegated prompt.
