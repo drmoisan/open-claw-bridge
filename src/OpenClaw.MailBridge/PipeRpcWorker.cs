@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipes;
 using System.Security.AccessControl;
 using System.Security.Principal;
@@ -18,6 +19,7 @@ internal sealed class PipeRpcWorker(
 {
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
 
+    [ExcludeFromCodeCoverage]
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -28,6 +30,7 @@ internal sealed class PipeRpcWorker(
         }
     }
 
+    [ExcludeFromCodeCoverage]
     internal NamedPipeServerStream CreateServer()
     {
         var sec = BuildPipeSecurity();
@@ -43,6 +46,7 @@ internal sealed class PipeRpcWorker(
         );
     }
 
+    [ExcludeFromCodeCoverage]
     internal PipeSecurity BuildPipeSecurity()
     {
         var security = new PipeSecurity();
@@ -89,6 +93,7 @@ internal sealed class PipeRpcWorker(
         return security;
     }
 
+    [ExcludeFromCodeCoverage]
     private async Task HandleClientAsync(NamedPipeServerStream server, CancellationToken ct)
     {
         try

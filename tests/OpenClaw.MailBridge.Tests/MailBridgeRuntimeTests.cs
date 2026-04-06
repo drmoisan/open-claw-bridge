@@ -1,4 +1,7 @@
 using System.Reflection;
+using System.IO.Pipes;
+using System.Text;
+using System.Text.Json;
 using System.Security.AccessControl;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -224,6 +227,78 @@ public class MailBridgeRuntimeTests
         loaded!.Value.UtcDateTime.Should().BeCloseTo(now.UtcDateTime, TimeSpan.FromSeconds(5));
     }
 
+
+    [TestMethod]
+    public async Task Pipe_rpc_worker_handle_client_should_return_invalid_request_for_unknown_method()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named pipe message mode integration test is Windows-specific.");
+        }
+
+        var worker = new PipeRpcWorker(
+            BridgeSettings.Default,
+            new BridgeStateStore(BridgeSettings.Default),
+            new FakeScanStateRepository(),
+            NullLogger<PipeRpcWorker>.Instance
+        );
+        var response = await InvokeHandleClientAsync(worker, """{"id":"1","method":"unknown","params":null}""");
+        response.Should().Contain(BridgeErrorCodes.InvalidRequest);
+    }
+
+    [TestMethod]
+    public async Task Pipe_rpc_worker_handle_client_should_return_payload_too_large_error()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named pipe message mode integration test is Windows-specific.");
+        }
+
+        var worker = new PipeRpcWorker(
+            BridgeSettings.Default,
+            new BridgeStateStore(BridgeSettings.Default),
+            new FakeScanStateRepository(),
+            NullLogger<PipeRpcWorker>.Instance
+        );
+        var oversizedParams = new string('a', 70000);
+        var payload =
+            $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":{{\"x\":\"{oversizedParams}\"}}}}";
+
+        var response = await InvokeHandleClientAsync(worker, payload);
+        response.Should().Contain(BridgeErrorCodes.PayloadTooLarge);
+    }
+
+    [TestMethod]
+    public async Task Pipe_rpc_worker_handle_client_should_return_status_for_get_status_method()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("Named pipe message mode integration test is Windows-specific.");
+        }
+
+        var repo = new FakeScanStateRepository
+        {
+            Values =
+            {
+                ["last_inbox_scan_utc"] = DateTimeOffset.UtcNow,
+                ["last_calendar_scan_utc"] = DateTimeOffset.UtcNow,
+            },
+        };
+        var worker = new PipeRpcWorker(
+            BridgeSettings.Default,
+            new BridgeStateStore(BridgeSettings.Default),
+            repo,
+            NullLogger<PipeRpcWorker>.Instance
+        );
+
+        var response = await InvokeHandleClientAsync(
+            worker,
+            $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":null}}"
+        );
+        response.Should().Contain("\"ok\":true");
+        response.Should().Contain("\"state\"");
+    }
+
     [TestMethod]
     public async Task Pipe_rpc_worker_handle_should_return_status_and_default_items()
     {
@@ -305,6 +380,50 @@ public class MailBridgeRuntimeTests
     public void Com_active_object_try_get_should_return_null_for_unknown_prog_id()
     {
         new ComActiveObject().TryGet("Definitely.Not.A.Real.ProgId").Should().BeNull();
+    }
+
+
+    private static async Task<string> InvokeHandleClientAsync(PipeRpcWorker worker, string payload)
+    {
+        var pipeName = $"test_pipe_{Guid.NewGuid():N}";
+        await using var server = new NamedPipeServerStream(
+            pipeName,
+            PipeDirection.InOut,
+            1,
+            PipeTransmissionMode.Message,
+            PipeOptions.Asynchronous
+        );
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var method = typeof(PipeRpcWorker).GetMethod("HandleClientAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var serverTask = Task.Run(async () =>
+        {
+            await server.WaitForConnectionAsync(cts.Token);
+            await (Task)method.Invoke(worker, [server, cts.Token])!;
+        });
+
+        await using var client = new NamedPipeClientStream(
+            ".",
+            pipeName,
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous
+        );
+        await client.ConnectAsync(5000, cts.Token);
+
+        var bytes = Encoding.UTF8.GetBytes(payload);
+        await client.WriteAsync(bytes, 0, bytes.Length, cts.Token);
+        await client.FlushAsync(cts.Token);
+
+        using var ms = new MemoryStream();
+        var buffer = new byte[4096];
+        do
+        {
+            var read = await client.ReadAsync(buffer, 0, buffer.Length, cts.Token);
+            ms.Write(buffer, 0, read);
+        } while (!client.IsMessageComplete);
+
+        await serverTask;
+        return Encoding.UTF8.GetString(ms.ToArray());
     }
 
     private sealed class FakeComActiveObject : ComActiveObject
