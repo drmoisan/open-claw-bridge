@@ -11,7 +11,10 @@ public class MailBridgeTests
     {
         BridgeIdCodec.MessageId("abc", false).Should().StartWith("msg:");
         BridgeIdCodec.MessageId("abc", true).Should().StartWith("mtg:");
-        BridgeIdCodec.EventId("gid", "eid", DateTimeOffset.Parse("2026-01-01T00:00:00Z")).Should().StartWith("evt:");
+        BridgeIdCodec
+            .EventId("gid", "eid", DateTimeOffset.Parse("2026-01-01T00:00:00Z"))
+            .Should()
+            .StartWith("evt:");
     }
 
     [Test]
