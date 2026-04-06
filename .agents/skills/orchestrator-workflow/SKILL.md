@@ -15,13 +15,13 @@ Always apply:
 - `repo-automation-adapter`
 - `atomic-plan-contract`
 - `acceptance-criteria-tracking`
+- `pr-context-artifacts`
+- `pr-base-branch-merge-base`
 
 Use as needed:
 - `csharp-change-budget-router`
 - `powershell-change-budget-router`
 - `feature-review`
-- `pr-base-branch-merge-base`
-- `pr-context-artifacts`
 
 ## Role
 
@@ -32,6 +32,8 @@ Use as needed:
   - `atomic-executor`
   - `feature-reviewer`
 - If a specialist step has no migrated Codex subagent yet, perform that step directly while still following the governing shared skills.
+- When a preferred migrated subagent is available for its owned step, delegation is mandatory.
+- If a preferred migrated subagent is unavailable, record an explicit fallback reason in the orchestration state or final report before performing the step directly.
 
 ## Checkpoint Contract
 
@@ -124,8 +126,21 @@ Required behavior:
 5. Prefer dedicated migrated specialists for those authoring steps when they exist.
 6. When those specialists are not yet migrated, perform the authoring steps directly without changing template headings.
 7. Spawn `atomic-planner` to finalize `${plan-path}` and require `PREFLIGHT: ALL CLEAR`.
+   Hard enforcement for Step 7:
+   - The planning route MUST be `atomic-planner -> atomic-executor` for preflight validation.
+   - The planner MUST update `${plan-path}` in place and MUST NOT create additional `plan.*.md` files for revisions.
+   - The approved plan MUST include explicit Phase 0 baseline evidence tasks and explicit final-QA evidence or coverage tasks for each language in scope where policy requires them.
+   - Do not mark Step 7 complete until delegate output includes both a concrete `plan-path` and final `PREFLIGHT: ALL CLEAR`.
 8. Spawn `atomic-executor` to execute the approved plan.
+   Hard enforcement for Step 8:
+   - Do not mark Step 8 complete until execution output includes execution summary, QA summary, lint/type/test/coverage deltas, and numeric baseline/post/new-code coverage metrics where policy requires them.
+   - Do not accept PASS execution outcomes when required baseline or final-QA artifacts are missing, when checklist state is not backed by artifacts, or when coverage-bearing plan tasks remain unverified.
 9. Spawn `feature-reviewer` for post-implementation review when available.
+   Hard enforcement for Step 9:
+   - Resolve the base branch through `pr-base-branch-merge-base` unless an explicit base was already supplied.
+   - Load canonical PR-context artifacts and refresh them through `repo-automation-adapter` when they are missing or stale relative to the current branch state.
+   - Do not mark Step 9 complete until expected review artifacts are present on disk in `${feature-folder}`.
+   - Do not accept PASS review outcomes when required coverage fields are left unverified, when PR-context artifacts are missing or stale relative to the current branch state, or when required remediation artifacts are missing.
 10. If review triggers remediation, loop through remediation planning, remediation execution, and re-review until the gate is clean.
 
 ## Completion Gates
@@ -133,11 +148,15 @@ Required behavior:
 Do not claim mission completion until all of the following are true:
 
 - the selected path completed end to end
+- all required delegations completed or an explicit fallback reason was recorded for each unavailable specialist
 - the checkpoint is updated with the final state
 - `${feature-folder}` and `${plan-path}` are known when lifecycle setup was required
+- the approved plan is executor-compliant and references the required baseline and final-QA evidence tasks
 - required review artifacts exist on disk
 - small path has Phase 0 evidence plus reduced audit artifacts
 - large path has policy, code, and feature audit artifacts
+- required baseline and final-QA evidence artifacts referenced by the approved plan exist on disk
+- any required remediation artifacts exist on disk and the latest re-review is clean
 
 ## Hard Constraints
 
@@ -145,4 +164,5 @@ Do not claim mission completion until all of the following are true:
 - Do not call `drmCopilotExtension.*` directly from this workflow.
 - Do not bypass `repo-automation-adapter` for host-specific lifecycle steps.
 - Do not create replacement audit artifacts yourself when `feature-reviewer` is available to own that workflow.
+- Do not accept stale PR-context artifacts, unsupported checklist checkoffs, or missing required evidence as PASS outcomes.
 - Do not claim completion without reporting the checkpoint path and the created or updated artifact paths.

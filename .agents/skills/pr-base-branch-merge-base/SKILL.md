@@ -1,26 +1,34 @@
 ---
 name: pr-base-branch-merge-base
-description: 'Resolve the correct PR base branch using merge-base ancestry. Use when review or PR-context workflows need a deterministic base branch instead of a guessed default.'
+description: 'Resolve PRBaseBranch for scripts.dev_tools.pr_context.collector using merge-base ancestry. Use when orchestrators or review workflows need the correct comparison base branch and must select the branch with the most recent common ancestor commit with HEAD.'
 ---
 
 # PR Base Branch (Merge-Base)
 
-Deterministic branch-selection rules for review and PR-context workflows.
+Deterministic branch-selection rules for PR context collection.
+
+## When to Use This Skill
+
+Use this skill when:
+- running `scripts.dev_tools.pr_context.collector`,
+- delegating post-implementation review that depends on `PRBaseBranch`,
+- constructing PR context artifacts where the base must not be hard-coded.
 
 ## Selection Contract
 
-The base branch must be resolved from git ancestry, not guessed.
+`PRBaseBranch` MUST be resolved from git ancestry, not guessed.
 
-Definition:
-- choose the candidate branch whose merge-base with `HEAD` has the most recent commit timestamp
+Definition of correct base:
+- choose the candidate branch whose merge-base with `HEAD` has the most recent commit timestamp,
+- this implements “find the branch with the most recent commit in common.”
 
 ## Deterministic Procedure
 
 1. Enumerate candidate branches from local and remotes, excluding `HEAD` and detached refs.
-2. For each candidate `B`, compute `M = git merge-base HEAD B`.
+2. For each candidate `B`, compute merge-base commit `M = git merge-base HEAD B`.
 3. Compute `merge_base_epoch(B)` from `git show -s --format=%ct M`.
-4. Select the branch with the highest `merge_base_epoch(B)`.
-5. Tie-break in this order:
+4. Select branch with maximum `merge_base_epoch(B)`.
+5. Tie-breakers (in order):
    - `development`
    - `main`
    - `master`
@@ -29,4 +37,19 @@ Definition:
 ## Guardrails
 
 - Do not default to `main` unless merge-base resolution fails for all candidates.
-- Persist and reuse the selected base within the same review or orchestration run.
+- If all candidates fail, surface explicit error context and use repository default branch only as last-resort fallback.
+- Persist chosen `PRBaseBranch` in orchestration state and reuse it within the same run.
+
+## Collector Invocation Rule
+
+When invoking PR context collection, pass the resolved base explicitly:
+
+- `poetry run python -m scripts.dev_tools.pr_context.collector --base <resolved-PRBaseBranch>`
+
+## Evidence Recommendation
+
+For auditability, include in logs/checkpoint:
+- selected branch name,
+- selected merge-base SHA,
+- selected merge-base timestamp,
+- top competing candidates with timestamps when available.

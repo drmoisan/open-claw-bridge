@@ -31,6 +31,19 @@ Before executing the first unchecked task:
 
 Blocking is allowed only during preflight.
 
+### Validation-Only Mode Contract
+
+If the incoming handoff includes the exact directive `DIRECTIVE: PREFLIGHT VALIDATION ONLY`:
+
+1. Perform preflight validation only.
+2. Do not execute tasks, establish execution state, or run implementation commands.
+3. Return exactly one of:
+   - `PREFLIGHT: ALL CLEAR`
+   - `PREFLIGHT: REVISIONS REQUIRED`
+4. If revisions are required, include a precise plan delta that `atomic-planner` can apply to the same plan file.
+5. If revisions are required, automatically hand off back to `atomic-planner` and request that it apply the delta to the same plan file and resubmit that file for validation-only again.
+6. Continue the validate -> delta -> planner-revise -> validate loop until preflight can return `PREFLIGHT: ALL CLEAR`.
+
 ## Execution Rules
 
 For each task:
@@ -46,6 +59,7 @@ For each task:
 - Do not invent new phases or tasks.
 - Do not reorder tasks.
 - Do not substitute an in-session todo list for the plan file.
+- Treat the plan file on disk as the only authoritative checklist.
 - Do not claim success without verification.
 - After execution starts, do not stop mid-plan for replanning.
 
