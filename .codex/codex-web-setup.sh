@@ -4,272 +4,412 @@ set -Eeuo pipefail
 # codex-web-setup.sh
 #
 # Purpose:
-#   Prepare the current GitHub repository for use with Codex Web.
+#   Bootstrap a repository inside a Codex Web cloud environment.
+#
+# Design goals:
+#   - Safe in non-interactive cloud setup
+#   - Works on detached HEAD checkouts
+#   - Performs only environment/bootstrap tasks
+#   - Never mutates git history or requires GitHub auth
+#   - Emits clear diagnostics to help troubleshoot failures
 #
 # What it does:
-#   - Verifies local prerequisites
-#   - Verifies current directory is a git repo
-#   - Verifies a GitHub remote exists
-#   - Ensures there is at least one commit
-#   - Optionally creates .codex/ scaffolding
-#   - Pushes the current branch to GitHub
-#   - Prints next manual steps for Codex Web
+#   - Prints basic repo/runtime diagnostics
+#   - Detects common package manager manifests
+#   - Runs conservative dependency install steps when appropriate
+#   - Restores repo .NET SDK/tools/packages when a .NET solution is present
+#   - Optionally runs a repo-provided bootstrap hook if present
 #
 # What it does NOT do:
-#   - It cannot complete Codex Web GitHub OAuth/account linking.
-#   - It does not create or manage Codex Web sessions.
-#
-# Notes:
-#   - Codex configuration is stored in ~/.codex/config.toml or repo-scoped
-#     .codex/config.toml. The CLI and IDE extension share these config layers.
-#   - Codex Web setup itself is done in the Codex web product by connecting GitHub.
-#
-# References:
-#   - Codex Web setup: https://developers.openai.com/codex/cloud/
-#   - Config basics:   https://developers.openai.com/codex/config-basic/
+#   - No git fetch/push/branch creation
+#   - No interactive prompts
+#   - No Codex/GitHub account linking
+#   - No repo scaffolding generation
 
 SCRIPT_NAME="$(basename "$0")"
-DEFAULT_BRANCH_FALLBACK="main"
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'WARN: %s\n' "$*" >&2; }
 err() { printf 'ERROR: %s\n' "$*" >&2; }
-die() {
-    err "$*"
-    exit 1
+
+have() {
+    command -v "$1" >/dev/null 2>&1
 }
 
-require_cmd() {
-    command -v "$1" >/dev/null 2>&1 || die "Required command not found: $1"
+is_windows() {
+    [[ "${OS:-}" == "Windows_NT" ]]
 }
 
-confirm() {
-    local prompt="${1:-Continue?}"
-    local reply
-    read -r -p "$prompt [y/N]: " reply || true
-    [[ "${reply:-}" =~ ^[Yy]$ ]]
+prepend_path() {
+    local dir="$1"
+    [[ -d "$dir" ]] || return 0
+    [[ ":$PATH:" == *":$dir:"* ]] || export PATH="$dir:$PATH"
 }
 
-git_root() {
-    git rev-parse --show-toplevel 2>/dev/null
+repo_root() {
+    git rev-parse --show-toplevel 2>/dev/null || pwd
 }
 
-has_initial_commit() {
-    git rev-parse --verify HEAD >/dev/null 2>&1
+head_ref() {
+    git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'UNKNOWN\n'
 }
 
-current_branch() {
-    git rev-parse --abbrev-ref HEAD
+head_sha() {
+    git rev-parse --short HEAD 2>/dev/null || printf 'UNKNOWN\n'
 }
 
-default_branch_guess() {
-    git symbolic-ref "refs/remotes/origin/HEAD" 2>/dev/null |
-        sed 's@^refs/remotes/origin/@@' ||
-        true
+maybe_run() {
+    say "==> $*"
+    "$@"
 }
 
-github_remote_name() {
-    local remote
-    while read -r remote; do
-        local url
-        url="$(git remote get-url "$remote" 2>/dev/null || true)"
-        if [[ "$url" == *github.com* ]]; then
-            printf '%s\n' "$remote"
-            return 0
-        fi
-    done < <(git remote)
+download_to() {
+    local url="$1"
+    local output_path="$2"
+
+    if have curl; then
+        maybe_run curl -fsSL "$url" -o "$output_path"
+        return 0
+    fi
+
+    if have wget; then
+        maybe_run wget -qO "$output_path" "$url"
+        return 0
+    fi
+
+    err "Neither curl nor wget is available to download $url"
     return 1
 }
 
-github_repo_web_url() {
-    local remote_name="$1"
-    local url
-    url="$(git remote get-url "$remote_name")"
+find_solution_file() {
+    local solutions=()
 
-    # Normalize common GitHub remote formats to https URL.
-    # Handles:
-    #   git@github.com:owner/repo.git
-    #   https://github.com/owner/repo.git
-    #   ssh://git@github.com/owner/repo.git
-    url="${url#ssh://git@github.com/}"
-    if [[ "$url" == git@github.com:* ]]; then
-        url="${url#git@github.com:}"
-    elif [[ "$url" == https://github.com/* ]]; then
-        url="${url#https://github.com/}"
-    fi
-    url="${url%.git}"
+    shopt -s nullglob
+    solutions=( *.sln )
+    shopt -u nullglob
 
-    printf 'https://github.com/%s\n' "$url"
-}
-
-ensure_codex_dir() {
-    if [[ ! -d ".codex" ]]; then
-        mkdir -p ".codex"
-        say "Created .codex/"
+    if (( ${#solutions[@]} == 1 )); then
+        printf '%s\n' "${solutions[0]}"
     fi
 }
 
-create_project_config_if_missing() {
-    local config_path=".codex/config.toml"
-    if [[ -f "$config_path" ]]; then
-        say "Found existing $config_path"
+has_dotnet_projects() {
+    compgen -G "*.sln" >/dev/null || compgen -G "*.csproj" >/dev/null || [[ -f global.json ]]
+}
+
+required_dotnet_sdk() {
+    [[ -f global.json ]] || return 0
+
+    sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' global.json | head -n 1
+}
+
+repo_targets_windows() {
+    find . -type f \( -name '*.csproj' -o -name '*.props' -o -name '*.targets' \) -print0 2>/dev/null |
+    xargs -0 grep -El '<TargetFrameworks?>[^<]*-windows|<UseWPF>true</UseWPF>|<UseWindowsForms>true</UseWindowsForms>' >/dev/null 2>&1
+}
+
+activate_dotnet_from_common_locations() {
+    local dotnet_root=""
+
+    if [[ -n "${DOTNET_ROOT:-}" && -x "${DOTNET_ROOT}/dotnet" ]]; then
+        dotnet_root="${DOTNET_ROOT}"
+    elif [[ -x "${HOME}/.dotnet/dotnet" ]]; then
+        dotnet_root="${HOME}/.dotnet"
+    elif [[ -x "/usr/share/dotnet/dotnet" ]]; then
+        dotnet_root="/usr/share/dotnet"
+    fi
+
+    if [[ -n "$dotnet_root" ]]; then
+        export DOTNET_ROOT="$dotnet_root"
+        prepend_path "$DOTNET_ROOT"
+        prepend_path "$DOTNET_ROOT/tools"
+    fi
+
+    have dotnet
+}
+
+bootstrap_dotnet_sdk() {
+    local required_sdk="$1"
+    local install_dir="${DOTNET_INSTALL_DIR:-${HOME}/.dotnet}"
+    local installer
+
+    mkdir -p "$install_dir"
+    installer="$(mktemp)"
+
+    download_to "https://dot.net/v1/dotnet-install.sh" "$installer" || {
+        rm -f "$installer"
+        return 1
+    }
+
+    chmod +x "$installer"
+    maybe_run bash "$installer" --version "$required_sdk" --install-dir "$install_dir" --no-path
+    rm -f "$installer"
+
+    export DOTNET_ROOT="$install_dir"
+    prepend_path "$DOTNET_ROOT"
+    prepend_path "$DOTNET_ROOT/tools"
+    hash -r
+}
+
+install_dotnet() {
+    has_dotnet_projects || return 0
+
+    local resolved_sdk=""
+    local required_sdk=""
+    local restore_target=""
+    local -a restore_args=( restore )
+
+    required_sdk="$(required_dotnet_sdk || true)"
+    restore_target="$(find_solution_file || true)"
+
+    say "==> .NET repository detected"
+    if [[ -n "$required_sdk" ]]; then
+        say "==> global.json SDK: $required_sdk"
+    fi
+
+    if ! activate_dotnet_from_common_locations; then
+        [[ -n "$required_sdk" ]] || {
+            err ".NET repo detected but dotnet is not installed and no global.json SDK version was found."
+            return 1
+        }
+
+        say "==> dotnet not found on PATH; installing SDK $required_sdk"
+        bootstrap_dotnet_sdk "$required_sdk" || {
+            err "Failed to install .NET SDK $required_sdk."
+            return 1
+        }
+    fi
+
+    if ! resolved_sdk="$(dotnet --version 2>/dev/null)"; then
+        if [[ -n "$required_sdk" ]]; then
+            say "==> Installed dotnet could not satisfy global.json; retrying with SDK $required_sdk"
+            bootstrap_dotnet_sdk "$required_sdk" || {
+                err "Failed to install a compatible .NET SDK for global.json version $required_sdk."
+                return 1
+            }
+            resolved_sdk="$(dotnet --version 2>/dev/null)" || true
+        fi
+    fi
+
+    if [[ -z "$resolved_sdk" ]]; then
+        err "dotnet is installed but no compatible SDK could be resolved for this repository."
+        if [[ -n "$required_sdk" ]]; then
+            err "Install a compatible SDK for global.json version $required_sdk."
+        fi
+        return 1
+    fi
+
+    say "==> dotnet SDK: $resolved_sdk"
+    maybe_run dotnet --list-sdks
+
+    if [[ -f .config/dotnet-tools.json ]]; then
+        maybe_run dotnet tool restore
+    fi
+
+    if ! is_windows && repo_targets_windows; then
+        say "==> Enabling Windows targeting for non-Windows restore"
+        restore_args+=( -p:EnableWindowsTargeting=true )
+    fi
+
+    if [[ -n "$restore_target" ]]; then
+        restore_args+=( "$restore_target" )
+    fi
+
+    maybe_run dotnet "${restore_args[@]}"
+}
+
+install_node() {
+    if [[ -f package-lock.json ]]; then
+        have npm || {
+            warn "npm not found; skipping Node install"
+            return 0
+        }
+        maybe_run npm ci
         return 0
     fi
 
-    cat >"$config_path" <<'EOF'
-# Project-scoped Codex configuration
-# See:
-#   https://developers.openai.com/codex/config-basic/
-#   https://developers.openai.com/codex/config-reference/
-
-# Keep this intentionally minimal and conservative.
-# Adjust only if your team has a defined Codex policy.
-
-# Example:
-# model = "gpt-5.4"
-# approval_policy = "on-request"
-# sandbox_mode = "workspace-write"
-
-# Trust is configured in ~/.codex/config.toml under
-# [projects."/absolute/path/to/project"], because Codex only loads this
-# project-scoped file after the project is already trusted.
-EOF
-
-    say "Created $config_path"
-}
-
-create_agents_md_if_missing() {
-    local file="AGENTS.md"
-    if [[ -f "$file" ]]; then
-        say "Found existing $file"
+    if [[ -f npm-shrinkwrap.json ]]; then
+        have npm || {
+            warn "npm not found; skipping Node install"
+            return 0
+        }
+        maybe_run npm ci
         return 0
     fi
 
-    cat >"$file" <<'EOF'
-# AGENTS.md
+    if [[ -f pnpm-lock.yaml ]]; then
+        if have pnpm; then
+            maybe_run pnpm install --frozen-lockfile
+        elif have corepack; then
+            maybe_run corepack pnpm install --frozen-lockfile
+        else
+            warn "pnpm lockfile found but pnpm/corepack unavailable; skipping Node install"
+        fi
+        return 0
+    fi
 
-Repository instructions for Codex and related coding agents.
+    if [[ -f yarn.lock ]]; then
+        if have yarn; then
+            maybe_run yarn install --frozen-lockfile
+        elif have corepack; then
+            maybe_run corepack yarn install --frozen-lockfile
+        else
+            warn "yarn lockfile found but yarn/corepack unavailable; skipping Node install"
+        fi
+        return 0
+    fi
 
-## Principles
-- Make minimal, high-confidence changes.
-- Preserve existing architecture unless explicitly asked to refactor.
-- Do not broaden scope.
-- Prefer deterministic fixes over speculative improvements.
-- Run relevant tests before concluding work.
-
-## Workflow
-- Read the relevant files before editing.
-- State assumptions when they matter.
-- Keep diffs focused.
-- Update docs when behavior changes.
-EOF
-
-    say "Created $file"
+    if [[ -f package.json ]]; then
+        have npm || {
+            warn "package.json found but npm not available; skipping Node install"
+            return 0
+        }
+        maybe_run npm install
+    fi
 }
 
-print_summary() {
-    local remote_name="$1"
-    local repo_url="$2"
-    local branch="$3"
+install_python() {
+    if [[ -f requirements.txt ]]; then
+        have python || have python3 || {
+            warn "Python not found; skipping pip install"
+            return 0
+        }
+        local py
+        py="$(command -v python || command -v python3)"
+        maybe_run "$py" -m pip install --upgrade pip
+        maybe_run "$py" -m pip install -r requirements.txt
+        return 0
+    fi
 
-    cat <<EOF
+    if [[ -f pyproject.toml ]]; then
+        if have poetry && grep -Eq '^\[tool\.poetry\]' pyproject.toml; then
+            maybe_run poetry install --no-interaction
+            return 0
+        fi
 
-Setup complete.
+        if have uv; then
+            maybe_run uv sync
+            return 0
+        fi
 
-Repository
-  Remote:  $remote_name
-  URL:     $repo_url
-  Branch:  $branch
+        if have python || have python3; then
+            local py
+            py="$(command -v python || command -v python3)"
+            maybe_run "$py" -m pip install --upgrade pip
+            maybe_run "$py" -m pip install -e .
+            return 0
+        fi
 
-Next steps for Codex Web
-  1. Open Codex Web.
-  2. Connect your GitHub account there if you have not already.
-  3. Select this repository.
-  4. Start a task against branch: $branch
+        warn "pyproject.toml found but no supported Python installer available; skipping Python install"
+    fi
+}
 
-Helpful links
-  Repo:    $repo_url
-  Branch:  $repo_url/tree/$branch
+install_ruby() {
+    if [[ -f Gemfile ]]; then
+        have bundle || {
+            warn "Gemfile found but bundler unavailable; skipping bundle install"
+            return 0
+        }
+        maybe_run bundle install
+    fi
+}
 
-Notes
-  - Codex Web setup requires connecting GitHub in the Codex web interface.
-  - Repo/project configuration can also live in .codex/config.toml.
+install_go() {
+    if [[ -f go.mod ]]; then
+        have go || {
+            warn "go.mod found but Go unavailable; skipping go mod download"
+            return 0
+        }
+        maybe_run go mod download
+    fi
+}
 
-EOF
+install_rust() {
+    if [[ -f Cargo.toml ]]; then
+        have cargo || {
+            warn "Cargo.toml found but cargo unavailable; skipping cargo fetch"
+            return 0
+        }
+        maybe_run cargo fetch
+    fi
+}
+
+install_php() {
+    if [[ -f composer.json ]]; then
+        have composer || {
+            warn "composer.json found but composer unavailable; skipping composer install"
+            return 0
+        }
+        maybe_run composer install --no-interaction --prefer-dist
+    fi
+}
+
+install_java() {
+    if [[ -f gradlew ]]; then
+        chmod +x ./gradlew || true
+        maybe_run ./gradlew dependencies
+        return 0
+    fi
+
+    if [[ -f pom.xml ]]; then
+        have mvn || {
+            warn "pom.xml found but mvn unavailable; skipping maven dependency resolution"
+            return 0
+        }
+        maybe_run mvn -B -q -DskipTests dependency:go-offline
+    fi
+}
+
+run_repo_hook() {
+    local hook=""
+
+    for candidate in \
+        .codex/setup.sh \
+        codex/setup.sh \
+        scripts/codex-setup.sh \
+        scripts/setup-codex.sh \
+        .devcontainer/postCreateCommand.sh; do
+        if [[ -f "$candidate" ]]; then
+            hook="$candidate"
+            break
+        fi
+    done
+
+    if [[ -n "$hook" ]]; then
+        say "==> Running repo bootstrap hook: $hook"
+        bash "$hook"
+    else
+        say "==> No repo bootstrap hook found"
+    fi
 }
 
 main() {
-    require_cmd git
-
     say "==> $SCRIPT_NAME starting"
 
     local root
-    root="$(git_root)" || die "Current directory is not inside a git repository."
+    root="$(repo_root)"
     cd "$root"
 
     say "==> Repository root: $root"
+    say "==> HEAD ref: $(head_ref)"
+    say "==> HEAD sha: $(head_sha)"
 
-    if ! has_initial_commit; then
-        die "Repository has no commits yet. Create an initial commit first."
+    if have git; then
+        say "==> Git status (short):"
+        git status --short || true
     fi
 
-    local remote_name
-    remote_name="$(github_remote_name || true)"
-    [[ -n "${remote_name:-}" ]] || die "No GitHub remote found."
+    install_node
+    install_dotnet
+    install_python
+    install_ruby
+    install_go
+    install_rust
+    install_php
+    install_java
+    run_repo_hook
 
-    local repo_url
-    repo_url="$(github_repo_web_url "$remote_name")"
-
-    local branch
-    branch="$(current_branch)"
-    [[ "$branch" != "HEAD" ]] || die "Detached HEAD is not supported by this setup script."
-
-    say "==> GitHub remote: $remote_name"
-    say "==> GitHub repo:   $repo_url"
-    say "==> Branch:        $branch"
-
-    if ! git diff --quiet || ! git diff --cached --quiet; then
-        warn "Working tree has uncommitted changes."
-        if ! confirm "Continue anyway?"; then
-            die "Aborted."
-        fi
-    fi
-
-    if confirm "Create .codex/ scaffolding if missing?"; then
-        ensure_codex_dir
-        create_project_config_if_missing
-    fi
-
-    if confirm "Create AGENTS.md if missing?"; then
-        create_agents_md_if_missing
-    fi
-
-    say "==> Fetching remote refs"
-    git fetch "$remote_name" --prune
-
-    local origin_default
-    origin_default="$(default_branch_guess || true)"
-    if [[ -z "${origin_default:-}" ]]; then
-        origin_default="$DEFAULT_BRANCH_FALLBACK"
-    fi
-
-    say "==> Remote default branch guess: $origin_default"
-
-    if git ls-remote --exit-code --heads "$remote_name" "$branch" >/dev/null 2>&1; then
-        say "==> Remote branch already exists: $branch"
-        if confirm "Push current local commits to $remote_name/$branch?"; then
-            git push "$remote_name" "$branch"
-        fi
-    else
-        say "==> Remote branch does not exist yet: $branch"
-        if confirm "Create and push branch $branch to GitHub?"; then
-            git push -u "$remote_name" "$branch"
-        else
-            warn "Branch was not pushed. Codex Web will need the repo/branch available on GitHub."
-        fi
-    fi
-
-    print_summary "$remote_name" "$repo_url" "$branch"
+    say "==> $SCRIPT_NAME complete"
 }
 
 main "$@"

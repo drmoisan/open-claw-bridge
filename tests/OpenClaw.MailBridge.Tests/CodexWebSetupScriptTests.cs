@@ -1,122 +1,346 @@
 using System.Diagnostics;
-using System.Text;
 using FluentAssertions;
-using NUnit.Framework;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace OpenClaw.MailBridge.Tests;
 
+[TestClass]
 public class CodexWebSetupScriptTests
 {
-    [Test]
-    public async Task Setup_script_should_create_a_valid_minimal_project_config()
+    [TestMethod]
+    public async Task Setup_script_should_restore_the_solution_with_the_available_dotnet_sdk()
+    {
+        using var harness = new CodexWebSetupScriptHarness(
+            new Dictionary<string, string?> { ["OS"] = "Linux" }
+        );
+        harness.WriteFile(
+            "global.json",
+            """
+{
+  "sdk": {
+    "version": "10.0.201"
+  }
+}
+"""
+        );
+        harness.WriteFile(
+            "OpenClaw.MailBridge.sln",
+            "Microsoft Visual Studio Solution File, Format Version 12.00\n"
+        );
+        harness.WriteFile(
+            "src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj",
+            """
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+</Project>
+"""
+        );
+        harness.WriteExecutable(
+            "dotnet",
+            """
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+printf '%s\n' "$*" >> "${FAKE_DOTNET_LOG}"
+
+case "${1:-}" in
+  --version)
+    printf '10.0.201\n'
+    ;;
+  --list-sdks)
+    printf '10.0.201 [%s/sdk]\n' "$(dirname "$0")"
+    ;;
+  restore)
+    exit 0
+    ;;
+  tool)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+"""
+        );
+
+        var result = await harness.RunAsync();
+
+        result.ExitCode.Should().Be(0, result.CombinedOutput);
+        result.StdOut.Should().Contain("==> .NET repository detected");
+        result.StdOut.Should().Contain("==> global.json SDK: 10.0.201");
+        result.StdOut.Should().Contain("==> dotnet SDK: 10.0.201");
+        result.StdOut.Should().Contain("==> Enabling Windows targeting for non-Windows restore");
+        result
+            .StdOut.Should()
+            .Contain("==> dotnet restore -p:EnableWindowsTargeting=true OpenClaw.MailBridge.sln");
+        harness.ReadDotnetLog().Should().Contain(line => line == "--version");
+        harness.ReadDotnetLog().Should().Contain(line => line == "--list-sdks");
+        harness
+            .ReadDotnetLog()
+            .Should()
+            .Contain(line =>
+                line == "restore -p:EnableWindowsTargeting=true OpenClaw.MailBridge.sln"
+            );
+    }
+
+    [TestMethod]
+    public async Task Setup_script_should_restore_local_dotnet_tools_when_manifest_exists()
     {
         using var harness = new CodexWebSetupScriptHarness();
+        harness.WriteFile(
+            "global.json",
+            """
+{
+  "sdk": {
+    "version": "10.0.201"
+  }
+}
+"""
+        );
+        harness.WriteFile(
+            "OpenClaw.MailBridge.sln",
+            "Microsoft Visual Studio Solution File, Format Version 12.00\n"
+        );
+        harness.WriteFile(
+            ".config/dotnet-tools.json",
+            """
+{
+  "version": 1,
+  "isRoot": true,
+  "tools": {}
+}
+"""
+        );
+        harness.WriteExecutable(
+            "dotnet",
+            """
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-        var result = await harness.RunAsync("y\nn\nn\n");
+printf '%s\n' "$*" >> "${FAKE_DOTNET_LOG}"
+
+case "${1:-}" in
+  --version)
+    printf '10.0.201\n'
+    ;;
+  --list-sdks)
+    printf '10.0.201 [%s/sdk]\n' "$(dirname "$0")"
+    ;;
+  tool)
+    exit 0
+    ;;
+  restore)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+"""
+        );
+
+        var result = await harness.RunAsync();
 
         result.ExitCode.Should().Be(0, result.CombinedOutput);
-
-        var configPath = Path.Combine(harness.RepositoryRoot, ".codex", "config.toml");
-        File.Exists(configPath).Should().BeTrue();
-        File.ReadAllText(configPath).ReplaceLineEndings("\n").Should().Be(ExpectedProjectConfig);
-        result.CombinedOutput.Should().Contain("Created .codex/config.toml");
+        result.StdOut.Should().Contain("==> dotnet tool restore");
+        harness.ReadDotnetLog().Should().Contain(line => line == "tool restore");
     }
 
-    [Test]
-    public async Task Setup_script_should_preserve_an_existing_project_config()
+    [TestMethod]
+    public async Task Setup_script_should_install_the_pinned_dotnet_sdk_when_dotnet_is_missing()
+    {
+        using var harness = new CodexWebSetupScriptHarness(
+            new Dictionary<string, string?>
+            {
+                ["OS"] = "Linux",
+                ["HARNESS_BASH_ENV"] = """
+curl() {
+  local output_path=""
+
+  while (($#)); do
+    case "$1" in
+      -o)
+        output_path="$2"
+        shift 2
+        ;;
+      *)
+        shift
+        ;;
+    esac
+  done
+
+  cat >"$output_path" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+install_dir=""
+
+while (($#)); do
+  case "$1" in
+    --install-dir)
+      install_dir="$2"
+      shift 2
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+mkdir -p "$install_dir"
+
+cat >"$install_dir/dotnet" <<'EOS'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+printf '%s\n' "$*" >> "${FAKE_DOTNET_LOG}"
+
+case "${1:-}" in
+  --version)
+    printf '10.0.201\n'
+    ;;
+  --list-sdks)
+    printf '10.0.201 [%s/sdk]\n' "$(dirname "$0")"
+    ;;
+  restore)
+    exit 0
+    ;;
+  tool)
+    exit 0
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+EOS
+
+chmod +x "$install_dir/dotnet"
+EOF
+}
+""",
+            }
+        );
+        harness.WriteFile(
+            "global.json",
+            """
+{
+  "sdk": {
+    "version": "10.0.201"
+  }
+}
+"""
+        );
+        harness.WriteFile(
+            "OpenClaw.MailBridge.sln",
+            "Microsoft Visual Studio Solution File, Format Version 12.00\n"
+        );
+        harness.WriteFile(
+            "src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj",
+            """
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+</Project>
+"""
+        );
+
+        var result = await harness.RunAsync();
+
+        result.ExitCode.Should().Be(0, result.CombinedOutput);
+        result.StdOut.Should().Contain("==> dotnet not found on PATH; installing SDK 10.0.201");
+        result.StdOut.Should().Contain("==> dotnet SDK: 10.0.201");
+        harness.ReadDotnetLog().Should().Contain(line => line == "--version");
+        harness
+            .ReadDotnetLog()
+            .Should()
+            .Contain(line =>
+                line == "restore -p:EnableWindowsTargeting=true OpenClaw.MailBridge.sln"
+            );
+    }
+
+    [TestMethod]
+    public async Task Setup_script_should_run_the_repo_bootstrap_hook_when_present()
     {
         using var harness = new CodexWebSetupScriptHarness();
-        var codexDirectory = Directory.CreateDirectory(Path.Combine(harness.RepositoryRoot, ".codex"));
-        var configPath = Path.Combine(codexDirectory.FullName, "config.toml");
-        const string existingConfig = "model = \"gpt-5.4\"\n";
+        harness.WriteFile(
+            ".codex/setup.sh",
+            """
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-        await File.WriteAllTextAsync(configPath, existingConfig);
+printf 'hook-ran\n' > .codex/hook-result.txt
+"""
+        );
+        harness.MakeRepositoryFileExecutable(".codex/setup.sh");
 
-        var result = await harness.RunAsync("y\nn\nn\n");
-
-        result.ExitCode.Should().Be(0, result.CombinedOutput);
-        File.ReadAllText(configPath).Should().Be(existingConfig);
-        result.CombinedOutput.Should().Contain("Found existing .codex/config.toml");
-    }
-
-    [Test]
-    public async Task Setup_script_should_fail_when_no_github_remote_exists()
-    {
-        using var harness = new CodexWebSetupScriptHarness(new Dictionary<string, string?>
-        {
-            ["FAKE_GIT_REMOTE_URL"] = "https://example.com/example/repo.git"
-        });
-
-        var result = await harness.RunAsync(string.Empty);
-
-        result.ExitCode.Should().Be(1);
-        result.StdErr.Should().Contain("ERROR: No GitHub remote found.");
-    }
-
-    [Test]
-    public async Task Setup_script_should_normalize_ssh_remote_urls_in_its_summary()
-    {
-        using var harness = new CodexWebSetupScriptHarness(new Dictionary<string, string?>
-        {
-            ["FAKE_GIT_BRANCH"] = "feature/codex-web",
-            ["FAKE_GIT_REMOTE_URL"] = "git@github.com:octo/example.git"
-        });
-
-        var result = await harness.RunAsync("n\nn\nn\n");
+        var result = await harness.RunAsync();
 
         result.ExitCode.Should().Be(0, result.CombinedOutput);
-        result.StdOut.Should().Contain("URL:     https://github.com/octo/example");
-        result.StdOut.Should().Contain("Branch:  https://github.com/octo/example/tree/feature/codex-web");
+        result.StdOut.Should().Contain("==> Running repo bootstrap hook: .codex/setup.sh");
+        harness.ReadFile(".codex/hook-result.txt").Should().Contain("hook-ran");
     }
 
-    private const string ExpectedProjectConfig = """
-# Project-scoped Codex configuration
-# See:
-#   https://developers.openai.com/codex/config-basic/
-#   https://developers.openai.com/codex/config-reference/
+    [TestMethod]
+    public async Task Setup_script_should_report_git_metadata_and_status()
+    {
+        using var harness = new CodexWebSetupScriptHarness(
+            new Dictionary<string, string?>
+            {
+                ["FAKE_GIT_BRANCH"] = "feature/work",
+                ["FAKE_GIT_SHA"] = "abc1234",
+                ["FAKE_GIT_STATUS"] = " M .codex/codex-web-setup.sh\n?? temp.txt",
+            }
+        );
 
-# Keep this intentionally minimal and conservative.
-# Adjust only if your team has a defined Codex policy.
+        var result = await harness.RunAsync();
 
-# Example:
-# model = "gpt-5.4"
-# approval_policy = "on-request"
-# sandbox_mode = "workspace-write"
-
-# Trust is configured in ~/.codex/config.toml under
-# [projects."/absolute/path/to/project"], because Codex only loads this
-# project-scoped file after the project is already trusted.
-""".ReplaceLineEndings("\n");
+        result.ExitCode.Should().Be(0, result.CombinedOutput);
+        result.StdOut.Should().Contain("==> HEAD ref: feature/work");
+        result.StdOut.Should().Contain("==> HEAD sha: abc1234");
+        result.StdOut.Should().Contain(" M .codex/codex-web-setup.sh");
+        result.StdOut.Should().Contain("?? temp.txt");
+        harness.ReadGitLog().Should().Contain(line => line == "status --short");
+    }
 }
 
 internal sealed class CodexWebSetupScriptHarness : IDisposable
 {
     private readonly Dictionary<string, string?> _environment;
+    private readonly string? _bashEnvContent;
+    private static readonly string BashExecutablePath = ResolveBashExecutablePath();
+    private string BashEnvPath => Path.Combine(RootDirectory, "bash-env.sh");
+    private string FakeGitScriptPath => Path.Combine(BinDirectory, "git");
 
     public CodexWebSetupScriptHarness(Dictionary<string, string?>? environmentOverrides = null)
     {
-        RootDirectory = Path.Combine(Path.GetTempPath(), $"codex-web-setup-tests-{Guid.NewGuid():N}");
+        RootDirectory = Path.Combine(
+            Path.GetTempPath(),
+            $"codex-web-setup-tests-{Guid.NewGuid():N}"
+        );
         RepositoryRoot = Path.Combine(RootDirectory, "repo");
         BinDirectory = Path.Combine(RootDirectory, "bin");
+        HomeDirectory = Path.Combine(RootDirectory, "home");
         GitLogPath = Path.Combine(RootDirectory, "fake-git.log");
+        DotnetLogPath = Path.Combine(RootDirectory, "fake-dotnet.log");
+        DotnetInstallDirectory = Path.Combine(RootDirectory, "dotnet");
 
         Directory.CreateDirectory(RootDirectory);
         Directory.CreateDirectory(RepositoryRoot);
         Directory.CreateDirectory(BinDirectory);
-
-        CreateFakeGitScript();
+        Directory.CreateDirectory(HomeDirectory);
 
         _environment = new Dictionary<string, string?>
         {
             ["FAKE_GIT_ROOT"] = RepositoryRoot,
             ["FAKE_GIT_LOG"] = GitLogPath,
             ["FAKE_GIT_BRANCH"] = "main",
-            ["FAKE_GIT_DEFAULT_BRANCH"] = "main",
-            ["FAKE_GIT_REMOTE_URL"] = "https://github.com/example/repo.git",
-            ["FAKE_GIT_REMOTES"] = "origin",
-            ["FAKE_GIT_HAS_INITIAL_COMMIT"] = "1",
-            ["FAKE_GIT_DIRTY"] = "0",
-            ["FAKE_GIT_REMOTE_BRANCH_EXISTS"] = "0"
+            ["FAKE_GIT_SHA"] = "c832959",
+            ["FAKE_GIT_STATUS"] = string.Empty,
+            ["FAKE_DOTNET_LOG"] = DotnetLogPath,
+            ["DOTNET_INSTALL_DIR"] = DotnetInstallDirectory,
         };
 
         if (environmentOverrides is not null)
@@ -126,6 +350,12 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
                 _environment[entry.Key] = entry.Value;
             }
         }
+
+        _environment.TryGetValue("HARNESS_BASH_ENV", out _bashEnvContent);
+        _environment.Remove("HARNESS_BASH_ENV");
+
+        CreateFakeGitScript();
+        CreateBashEnvironmentFile();
     }
 
     public string RootDirectory { get; }
@@ -134,39 +364,103 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
 
     public string BinDirectory { get; }
 
+    public string HomeDirectory { get; }
+
     public string GitLogPath { get; }
 
-    public async Task<ProcessResult> RunAsync(string standardInput)
+    public string DotnetLogPath { get; }
+
+    public string DotnetInstallDirectory { get; }
+
+    public void WriteFile(string relativePath, string contents)
+    {
+        var fullPath = Path.Combine(
+            RepositoryRoot,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)
+        );
+        var directory = Path.GetDirectoryName(fullPath);
+
+        if (!string.IsNullOrEmpty(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
+        File.WriteAllText(fullPath, contents.ReplaceLineEndings("\n"));
+    }
+
+    public string ReadFile(string relativePath)
+    {
+        var fullPath = Path.Combine(
+            RepositoryRoot,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)
+        );
+        return File.ReadAllText(fullPath);
+    }
+
+    public void WriteExecutable(string name, string contents)
+    {
+        var fullPath = Path.Combine(BinDirectory, name);
+        File.WriteAllText(fullPath, contents.ReplaceLineEndings("\n"));
+        MakeExecutable(fullPath);
+    }
+
+    public void MakeRepositoryFileExecutable(string relativePath)
+    {
+        var fullPath = Path.Combine(
+            RepositoryRoot,
+            relativePath.Replace('/', Path.DirectorySeparatorChar)
+        );
+        MakeExecutable(fullPath);
+    }
+
+    public IReadOnlyList<string> ReadGitLog() =>
+        File.Exists(GitLogPath) ? File.ReadAllLines(GitLogPath) : Array.Empty<string>();
+
+    public IReadOnlyList<string> ReadDotnetLog() =>
+        File.Exists(DotnetLogPath) ? File.ReadAllLines(DotnetLogPath) : Array.Empty<string>();
+
+    public async Task<ProcessResult> RunAsync()
     {
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "bash",
+                FileName = BashExecutablePath,
                 WorkingDirectory = RepositoryRoot,
-                RedirectStandardInput = true,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                UseShellExecute = false
-            }
+                UseShellExecute = false,
+            },
         };
 
-        process.StartInfo.ArgumentList.Add(ScriptPath);
-        process.StartInfo.Environment["PATH"] = $"{BinDirectory}:{Environment.GetEnvironmentVariable("PATH")}";
+        process.StartInfo.ArgumentList.Add("--noprofile");
+        process.StartInfo.ArgumentList.Add("--norc");
+        process.StartInfo.ArgumentList.Add(GetPathForShell(ScriptPath));
+        process.StartInfo.Environment["PATH"] = BuildProcessPath();
+        process.StartInfo.Environment["HOME"] = HomeDirectory;
+        process.StartInfo.Environment["BASH_ENV"] = GetPathForShell(BashEnvPath);
+
+        // Clear inherited .NET host variables so the harness controls how dotnet is resolved.
+        foreach (
+            var key in process
+                .StartInfo.Environment.Keys.Where(key =>
+                    key.StartsWith("DOTNET_", StringComparison.OrdinalIgnoreCase)
+                )
+                .ToArray()
+        )
+        {
+            process.StartInfo.Environment.Remove(key);
+        }
 
         foreach (var entry in _environment)
         {
-            process.StartInfo.Environment[entry.Key] = entry.Value;
+            process.StartInfo.Environment[entry.Key] = ConvertEnvironmentValue(
+                entry.Key,
+                entry.Value
+            );
         }
 
         process.Start();
-
-        if (!string.IsNullOrEmpty(standardInput))
-        {
-            await process.StandardInput.WriteAsync(standardInput);
-        }
-
-        process.StandardInput.Close();
 
         var stdOutTask = process.StandardOutput.ReadToEndAsync();
         var stdErrTask = process.StandardError.ReadToEndAsync();
@@ -184,14 +478,18 @@ internal sealed class CodexWebSetupScriptHarness : IDisposable
         }
     }
 
-    private static string ScriptPath => FindRepositoryRoot() is { } repositoryRoot
-        ? Path.Combine(repositoryRoot, ".codex", "codex-web-setup.sh")
-        : throw new DirectoryNotFoundException("Could not locate repository root for codex-web-setup.sh tests.");
+    private static string ScriptPath =>
+        FindRepositoryRoot() is { } repositoryRoot
+            ? Path.Combine(repositoryRoot, ".codex", "codex-web-setup.sh")
+            : throw new DirectoryNotFoundException(
+                "Could not locate repository root for codex-web-setup.sh tests."
+            );
 
     private void CreateFakeGitScript()
     {
-        var scriptPath = Path.Combine(BinDirectory, "git");
-        const string script = """
+        WriteExecutable(
+            "git",
+            """
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
@@ -204,89 +502,172 @@ case "${1:-}" in
         printf '%s\n' "${FAKE_GIT_ROOT}"
         exit 0
         ;;
-      --verify)
-        [[ "${FAKE_GIT_HAS_INITIAL_COMMIT:-1}" == "1" ]]
-        exit $?
-        ;;
       --abbrev-ref)
-        printf '%s\n' "${FAKE_GIT_BRANCH:-main}"
-        exit 0
+        if [[ "${3:-}" == "HEAD" ]]; then
+          printf '%s\n' "${FAKE_GIT_BRANCH:-main}"
+          exit 0
+        fi
+        ;;
+      --short)
+        if [[ "${3:-}" == "HEAD" ]]; then
+          printf '%s\n' "${FAKE_GIT_SHA:-c832959}"
+          exit 0
+        fi
         ;;
     esac
     ;;
-
-  symbolic-ref)
-    if [[ "${2:-}" == "refs/remotes/origin/HEAD" && -n "${FAKE_GIT_DEFAULT_BRANCH:-}" ]]; then
-      printf 'refs/remotes/origin/%s\n' "${FAKE_GIT_DEFAULT_BRANCH}"
+  status)
+    if [[ "${2:-}" == "--short" ]]; then
+      printf '%b\n' "${FAKE_GIT_STATUS:-}"
       exit 0
     fi
-
-    exit 1
-    ;;
-
-  remote)
-    if [[ $# -eq 0 ]]; then
-      if [[ -n "${FAKE_GIT_REMOTES:-}" ]]; then
-        printf '%b\n' "${FAKE_GIT_REMOTES}"
-      fi
-
-      exit 0
-    fi
-
-    if [[ "${2:-}" == "get-url" ]]; then
-      case "${3:-}" in
-        origin)
-          printf '%s\n' "${FAKE_GIT_REMOTE_URL:-https://github.com/example/repo.git}"
-          exit 0
-          ;;
-        *)
-          exit 1
-          ;;
-      esac
-    fi
-    ;;
-
-  diff)
-    if [[ "${FAKE_GIT_DIRTY:-0}" == "1" ]]; then
-      exit 1
-    fi
-
-    exit 0
-    ;;
-
-  fetch)
-    exit 0
-    ;;
-
-  ls-remote)
-    if [[ "${FAKE_GIT_REMOTE_BRANCH_EXISTS:-0}" == "1" ]]; then
-      exit 0
-    fi
-
-    exit 2
-    ;;
-
-  push)
-    exit 0
     ;;
 esac
 
 printf 'unexpected git invocation: %s\n' "$*" >&2
 exit 99
-""";
+"""
+        );
+    }
 
-        File.WriteAllText(scriptPath, script);
-        Process.Start(new ProcessStartInfo
+    private void CreateBashEnvironmentFile()
+    {
+        var fakeGitPath = GetPathForShell(FakeGitScriptPath).Replace("'", "'\"'\"'");
+        var content =
+            $"git(){Environment.NewLine}{{{Environment.NewLine}  bash '{fakeGitPath}' \"$@\"{Environment.NewLine}}}{Environment.NewLine}";
+
+        if (!string.IsNullOrWhiteSpace(_bashEnvContent))
         {
-            FileName = "chmod",
-            ArgumentList = { "+x", scriptPath },
-            UseShellExecute = false
-        })!.WaitForExit();
+            content = string.Concat(content, "\n", _bashEnvContent.ReplaceLineEndings("\n"), "\n");
+        }
+
+        File.WriteAllText(BashEnvPath, content.ReplaceLineEndings("\n"));
+    }
+
+    private string BuildProcessPath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return string.Join(Path.PathSeparator, BinDirectory, "/usr/bin", "/bin");
+        }
+
+        return string.Join(
+            Path.PathSeparator,
+            BinDirectory,
+            @"C:\Program Files\Git\bin",
+            @"C:\Program Files\Git\usr\bin"
+        );
+    }
+
+    private string ConvertEnvironmentValue(string key, string? value)
+    {
+        if (string.IsNullOrEmpty(value) || !OperatingSystem.IsWindows())
+        {
+            return value ?? string.Empty;
+        }
+
+        return key switch
+        {
+            "FAKE_GIT_ROOT" or "FAKE_GIT_LOG" or "FAKE_DOTNET_LOG" or "DOTNET_INSTALL_DIR" =>
+                GetPathForShell(value),
+            _ => value,
+        };
+    }
+
+    private static string ResolveBashExecutablePath()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return "bash";
+        }
+
+        string[] candidates =
+        {
+            @"C:\Program Files\Git\bin\bash.exe",
+            @"C:\Program Files\Git\usr\bin\bash.exe",
+        };
+
+        foreach (var candidate in candidates)
+        {
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return "bash";
+    }
+
+    private void MakeExecutable(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead
+                    | UnixFileMode.UserWrite
+                    | UnixFileMode.UserExecute
+                    | UnixFileMode.GroupRead
+                    | UnixFileMode.GroupExecute
+                    | UnixFileMode.OtherRead
+                    | UnixFileMode.OtherExecute
+            );
+            return;
+        }
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = BashExecutablePath,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+            },
+        };
+
+        process.StartInfo.ArgumentList.Add("-lc");
+        process.StartInfo.ArgumentList.Add($"chmod +x '{EscapeForBash(GetPathForShell(path))}'");
+        process.Start();
+        process.WaitForExit();
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Failed to mark '{path}' executable. Output: {process.StandardOutput.ReadToEnd()}{process.StandardError.ReadToEnd()}"
+            );
+        }
+    }
+
+    private static string EscapeForBash(string value) => value.Replace("'", "'\"'\"'");
+
+    private string GetPathForShell(string path)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return path;
+        }
+
+        var fullPath = Path.GetFullPath(path);
+        var root =
+            Path.GetPathRoot(fullPath)
+            ?? throw new InvalidOperationException($"Could not determine path root for '{path}'.");
+
+        if (root.Length < 2 || root[1] != ':')
+        {
+            return fullPath.Replace('\\', '/');
+        }
+
+        var driveLetter = char.ToLowerInvariant(root[0]);
+        var relativePath = fullPath[root.Length..].Replace('\\', '/');
+        return string.IsNullOrEmpty(relativePath)
+            ? $"/{driveLetter}"
+            : $"/{driveLetter}/{relativePath}";
     }
 
     private static string? FindRepositoryRoot()
     {
-        var directory = new DirectoryInfo(TestContext.CurrentContext.TestDirectory);
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
 
         while (directory is not null)
         {

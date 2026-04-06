@@ -1,72 +1,136 @@
-﻿using System.IO.Pipes;
+using System.IO.Pipes;
+using System.Text;
 using System.Text.Json;
-using OpenClaw.MailBridge.Contracts;
+using OpenClaw.MailBridge.Contracts.Models;
 
 namespace OpenClaw.MailBridge.Client;
 
 internal static class Program
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    [STAThread]
     private static async Task<int> Main(string[] args)
     {
-        var pipeName = GetArgument(args, "--pipe-name") ?? "openclaw-mail-bridge";
-        var message = GetArgument(args, "--message") ?? "ping";
-
-        return await SendAsync(pipeName, message);
-    }
-
-    private static async Task<int> SendAsync(string pipeName, string message)
-    {
-        var request = new MailBridgeRequest(
-            Operation: "ping",
-            Payload: message,
-            TimestampUtc: DateTimeOffset.UtcNow);
-
         try
         {
-            await using var client = new NamedPipeClientStream(
-                serverName: ".",
-                pipeName: pipeName,
-                direction: PipeDirection.InOut,
-                options: PipeOptions.Asynchronous);
-
-            await client.ConnectAsync(1500);
-
-            using var reader = new StreamReader(client, leaveOpen: true);
-            using var writer = new StreamWriter(client) { AutoFlush = true };
-
-            var requestJson = JsonSerializer.Serialize(request, JsonOptions);
-            await writer.WriteLineAsync(requestJson);
-
-            var responseJson = await reader.ReadLineAsync();
-            Console.WriteLine(responseJson ?? string.Empty);
-
-            return string.IsNullOrWhiteSpace(responseJson) ? 1 : 0;
+            var parsed = Parse(args);
+            if (parsed is null)
+                return 5;
+            var req = Build(parsed.Value.command, parsed.Value.options);
+            if (req is null)
+                return 5;
+            var resp = await Send(req);
+            Console.Out.WriteLine(JsonSerializer.Serialize(resp, Json));
+            if (resp.Ok)
+                return 0;
+            return resp.Error?.Code switch
+            {
+                BridgeErrorCodes.Unauthorized => 3,
+                BridgeErrorCodes.OutlookUnavailable => 4,
+                BridgeErrorCodes.InvalidRequest => 5,
+                _ => 6,
+            };
         }
-        catch (TimeoutException)
+        catch (UnauthorizedAccessException uae)
         {
-            Console.Error.WriteLine($"Unable to connect to named pipe '{pipeName}'. Start OpenClaw.MailBridge first.");
-            return 1;
+            Console.Error.WriteLine(uae.Message);
+            return 3;
         }
-        catch (IOException ex)
+        catch (TimeoutException tex)
         {
-            Console.Error.WriteLine($"Named pipe I/O failed: {ex.Message}");
-            return 1;
+            Console.Error.WriteLine(tex.Message);
+            return 2;
+        }
+        catch (IOException ioex)
+        {
+            Console.Error.WriteLine(ioex.Message);
+            return 2;
         }
     }
 
-    private static string? GetArgument(string[] args, string name)
+    private static async Task<RpcResponse> Send(RpcRequest req)
     {
-        for (var index = 0; index < args.Length - 1; index++)
+        await using var client = new NamedPipeClientStream(
+            ".",
+            "openclaw_mailbridge_v1",
+            PipeDirection.InOut,
+            PipeOptions.Asynchronous
+        );
+        await client.ConnectAsync(2000);
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(req, Json);
+        await client.WriteAsync(bytes);
+        await client.FlushAsync();
+        using var ms = new MemoryStream();
+        var buffer = new byte[4096];
+        do
         {
-            if (string.Equals(args[index], name, StringComparison.OrdinalIgnoreCase))
-            {
-                return args[index + 1];
-            }
+            var read = await client.ReadAsync(buffer);
+            ms.Write(buffer, 0, read);
+        } while (!client.IsMessageComplete);
+
+        return JsonSerializer.Deserialize<RpcResponse>(Encoding.UTF8.GetString(ms.ToArray()), Json)
+            ?? RpcResponse.Failure(req.Id, BridgeErrorCodes.InternalError, "Invalid response");
+    }
+
+    private static (string command, Dictionary<string, string> options)? Parse(string[] args)
+    {
+        if (args.Length == 0)
+        {
+            Console.Error.WriteLine("No command");
+            return null;
+        }
+        var options = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        for (var i = 1; i < args.Length - 1; i += 2)
+        {
+            if (!args[i].StartsWith("--"))
+                continue;
+            options[args[i][2..].Replace('-', '_')] = args[i + 1];
         }
 
-        return null;
+        return (args[0], options);
+    }
+
+    private static RpcRequest? Build(string command, Dictionary<string, string> opts)
+    {
+        var id = Guid.NewGuid().ToString();
+        return command switch
+        {
+            "status" => new RpcRequest(id, BridgeMethods.GetStatus, null),
+            "list-messages" => Req(id, BridgeMethods.ListRecentMessages, opts, "since", "limit"),
+            "get-message" => Req(id, BridgeMethods.GetMessage, opts, "id"),
+            "list-meeting-requests" => Req(
+                id,
+                BridgeMethods.ListRecentMeetingRequests,
+                opts,
+                "since",
+                "limit"
+            ),
+            "list-calendar" => Req(
+                id,
+                BridgeMethods.ListCalendarWindow,
+                opts,
+                "start",
+                "end",
+                "limit"
+            ),
+            "get-event" => Req(id, BridgeMethods.GetEvent, opts, "id"),
+            _ => null,
+        };
+    }
+
+    private static RpcRequest? Req(
+        string id,
+        string method,
+        Dictionary<string, string> opts,
+        params string[] required
+    )
+    {
+        foreach (var key in required)
+            if (!opts.ContainsKey(key.Replace('-', '_')))
+            {
+                Console.Error.WriteLine($"Missing --{key}");
+                return null;
+            }
+        return new RpcRequest(id, method, opts);
     }
 }
