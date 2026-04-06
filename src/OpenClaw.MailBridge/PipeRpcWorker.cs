@@ -69,9 +69,16 @@ internal sealed class PipeRpcWorker(
             );
         }
 
-        security.AddAccessRule(
-            new PipeAccessRule(new NTAccount("openclaw-svc"), PipeAccessRights.ReadWrite, AccessControlType.Allow)
-        );
+        try
+        {
+            security.AddAccessRule(
+                new PipeAccessRule(new NTAccount("openclaw-svc"), PipeAccessRights.ReadWrite, AccessControlType.Allow)
+            );
+        }
+        catch (IdentityNotMappedException)
+        {
+            // Allow local/dev environments that do not provision the service identity yet.
+        }
         security.AddAccessRule(
             new PipeAccessRule(
                 new SecurityIdentifier(WellKnownSidType.NetworkSid, null),
