@@ -10,16 +10,16 @@ public class BridgeContractsCoverageTests
     [TestMethod]
     public void Bridge_methods_all_should_include_every_declared_method_constant()
     {
-        BridgeMethods.All.Should().Contain(
-            [
+        BridgeMethods
+            .All.Should()
+            .Contain([
                 BridgeMethods.GetStatus,
                 BridgeMethods.ListRecentMessages,
                 BridgeMethods.GetMessage,
                 BridgeMethods.ListRecentMeetingRequests,
                 BridgeMethods.ListCalendarWindow,
                 BridgeMethods.GetEvent,
-            ]
-        );
+            ]);
     }
 
     [TestMethod]
@@ -41,7 +41,11 @@ public class BridgeContractsCoverageTests
     [TestMethod]
     public void Contracts_records_should_hold_expected_values()
     {
-        var req = new RpcRequest("abc", BridgeMethods.GetStatus, new Dictionary<string, string> { ["k"] = "v" });
+        var req = new RpcRequest(
+            "abc",
+            BridgeMethods.GetStatus,
+            new Dictionary<string, string> { ["k"] = "v" }
+        );
         req.Id.Should().Be("abc");
         req.Method.Should().Be(BridgeMethods.GetStatus);
         req.Params!["k"].Should().Be("v");

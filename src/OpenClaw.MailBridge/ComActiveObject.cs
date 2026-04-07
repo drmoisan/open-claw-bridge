@@ -67,7 +67,13 @@ internal class ComActiveObject
         var app =
             Activator.CreateInstance(t)
             ?? throw new InvalidOperationException("Outlook activation failed");
-        var ns = t.InvokeMember("GetNamespace", System.Reflection.BindingFlags.InvokeMethod, null, app, ["MAPI"]);
+        var ns = t.InvokeMember(
+            "GetNamespace",
+            System.Reflection.BindingFlags.InvokeMethod,
+            null,
+            app,
+            ["MAPI"]
+        );
         ns!
             .GetType()
             .InvokeMember(

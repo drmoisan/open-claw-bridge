@@ -76,7 +76,11 @@ internal sealed class PipeRpcWorker(
         try
         {
             security.AddAccessRule(
-                new PipeAccessRule(new NTAccount("openclaw-svc"), PipeAccessRights.ReadWrite, AccessControlType.Allow)
+                new PipeAccessRule(
+                    new NTAccount("openclaw-svc"),
+                    PipeAccessRights.ReadWrite,
+                    AccessControlType.Allow
+                )
             );
         }
         catch (IdentityNotMappedException)
@@ -118,34 +122,71 @@ internal sealed class PipeRpcWorker(
                     );
                     return;
                 }
+
+                if (read == 0)
+                {
+                    return;
+                }
             } while (!server.IsMessageComplete);
 
-            var req = JsonSerializer.Deserialize<RpcRequest>(
-                Encoding.UTF8.GetString(ms.ToArray()),
-                _json
-            );
-
-            if (req is null || !BridgeMethods.All.Contains(req.Method))
-            {
-                await WriteResponse(
-                    server,
-                    RpcResponse.Failure(
-                        req?.Id ?? "unknown",
-                        BridgeErrorCodes.InvalidRequest,
-                        "Unsupported method"
-                    ),
-                    ct
-                );
-                return;
-            }
-
-            var resp = await Handle(req);
+            var resp = await BuildResponseAsync(Encoding.UTF8.GetString(ms.ToArray()));
             await WriteResponse(server, resp, ct);
         }
         catch (Exception ex)
         {
             logger.LogError("Pipe request failed: {Message}", ex.Message);
         }
+        finally
+        {
+            try
+            {
+                if (server.IsConnected)
+                {
+                    server.Disconnect();
+                }
+            }
+            catch (IOException)
+            {
+                // The client may have already disconnected before cleanup.
+            }
+            catch (ObjectDisposedException)
+            {
+                // The server lifetime is controlled by the caller.
+            }
+        }
+    }
+
+    internal async Task<RpcResponse> BuildResponseAsync(string payload)
+    {
+        if (Encoding.UTF8.GetByteCount(payload) > 65536)
+        {
+            return RpcResponse.Failure(
+                "unknown",
+                BridgeErrorCodes.PayloadTooLarge,
+                "Request exceeds 64KB"
+            );
+        }
+
+        RpcRequest? req;
+        try
+        {
+            req = JsonSerializer.Deserialize<RpcRequest>(payload, _json);
+        }
+        catch (JsonException)
+        {
+            req = null;
+        }
+
+        if (req is null || !BridgeMethods.All.Contains(req.Method))
+        {
+            return RpcResponse.Failure(
+                req?.Id ?? "unknown",
+                BridgeErrorCodes.InvalidRequest,
+                "Unsupported method"
+            );
+        }
+
+        return await Handle(req);
     }
 
     internal async Task<RpcResponse> Handle(RpcRequest req)
@@ -183,5 +224,6 @@ internal sealed class PipeRpcWorker(
 
         var bytes = JsonSerializer.SerializeToUtf8Bytes(response, _json);
         await stream.WriteAsync(bytes, ct);
+        await stream.FlushAsync(ct);
     }
 }

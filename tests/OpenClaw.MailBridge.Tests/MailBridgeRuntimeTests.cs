@@ -1,11 +1,11 @@
-using System.Reflection;
 using System.IO.Pipes;
+using System.Reflection;
+using System.Security.AccessControl;
 using System.Text;
 using System.Text.Json;
-using System.Security.AccessControl;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.MailBridge;
 using OpenClaw.MailBridge.Contracts.Models;
@@ -42,7 +42,6 @@ public class MailBridgeRuntimeTests
             }
         }
     }
-
 
     [TestMethod]
     public async Task Bridge_application_run_async_should_return_two_for_invalid_settings()
@@ -126,7 +125,8 @@ public class MailBridgeRuntimeTests
         var value = await executor.InvokeAsync(() => 42);
         value.Should().Be(42);
 
-        var act = async () => await executor.InvokeAsync<int>(() => throw new InvalidOperationException("boom"));
+        var act = async () =>
+            await executor.InvokeAsync<int>(() => throw new InvalidOperationException("boom"));
         await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("boom");
     }
 
@@ -202,7 +202,15 @@ public class MailBridgeRuntimeTests
         var repo = new FakeScanStateRepository();
         var scanner = new FakeOutlookScanner();
         var sta = new FakeStaExecutor();
-        var worker = new ScanWorker(sta, scanner, repo, BridgeSettings.Default with { InboxPollSeconds = 1 });
+        var worker = new ScanWorker(
+            sta,
+            scanner,
+            repo,
+            BridgeSettings.Default with
+            {
+                InboxPollSeconds = 1,
+            }
+        );
 
         await worker.StartAsync(CancellationToken.None);
         await Task.Delay(50);
@@ -227,33 +235,25 @@ public class MailBridgeRuntimeTests
         loaded!.Value.UtcDateTime.Should().BeCloseTo(now.UtcDateTime, TimeSpan.FromSeconds(5));
     }
 
-
     [TestMethod]
     public async Task Pipe_rpc_worker_handle_client_should_return_invalid_request_for_unknown_method()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named pipe message mode integration test is Windows-specific.");
-        }
-
         var worker = new PipeRpcWorker(
             BridgeSettings.Default,
             new BridgeStateStore(BridgeSettings.Default),
             new FakeScanStateRepository(),
             NullLogger<PipeRpcWorker>.Instance
         );
-        var response = await InvokeHandleClientAsync(worker, """{"id":"1","method":"unknown","params":null}""");
+        var response = await InvokeHandlePayloadAsync(
+            worker,
+            """{"id":"1","method":"unknown","params":null}"""
+        );
         response.Should().Contain(BridgeErrorCodes.InvalidRequest);
     }
 
     [TestMethod]
     public async Task Pipe_rpc_worker_handle_client_should_return_payload_too_large_error()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named pipe message mode integration test is Windows-specific.");
-        }
-
         var worker = new PipeRpcWorker(
             BridgeSettings.Default,
             new BridgeStateStore(BridgeSettings.Default),
@@ -264,18 +264,13 @@ public class MailBridgeRuntimeTests
         var payload =
             $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":{{\"x\":\"{oversizedParams}\"}}}}";
 
-        var response = await InvokeHandleClientAsync(worker, payload);
+        var response = await InvokeHandlePayloadAsync(worker, payload);
         response.Should().Contain(BridgeErrorCodes.PayloadTooLarge);
     }
 
     [TestMethod]
     public async Task Pipe_rpc_worker_handle_client_should_return_status_for_get_status_method()
     {
-        if (!OperatingSystem.IsWindows())
-        {
-            Assert.Inconclusive("Named pipe message mode integration test is Windows-specific.");
-        }
-
         var repo = new FakeScanStateRepository
         {
             Values =
@@ -291,7 +286,7 @@ public class MailBridgeRuntimeTests
             NullLogger<PipeRpcWorker>.Instance
         );
 
-        var response = await InvokeHandleClientAsync(
+        var response = await InvokeHandlePayloadAsync(
             worker,
             $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":null}}"
         );
@@ -334,7 +329,11 @@ public class MailBridgeRuntimeTests
 
         await using var stream = new MemoryStream();
         var huge = new string('a', 1024 * 1024 + 128);
-        await worker.WriteResponse(stream, RpcResponse.Success("id", new { huge }), CancellationToken.None);
+        await worker.WriteResponse(
+            stream,
+            RpcResponse.Success("id", new { huge }),
+            CancellationToken.None
+        );
 
         var json = System.Text.Encoding.UTF8.GetString(stream.ToArray());
         json.Should().Contain(BridgeErrorCodes.InternalError);
@@ -362,7 +361,6 @@ public class MailBridgeRuntimeTests
         buildSecurity.Should().NotThrow();
     }
 
-
     [TestMethod]
     public void Com_active_object_create_and_logon_should_throw_on_non_windows()
     {
@@ -382,6 +380,13 @@ public class MailBridgeRuntimeTests
         new ComActiveObject().TryGet("Definitely.Not.A.Real.ProgId").Should().BeNull();
     }
 
+    private static async Task<string> InvokeHandlePayloadAsync(PipeRpcWorker worker, string payload)
+    {
+        var response = await worker.BuildResponseAsync(payload);
+        await using var stream = new MemoryStream();
+        await worker.WriteResponse(stream, response, CancellationToken.None);
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
 
     private static async Task<string> InvokeHandleClientAsync(PipeRpcWorker worker, string payload)
     {
@@ -395,7 +400,10 @@ public class MailBridgeRuntimeTests
         );
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var method = typeof(PipeRpcWorker).GetMethod("HandleClientAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var method = typeof(PipeRpcWorker).GetMethod(
+            "HandleClientAsync",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
         var serverTask = Task.Run(async () =>
         {
             await server.WaitForConnectionAsync(cts.Token);
@@ -503,18 +511,21 @@ public class MailBridgeRuntimeTests
         public void Dispose() { }
     }
 
-
     private sealed class TestBridgeApplication : BridgeApplication
     {
         public int BuildHostCalls { get; private set; }
 
-        internal override Microsoft.Extensions.Hosting.IHost BuildHost(string[] args, BridgeSettings settings)
+        internal override Microsoft.Extensions.Hosting.IHost BuildHost(
+            string[] args,
+            BridgeSettings settings
+        )
         {
             BuildHostCalls++;
             return new NoOpHost();
         }
 
-        internal override Task RunHostAsync(Microsoft.Extensions.Hosting.IHost host) => Task.CompletedTask;
+        internal override Task RunHostAsync(Microsoft.Extensions.Hosting.IHost host) =>
+            Task.CompletedTask;
     }
 
     private sealed class NoOpHost : Microsoft.Extensions.Hosting.IHost
@@ -527,5 +538,4 @@ public class MailBridgeRuntimeTests
 
         public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
-
 }
