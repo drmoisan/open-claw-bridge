@@ -1,0 +1,10 @@
+Timestamp: 2026-04-07T09-08
+Command: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$base = git merge-base HEAD main; $report = Get-ChildItem -Path 'TestResults/baseline-csharp' -Filter coverage.cobertura.xml -Recurse | Sort-Object LastWriteTimeUtc | Select-Object -Last 1; if (-not $report) { throw 'coverage.cobertura.xml not found under TestResults/baseline-csharp'; }; [xml]$xml = Get-Content -Path $report.FullName; $overall = [math]::Round(([double]$xml.coverage.'line-rate') * 100, 2); $file = ''; $changed = @(); foreach ($line in (git diff --unified=0 $base -- '*.cs')) { if ($line -match '^\+\+\+ b/(?<path>.+)$') { $file = $Matches.path; continue }; if ($line -match '^@@ -\d+(?:,\d+)? \+(?<start>\d+)(?:,(?<count>\d+))? @@') { $count = if ($Matches.count) { [int]$Matches.count } else { 1 }; foreach ($offset in 0..($count - 1)) { $changed += [pscustomobject]@{ File = $file; Line = ([int]$Matches.start) + $offset } } } }; $totalChanged = 0; $hitChanged = 0; foreach ($item in $changed) { $class = $xml.coverage.packages.package.classes.class | Where-Object { $_.filename -eq $item.File -or $_.filename -like ('*' + $item.File) } | Select-Object -First 1; if ($class) { $covLine = $class.lines.line | Where-Object { [int]$_.number -eq $item.Line } | Select-Object -First 1; if ($covLine) { $totalChanged++; if ([int]$covLine.hits -gt 0) { $hitChanged++ } } } }; $changedPct = if ($totalChanged -gt 0) { [math]::Round(($hitChanged / $totalChanged) * 100, 2) } else { 100.0 }; Write-Output \"BaselineOverallLineCoverage: $overall\"; Write-Output \"ChangedOrNewLineCoverage: $changedPct\"; Write-Output \"CoverageReportPath: $($report.FullName)\""
+EXIT_CODE: 0
+Output Summary:
+- BaselineOverallLineCoverage: 100
+- ChangedOrNewLineCoverage: 100
+- CoverageReportPath: C:\Users\DanMoisan\repos\open-claw-bridge\TestResults\baseline-csharp\coverage.cobertura.xml
+BaselineOverallLineCoverage: 100
+ChangedOrNewLineCoverage: 100
+CoverageReportPath: C:\Users\DanMoisan\repos\open-claw-bridge\TestResults\baseline-csharp\coverage.cobertura.xml

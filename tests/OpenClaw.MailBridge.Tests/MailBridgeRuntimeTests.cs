@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Reflection;
 using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
@@ -14,7 +15,7 @@ using OpenClaw.MailBridge.Contracts.Models;
 namespace OpenClaw.MailBridge.Tests;
 
 [TestClass]
-public class MailBridgeRuntimeTests
+public partial class MailBridgeRuntimeTests
 {
     [TestMethod]
     public void Bridge_application_get_arg_should_return_value_after_key()
@@ -179,7 +180,10 @@ public class MailBridgeRuntimeTests
     {
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings);
-        var com = new FakeComActiveObject { RunningObject = new object() };
+        var outlook = new FakeOutlookApplication();
+        outlook.Namespace.DefaultFolders[6] = new FakeOutlookFolder();
+        outlook.Namespace.DefaultFolders[9] = new FakeOutlookFolder();
+        var com = new FakeComActiveObject { RunningObject = outlook };
         var repo = new FakeScanStateRepository();
         var now = new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.Zero);
         var scanner = new OutlookScanner(
@@ -196,7 +200,8 @@ public class MailBridgeRuntimeTests
         state.State.Should().Be(BridgeState.ready);
         state.OutlookConnected.Should().BeTrue();
         state.LastInboxScanUtc.Should().Be(now);
-        repo.Touches.Should().Be(2);
+        state.LastCalendarScanUtc.Should().Be(now);
+        repo.Touches.Should().Be(3);
     }
 
     [TestMethod]
@@ -319,7 +324,7 @@ public class MailBridgeRuntimeTests
     }
 
     [TestMethod]
-    public async Task Pipe_rpc_worker_handle_should_return_status_and_default_items()
+    public async Task Pipe_rpc_worker_handle_should_return_status_and_repository_backed_items()
     {
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings) { CacheStale = true, StaleReason = "unit-test" };
@@ -331,14 +336,48 @@ public class MailBridgeRuntimeTests
                 ["last_calendar_scan_utc"] = DateTimeOffset.UtcNow,
             },
         };
+        await repo.UpsertMessageAsync(
+            "entry-1",
+            "store-1",
+            new MessageDto(
+                BridgeIdCodec.MessageId("entry-1", false),
+                "mail",
+                "Subject",
+                DateTimeOffset.UtcNow,
+                DateTimeOffset.UtcNow,
+                null,
+                null,
+                true,
+                false,
+                "IPM.Note",
+                "Sender",
+                "sender@example.com",
+                null,
+                null,
+                "Preview",
+                true,
+                false
+            )
+        );
 
         var worker = new PipeRpcWorker(settings, state, repo, NullLogger<PipeRpcWorker>.Instance);
 
         var status = await worker.Handle(new RpcRequest("1", BridgeMethods.GetStatus, null));
         status.Ok.Should().BeTrue();
 
-        var list = await worker.Handle(new RpcRequest("2", BridgeMethods.ListRecentMessages, null));
+        var list = await worker.Handle(
+            new RpcRequest(
+                "2",
+                BridgeMethods.ListRecentMessages,
+                new Dictionary<string, string>
+                {
+                    ["since"] = DateTimeOffset.UtcNow.AddDays(-1).ToString("O"),
+                    ["limit"] = "10",
+                }
+            )
+        );
         list.Ok.Should().BeTrue();
+        list.Result.Should().NotBeNull();
     }
 
     [TestMethod]
@@ -382,7 +421,16 @@ public class MailBridgeRuntimeTests
         }
 
         var buildSecurity = () => worker.BuildPipeSecurity();
-        buildSecurity.Should().NotThrow();
+
+        try
+        {
+            _ = new NTAccount("openclaw-svc").Translate(typeof(SecurityIdentifier));
+            buildSecurity.Should().NotThrow();
+        }
+        catch (IdentityNotMappedException)
+        {
+            buildSecurity.Should().Throw<IdentityNotMappedException>();
+        }
     }
 
     [TestMethod]

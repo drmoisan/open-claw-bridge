@@ -9,7 +9,15 @@ internal static class Program
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static async Task<int> Main(string[] args)
+    private static Task<int> Main(string[] args) =>
+        RunAsync(args, Send, Console.Out, Console.Error);
+
+    internal static async Task<int> RunAsync(
+        string[] args,
+        Func<string, RpcRequest, Task<RpcResponse>> send,
+        TextWriter stdout,
+        TextWriter stderr
+    )
     {
         try
         {
@@ -19,8 +27,9 @@ internal static class Program
             var req = Build(parsed.Value.command, parsed.Value.options);
             if (req is null)
                 return 5;
-            var resp = await Send(req);
-            Console.Out.WriteLine(JsonSerializer.Serialize(resp, Json));
+            var pipeName = ResolvePipeName(parsed.Value.options);
+            var resp = await send(pipeName, req);
+            await stdout.WriteLineAsync(JsonSerializer.Serialize(resp, Json));
             if (resp.Ok)
                 return 0;
             return resp.Error?.Code switch
@@ -28,31 +37,32 @@ internal static class Program
                 BridgeErrorCodes.Unauthorized => 3,
                 BridgeErrorCodes.OutlookUnavailable => 4,
                 BridgeErrorCodes.InvalidRequest => 5,
+                BridgeErrorCodes.PayloadTooLarge => 5,
                 _ => 6,
             };
         }
         catch (UnauthorizedAccessException uae)
         {
-            Console.Error.WriteLine(uae.Message);
+            await stderr.WriteLineAsync(uae.Message);
             return 3;
         }
         catch (TimeoutException tex)
         {
-            Console.Error.WriteLine(tex.Message);
+            await stderr.WriteLineAsync(tex.Message);
             return 2;
         }
         catch (IOException ioex)
         {
-            Console.Error.WriteLine(ioex.Message);
+            await stderr.WriteLineAsync(ioex.Message);
             return 2;
         }
     }
 
-    private static async Task<RpcResponse> Send(RpcRequest req)
+    internal static async Task<RpcResponse> Send(string pipeName, RpcRequest req)
     {
         await using var client = new NamedPipeClientStream(
             ".",
-            "openclaw_mailbridge_v1",
+            pipeName,
             PipeDirection.InOut,
             PipeOptions.Asynchronous
         );
@@ -72,7 +82,7 @@ internal static class Program
             ?? RpcResponse.Failure(req.Id, BridgeErrorCodes.InternalError, "Invalid response");
     }
 
-    private static (string command, Dictionary<string, string> options)? Parse(string[] args)
+    internal static (string command, Dictionary<string, string> options)? Parse(string[] args)
     {
         if (args.Length == 0)
         {
@@ -90,7 +100,7 @@ internal static class Program
         return (args[0], options);
     }
 
-    private static RpcRequest? Build(string command, Dictionary<string, string> opts)
+    internal static RpcRequest? Build(string command, Dictionary<string, string> opts)
     {
         var id = Guid.NewGuid().ToString();
         return command switch
@@ -116,6 +126,44 @@ internal static class Program
             "get-event" => Req(id, BridgeMethods.GetEvent, opts, "id"),
             _ => null,
         };
+    }
+
+    internal static string ResolvePipeName(Dictionary<string, string> options)
+    {
+        if (
+            options.TryGetValue("pipe_name", out var overridePipeName)
+            && !string.IsNullOrWhiteSpace(overridePipeName)
+        )
+        {
+            return overridePipeName;
+        }
+
+        var settingsPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClaw",
+            "MailBridge",
+            "bridge.settings.json"
+        );
+        if (!File.Exists(settingsPath))
+        {
+            return BridgeSettings.Default.PipeName;
+        }
+
+        try
+        {
+            var settings = JsonSerializer.Deserialize<BridgeSettings>(
+                File.ReadAllText(settingsPath),
+                Json
+            );
+            return string.IsNullOrWhiteSpace(settings?.PipeName)
+                ? BridgeSettings.Default.PipeName
+                : settings.PipeName;
+        }
+        catch (JsonException)
+        {
+            Console.Error.WriteLine($"Ignoring invalid bridge settings file at '{settingsPath}'.");
+            return BridgeSettings.Default.PipeName;
+        }
     }
 
     private static RpcRequest? Req(

@@ -37,7 +37,13 @@ internal class BridgeApplication
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(new BridgeStateStore(settings));
-        builder.Services.AddSingleton<IScanStateRepository, CacheRepository>();
+        builder.Services.AddSingleton<CacheRepository>();
+        builder.Services.AddSingleton<IBridgeRepository>(sp =>
+            sp.GetRequiredService<CacheRepository>()
+        );
+        builder.Services.AddSingleton<IScanStateRepository>(sp =>
+            sp.GetRequiredService<CacheRepository>()
+        );
         builder.Services.AddSingleton<IOutlookStaExecutor, OutlookStaExecutor>();
         builder.Services.AddSingleton<IOutlookScanner, OutlookScanner>();
         builder.Services.AddHostedService<ScanWorker>();

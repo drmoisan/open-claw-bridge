@@ -11,6 +11,7 @@ coverage/
 coverage-*/
 *.coverage
 *.coveragexml
+coverage.xml
 
 # Logs
 *.log
@@ -67,3 +68,5 @@ desktop.ini
 *.temp
 *.cache
 .github/
+.tmp-tools/
+.tool-wrappers/

@@ -87,4 +87,37 @@ internal class ComActiveObject
             );
         return app;
     }
+
+    /// <summary>
+    /// Releases a COM reference when the supplied object is a COM RCW.
+    /// </summary>
+    /// <param name="comObject">Object to release.</param>
+    public virtual void Release(object? comObject)
+    {
+        if (comObject is null || !Marshal.IsComObject(comObject))
+        {
+            return;
+        }
+
+        try
+        {
+            Marshal.FinalReleaseComObject(comObject);
+        }
+        catch (ArgumentException)
+        {
+            // The object was not a live COM wrapper anymore.
+        }
+    }
+
+    /// <summary>
+    /// Releases each supplied COM reference in reverse acquisition order.
+    /// </summary>
+    /// <param name="comObjects">Objects to release.</param>
+    public virtual void ReleaseAll(params object?[] comObjects)
+    {
+        for (var i = comObjects.Length - 1; i >= 0; i--)
+        {
+            Release(comObjects[i]);
+        }
+    }
 }

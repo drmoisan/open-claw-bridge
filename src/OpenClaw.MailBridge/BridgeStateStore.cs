@@ -57,4 +57,40 @@ internal sealed class BridgeStateStore
     /// </summary>
     /// <param name="state">New lifecycle state.</param>
     public void SetState(BridgeState state) => State = state;
+
+    /// <summary>
+    /// Marks the bridge ready and clears stale-cache flags after a successful scan cycle.
+    /// </summary>
+    /// <param name="lastInboxScanUtc">Latest successful inbox scan timestamp.</param>
+    /// <param name="lastCalendarScanUtc">Latest successful calendar scan timestamp.</param>
+    public void MarkReady(DateTimeOffset? lastInboxScanUtc, DateTimeOffset? lastCalendarScanUtc)
+    {
+        LastInboxScanUtc = lastInboxScanUtc;
+        LastCalendarScanUtc = lastCalendarScanUtc;
+        CacheStale = false;
+        StaleReason = null;
+        OutlookConnected = true;
+        State = BridgeState.ready;
+    }
+
+    /// <summary>
+    /// Marks the bridge degraded while preserving the last known timestamps.
+    /// </summary>
+    /// <param name="reason">Human-readable stale-cache reason.</param>
+    public void MarkCacheStale(string reason)
+    {
+        CacheStale = true;
+        StaleReason = reason;
+        State = BridgeState.degraded;
+    }
+
+    /// <summary>
+    /// Marks Outlook unavailable without discarding the last known cache timestamps.
+    /// </summary>
+    /// <param name="reason">Reason that Outlook could not be used.</param>
+    public void MarkOutlookUnavailable(string reason)
+    {
+        OutlookConnected = false;
+        MarkCacheStale(reason);
+    }
 }
