@@ -1,384 +1,415 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+# codex-web-setup.sh
+#
+# Purpose:
+#   Bootstrap a repository inside a Codex Web cloud environment.
+#
+# Design goals:
+#   - Safe in non-interactive cloud setup
+#   - Works on detached HEAD checkouts
+#   - Performs only environment/bootstrap tasks
+#   - Never mutates git history or requires GitHub auth
+#   - Emits clear diagnostics to help troubleshoot failures
+#
+# What it does:
+#   - Prints basic repo/runtime diagnostics
+#   - Detects common package manager manifests
+#   - Runs conservative dependency install steps when appropriate
+#   - Restores repo .NET SDK/tools/packages when a .NET solution is present
+#   - Optionally runs a repo-provided bootstrap hook if present
+#
+# What it does NOT do:
+#   - No git fetch/push/branch creation
+#   - No interactive prompts
+#   - No Codex/GitHub account linking
+#   - No repo scaffolding generation
 
-# Codex Web copies this script to /tmp before running it, so the script-relative
-# REPO_ROOT resolves to / rather than the actual checkout.  Fall back to the
-# working directory, which Codex sets to the repo root.
-if [ ! -f "${REPO_ROOT}/TaskMaster.sln" ]; then
-  REPO_ROOT="$(pwd)"
-fi
+SCRIPT_NAME="$(basename "$0")"
 
-log() {
-  printf '[codex-web-setup] %s\n' "$*"
+say() { printf '%s\n' "$*"; }
+warn() { printf 'WARN: %s\n' "$*" >&2; }
+err() { printf 'ERROR: %s\n' "$*" >&2; }
+
+have() {
+  command -v "$1" >/dev/null 2>&1
 }
 
-fail() {
-  printf '[codex-web-setup] error: %s\n' "$*" >&2
-  exit 1
+is_windows() {
+  [[ "${OS:-}" == "Windows_NT" ]]
 }
 
-warn() {
-  printf '[codex-web-setup] warning: %s\n' "$*" >&2
+prepend_path() {
+  local dir="$1"
+  [[ -d "$dir" ]] || return 0
+  [[ ":$PATH:" == *":$dir:"* ]] || export PATH="$dir:$PATH"
 }
 
-read_global_json_sdk_version() {
-  local global_json_path="${REPO_ROOT}/global.json"
+repo_root() {
+  git rev-parse --show-toplevel 2>/dev/null || pwd
+}
 
-  if [ ! -f "${global_json_path}" ]; then
+head_ref() {
+  git rev-parse --abbrev-ref HEAD 2>/dev/null || printf 'UNKNOWN\n'
+}
+
+head_sha() {
+  git rev-parse --short HEAD 2>/dev/null || printf 'UNKNOWN\n'
+}
+
+maybe_run() {
+  say "==> $*"
+  "$@"
+}
+
+download_to() {
+  local url="$1"
+  local output_path="$2"
+
+  if have curl; then
+    maybe_run curl -fsSL "$url" -o "$output_path"
+    return 0
+  fi
+
+  if have wget; then
+    maybe_run wget -qO "$output_path" "$url"
+    return 0
+  fi
+
+  err "Neither curl nor wget is available to download $url"
+  return 1
+}
+
+find_solution_file() {
+  local solutions=()
+
+  shopt -s nullglob
+  solutions=(*.sln)
+  shopt -u nullglob
+
+  if ((${#solutions[@]} == 1)); then
+    printf '%s\n' "${solutions[0]}"
+  fi
+}
+
+has_dotnet_projects() {
+  compgen -G "*.sln" >/dev/null || compgen -G "*.csproj" >/dev/null || [[ -f global.json ]]
+}
+
+required_dotnet_sdk() {
+  [[ -f global.json ]] || return 0
+
+  sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' global.json | head -n 1
+}
+
+repo_targets_windows() {
+  find . -type f \( -name '*.csproj' -o -name '*.props' -o -name '*.targets' \) -print0 2>/dev/null |
+    xargs -0 grep -El '<TargetFrameworks?>[^<]*-windows|<UseWPF>true</UseWPF>|<UseWindowsForms>true</UseWindowsForms>' >/dev/null 2>&1
+}
+
+activate_dotnet_from_common_locations() {
+  local dotnet_root=""
+
+  if [[ -n "${DOTNET_ROOT:-}" && -x "${DOTNET_ROOT}/dotnet" ]]; then
+    dotnet_root="${DOTNET_ROOT}"
+  elif [[ -x "${HOME}/.dotnet/dotnet" ]]; then
+    dotnet_root="${HOME}/.dotnet"
+  elif [[ -x "/usr/share/dotnet/dotnet" ]]; then
+    dotnet_root="/usr/share/dotnet"
+  fi
+
+  if [[ -n "$dotnet_root" ]]; then
+    export DOTNET_ROOT="$dotnet_root"
+    prepend_path "$DOTNET_ROOT"
+    prepend_path "$DOTNET_ROOT/tools"
+  fi
+
+  have dotnet
+}
+
+bootstrap_dotnet_sdk() {
+  local required_sdk="$1"
+  local install_dir="${DOTNET_INSTALL_DIR:-${HOME}/.dotnet}"
+  local installer
+
+  mkdir -p "$install_dir"
+  installer="$(mktemp)"
+
+  download_to "https://dot.net/v1/dotnet-install.sh" "$installer" || {
+    rm -f "$installer"
+    return 1
+  }
+
+  chmod +x "$installer"
+  maybe_run bash "$installer" --version "$required_sdk" --install-dir "$install_dir" --no-path
+  rm -f "$installer"
+
+  export DOTNET_ROOT="$install_dir"
+  prepend_path "$DOTNET_ROOT"
+  prepend_path "$DOTNET_ROOT/tools"
+  hash -r
+}
+
+install_dotnet() {
+  has_dotnet_projects || return 0
+
+  local resolved_sdk=""
+  local required_sdk=""
+  local restore_target=""
+  local -a restore_args=(restore)
+
+  required_sdk="$(required_dotnet_sdk || true)"
+  restore_target="$(find_solution_file || true)"
+
+  say "==> .NET repository detected"
+  if [[ -n "$required_sdk" ]]; then
+    say "==> global.json SDK: $required_sdk"
+  fi
+
+  if ! activate_dotnet_from_common_locations; then
+    [[ -n "$required_sdk" ]] || {
+      err ".NET repo detected but dotnet is not installed and no global.json SDK version was found."
+      return 1
+    }
+
+    say "==> dotnet not found on PATH; installing SDK $required_sdk"
+    bootstrap_dotnet_sdk "$required_sdk" || {
+      err "Failed to install .NET SDK $required_sdk."
+      return 1
+    }
+  fi
+
+  if ! resolved_sdk="$(dotnet --version 2>/dev/null)"; then
+    if [[ -n "$required_sdk" ]]; then
+      say "==> Installed dotnet could not satisfy global.json; retrying with SDK $required_sdk"
+      bootstrap_dotnet_sdk "$required_sdk" || {
+        err "Failed to install a compatible .NET SDK for global.json version $required_sdk."
+        return 1
+      }
+      resolved_sdk="$(dotnet --version 2>/dev/null)" || true
+    fi
+  fi
+
+  if [[ -z "$resolved_sdk" ]]; then
+    err "dotnet is installed but no compatible SDK could be resolved for this repository."
+    if [[ -n "$required_sdk" ]]; then
+      err "Install a compatible SDK for global.json version $required_sdk."
+    fi
     return 1
   fi
 
-  grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "${global_json_path}" |
-    head -n 1 |
-    sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
+  say "==> dotnet SDK: $resolved_sdk"
+  maybe_run dotnet --list-sdks
+
+  if [[ -f .config/dotnet-tools.json ]]; then
+    maybe_run dotnet tool restore
+  fi
+
+  if ! is_windows && repo_targets_windows; then
+    say "==> Enabling Windows targeting for non-Windows restore"
+    restore_args+=(-p:EnableWindowsTargeting=true)
+  fi
+
+  if [[ -n "$restore_target" ]]; then
+    restore_args+=("$restore_target")
+  fi
+
+  maybe_run dotnet "${restore_args[@]}"
 }
 
-append_if_missing() {
-  local file="$1"
-  local line="$2"
-
-  touch "$file"
-  if ! grep -Fqx "$line" "$file"; then
-    printf '%s\n' "$line" >>"$file"
-  fi
-}
-
-install_apt_packages() {
-  if ! command -v apt-get >/dev/null 2>&1; then
-    warn "apt-get is unavailable; skipping OS package installation."
-    return
-  fi
-
-  local runner=""
-  if [ "$(id -u)" -eq 0 ]; then
-    runner=""
-  elif command -v sudo >/dev/null 2>&1; then
-    runner="sudo"
-  else
-    warn "apt-get requires root and sudo is unavailable; skipping OS package installation."
-    return
-  fi
-
-  log "Installing Codex Web dependencies with apt-get..."
-  ${runner} apt-get update
-  ${runner} apt-get install -y \
-    ca-certificates \
-    curl \
-    git \
-    jq \
-    lsb-release \
-    mono-complete \
-    ripgrep \
-    unzip \
-    zip
-}
-
-install_powershell() {
-  if command -v pwsh >/dev/null 2>&1; then
-    log "PowerShell is already available; skipping."
-    return
-  fi
-
-  if ! command -v apt-get >/dev/null 2>&1; then
-    warn "apt-get is unavailable; skipping PowerShell installation."
-    return
-  fi
-
-  local runner=""
-  if [ "$(id -u)" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1; then
-      runner="sudo"
-    else
-      warn "PowerShell installation requires root; skipping."
-      return
-    fi
-  fi
-
-  local ubuntu_version
-  ubuntu_version="$(lsb_release -rs 2>/dev/null || echo '24.04')"
-
-  log "Registering Microsoft package repository for PowerShell (Ubuntu ${ubuntu_version})..."
-  local ms_pkg
-  ms_pkg="$(mktemp --suffix=.deb)"
-  if curl -fsSL "https://packages.microsoft.com/config/ubuntu/${ubuntu_version}/packages-microsoft-prod.deb" -o "${ms_pkg}"; then
-    ${runner} dpkg -i "${ms_pkg}" || true
-    rm -f "${ms_pkg}"
-    ${runner} apt-get update
-    ${runner} apt-get install -y powershell
-  else
-    rm -f "${ms_pkg}"
-    warn "Could not download Microsoft package repo; skipping PowerShell installation."
-  fi
-}
-
-install_nuget() {
-  if command -v nuget >/dev/null 2>&1; then
-    log "nuget is already available; skipping."
-    return
-  fi
-
-  if ! command -v mono >/dev/null 2>&1; then
-    warn "mono is unavailable; cannot install nuget wrapper."
-    return
-  fi
-
-  log "Downloading nuget.exe and creating mono wrapper..."
-  local nuget_exe="/usr/local/bin/nuget.exe"
-  local nuget_wrapper="/usr/local/bin/nuget"
-
-  local runner=""
-  if [ "$(id -u)" -ne 0 ]; then
-    runner="sudo"
-  fi
-
-  if curl -fsSL "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -o "${nuget_exe}"; then
-    printf '#!/usr/bin/env bash\nexec mono %s "$@"\n' "${nuget_exe}" | ${runner} tee "${nuget_wrapper}" >/dev/null
-    ${runner} chmod +x "${nuget_wrapper}"
-    log "nuget wrapper installed at ${nuget_wrapper}."
-  else
-    warn "Could not download nuget.exe; skipping."
-  fi
-}
-
-install_dotnet_sdk() {
-  local dotnet_root="${REPO_ROOT}/.dotnet-sdk"
-  local dotnet_version=""
-  local install_script=""
-
-  dotnet_version="$(read_global_json_sdk_version || true)"
-  if [ -z "${dotnet_version}" ]; then
-    warn "Could not read the SDK version from global.json; skipping repo-local .NET SDK installation."
-    return
-  fi
-
-  if [ -x "${dotnet_root}/dotnet" ] && [ -d "${dotnet_root}/sdk/${dotnet_version}" ]; then
-    log "Repo-local .NET SDK ${dotnet_version} is already available at ${dotnet_root}."
-  else
-    log "Installing repo-local .NET SDK ${dotnet_version} into ${dotnet_root}..."
-    install_script="$(mktemp)"
-    curl -fsSL https://dot.net/v1/dotnet-install.sh -o "${install_script}"
-    bash "${install_script}" --version "${dotnet_version}" --install-dir "${dotnet_root}"
-    rm -f "${install_script}"
-  fi
-
-  export DOTNET_ROOT="${dotnet_root}"
-  export PATH="${dotnet_root}:${PATH}"
-
-  append_if_missing "${HOME}/.bashrc" "export DOTNET_ROOT=\"${dotnet_root}\""
-  append_if_missing "${HOME}/.bashrc" "export PATH=\"${dotnet_root}:\$PATH\""
-}
-
-install_dotnet_tools() {
-  if ! command -v dotnet >/dev/null 2>&1; then
-    fail "dotnet is unavailable; cannot restore the required dotnet tool manifest."
-  fi
-
-  if [ ! -f "${REPO_ROOT}/dotnet-tools.json" ]; then
-    fail "Required dotnet tool manifest not found at ${REPO_ROOT}/dotnet-tools.json."
-  fi
-
-  log "Restoring repo-local dotnet tools from dotnet-tools.json..."
-  (
-    cd "${REPO_ROOT}"
-    dotnet tool restore --tool-manifest "${REPO_ROOT}/dotnet-tools.json"
-  )
-}
-
-install_dotnet_coverage() {
-  if ! command -v dotnet >/dev/null 2>&1; then
-    fail "dotnet is unavailable; cannot install dotnet-coverage."
-  fi
-
-  local dotnet_tools_dir="${HOME}/.dotnet/tools"
-  mkdir -p "${dotnet_tools_dir}"
-
-  export PATH="${dotnet_tools_dir}:${PATH}"
-  append_if_missing "${HOME}/.bashrc" "export PATH=\"\$HOME/.dotnet/tools:\$PATH\""
-
-  if command -v dotnet-coverage >/dev/null 2>&1; then
-    log "dotnet-coverage is already available; skipping."
-    return
-  fi
-
-  log "Installing dotnet-coverage as a global dotnet tool..."
-  if dotnet tool list --global | grep -Eq '^dotnet-coverage\s'; then
-    dotnet tool update --global dotnet-coverage
-  else
-    dotnet tool install --global dotnet-coverage
-  fi
-}
-
-install_actionlint() {
-  if command -v actionlint >/dev/null 2>&1; then
-    log "actionlint is already available; skipping."
-    return
-  fi
-
-  if ! command -v tar >/dev/null 2>&1; then
-    warn "tar is unavailable; skipping actionlint installation."
-    return
-  fi
-
-  local actionlint_version="1.7.7"
-  local temp_dir=""
-  local runner=""
-
-  if [ "$(id -u)" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1; then
-      runner="sudo"
-    else
-      warn "actionlint installation requires root or sudo; skipping."
-      return
-    fi
-  fi
-
-  temp_dir="$(mktemp -d)"
-  log "Installing actionlint v${actionlint_version}..."
-  if curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${actionlint_version}/actionlint_${actionlint_version}_linux_amd64.tar.gz" -o "${temp_dir}/actionlint.tar.gz"; then
-    tar -xzf "${temp_dir}/actionlint.tar.gz" -C "${temp_dir}" actionlint
-    ${runner} install -m 0755 "${temp_dir}/actionlint" /usr/local/bin/actionlint
-    log "actionlint installed at /usr/local/bin/actionlint."
-  else
-    warn "Could not download actionlint; skipping."
-  fi
-
-  rm -rf "${temp_dir}"
-}
-
-restore_packages_if_needed() {
-  cd "${REPO_ROOT}"
-
-  if [ -d "${REPO_ROOT}/packages" ] && [ -n "$(find "${REPO_ROOT}/packages" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-    log "packages/ is already populated; skipping restore."
-    return
-  fi
-
-  if ! command -v nuget >/dev/null 2>&1; then
-    warn "nuget is unavailable; cannot restore packages.config dependencies."
-    return
-  fi
-
-  log "Restoring solution packages into packages/..."
-  nuget restore "${REPO_ROOT}/TaskMaster.sln" -PackagesDirectory "${REPO_ROOT}/packages"
-}
-
-verify_formatting_capability() {
-  log "Verifying formatting capability..."
-
-  command -v dotnet >/dev/null 2>&1 || fail "dotnet is not available after setup."
-  command -v pwsh >/dev/null 2>&1 || fail "pwsh is not available after setup."
-
-  (
-    cd "${REPO_ROOT}"
-    dotnet tool run csharpier --version >/dev/null
-  ) || fail "CSharpier is not runnable via 'dotnet tool run csharpier'."
-}
-
-is_windows_powershell_host() {
-  pwsh -NoProfile -ExecutionPolicy Bypass -Command "& { if (\$IsWindows) { exit 0 } ; exit 1 }" >/dev/null 2>&1
-}
-
-verify_windows_visual_studio_task_capability() {
-  pwsh -NoProfile -ExecutionPolicy Bypass -File "${REPO_ROOT}/scripts/vscode/Invoke-VSBuild.ps1" -SolutionPath TaskMaster.sln -Configuration Debug -Platform 'Any CPU' -NoExecute >/dev/null || fail "MSBuild tooling required by the restore/build/lint/type-check tasks is unavailable."
-
-  pwsh -NoProfile -ExecutionPolicy Bypass -Command "& {
-    \$vswherePath = Join-Path \${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (-not (Test-Path \$vswherePath)) {
-      throw 'vswhere.exe was not found. Install Visual Studio 2022 (or Build Tools) with Test Platform components.'
+install_node() {
+  if [[ -f package-lock.json ]]; then
+    have npm || {
+      warn "npm not found; skipping Node install"
+      return 0
     }
-
-    \$vstestPath = & \$vswherePath -latest -products * -find 'Common7\IDE\Extensions\TestPlatform\vstest.console.exe' | Select-Object -First 1
-    if (-not \$vstestPath) {
-      throw 'vstest.console.exe not found via vswhere. Install Visual Studio Test Platform components.'
-    }
-  }" >/dev/null || fail "Visual Studio test tooling required by the MSTest tasks is unavailable."
-}
-
-verify_build_and_test_capability() {
-  log "Verifying restore/build/lint/type-check/test capability..."
-
-  command -v pwsh >/dev/null 2>&1 || fail "pwsh is not available after setup."
-  command -v dotnet-coverage >/dev/null 2>&1 || fail "dotnet-coverage is not available after setup."
-  [ -f "${REPO_ROOT}/coverage.config" ] || fail "coverage.config is missing from the repository root."
-
-  if ! is_windows_powershell_host; then
-    warn "Skipping Windows-only Visual Studio task verification because this host is not Windows. Restore/build/test parity still requires Windows plus Visual Studio tooling discoverable via vswhere.exe."
-    return
+    maybe_run npm ci
+    return 0
   fi
 
-  verify_windows_visual_studio_task_capability
+  if [[ -f npm-shrinkwrap.json ]]; then
+    have npm || {
+      warn "npm not found; skipping Node install"
+      return 0
+    }
+    maybe_run npm ci
+    return 0
+  fi
+
+  if [[ -f pnpm-lock.yaml ]]; then
+    if have pnpm; then
+      maybe_run pnpm install --frozen-lockfile
+    elif have corepack; then
+      maybe_run corepack pnpm install --frozen-lockfile
+    else
+      warn "pnpm lockfile found but pnpm/corepack unavailable; skipping Node install"
+    fi
+    return 0
+  fi
+
+  if [[ -f yarn.lock ]]; then
+    if have yarn; then
+      maybe_run yarn install --frozen-lockfile
+    elif have corepack; then
+      maybe_run corepack yarn install --frozen-lockfile
+    else
+      warn "yarn lockfile found but yarn/corepack unavailable; skipping Node install"
+    fi
+    return 0
+  fi
+
+  if [[ -f package.json ]]; then
+    have npm || {
+      warn "package.json found but npm not available; skipping Node install"
+      return 0
+    }
+    maybe_run npm install
+  fi
 }
 
-verify_required_task_tooling() {
-  verify_formatting_capability
-  verify_build_and_test_capability
+install_python() {
+  if [[ -f requirements.txt ]]; then
+    have python || have python3 || {
+      warn "Python not found; skipping pip install"
+      return 0
+    }
+    local py
+    py="$(command -v python || command -v python3)"
+    maybe_run "$py" -m pip install --upgrade pip
+    maybe_run "$py" -m pip install -r requirements.txt
+    return 0
+  fi
+
+  if [[ -f pyproject.toml ]]; then
+    if have poetry && grep -Eq '^\[tool\.poetry\]' pyproject.toml; then
+      maybe_run poetry install --no-interaction
+      return 0
+    fi
+
+    if have uv; then
+      maybe_run uv sync
+      return 0
+    fi
+
+    if have python || have python3; then
+      local py
+      py="$(command -v python || command -v python3)"
+      maybe_run "$py" -m pip install --upgrade pip
+      maybe_run "$py" -m pip install -e .
+      return 0
+    fi
+
+    warn "pyproject.toml found but no supported Python installer available; skipping Python install"
+  fi
 }
 
-write_repo_notes() {
-  cat <<'EOF'
+install_ruby() {
+  if [[ -f Gemfile ]]; then
+    have bundle || {
+      warn "Gemfile found but bundler unavailable; skipping bundle install"
+      return 0
+    }
+    maybe_run bundle install
+  fi
+}
 
-Workspace profile detected:
-- Legacy Visual Studio solution targeting .NET Framework 4.8.1
-- Repo-pinned .NET SDK via global.json with install path rooted at .dotnet-sdk/
-- Local dotnet tool manifest for CSharpier
-- Global dotnet-coverage installation for MSTest coverage collection
-- Windows-first build/test scripts that rely on VS tools such as vswhere, MSBuild.exe, and vstest.console.exe
-- Outlook interop and VSTO references across the main add-in and supporting libraries
+install_go() {
+  if [[ -f go.mod ]]; then
+    have go || {
+      warn "go.mod found but Go unavailable; skipping go mod download"
+      return 0
+    }
+    maybe_run go mod download
+  fi
+}
 
-Codex Web caveat:
-- This script verifies general Codex Web prerequisites everywhere, and it verifies the full Visual Studio task chain only on Windows hosts.
-- In Linux-based Codex Web, the script completes with a warning after skipping the Windows-only Visual Studio checks because the restore/build/test tasks require Windows plus Visual Studio 2022 or Build Tools components discoverable through vswhere.exe.
-- Full add-in build/debug parity still requires Windows with Visual Studio 2022, Office/VSTO tooling, and Outlook desktop.
+install_rust() {
+  if [[ -f Cargo.toml ]]; then
+    have cargo || {
+      warn "Cargo.toml found but cargo unavailable; skipping cargo fetch"
+      return 0
+    }
+    maybe_run cargo fetch
+  fi
+}
 
-Useful follow-up commands after a successful setup run:
-- source ~/.bashrc
-- dotnet --info
-- dotnet tool run csharpier format .
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-Restore.ps1 -SolutionPath TaskMaster.sln -Configuration Debug -Platform "Any CPU"
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-VSBuild.ps1 -SolutionPath TaskMaster.sln -Configuration Debug -Platform "Any CPU" -EnableNETAnalyzers -EnforceCodeStyleInBuild
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-VSBuild.ps1 -SolutionPath TaskMaster.sln -Configuration Debug -Platform "Any CPU" -EnableNullable -TreatWarningsAsErrors
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-MSTest.ps1 -SearchRoot . -Configuration Debug
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-MSTestWithCoverage.ps1 -SearchRoot . -Configuration Debug
+install_php() {
+  if [[ -f composer.json ]]; then
+    have composer || {
+      warn "composer.json found but composer unavailable; skipping composer install"
+      return 0
+    }
+    maybe_run composer install --no-interaction --prefer-dist
+  fi
+}
 
-Note:
-- The repo's existing PowerShell helper scripts under scripts/vscode/ are Windows/Visual Studio oriented by design, so Linux-based Codex Web setup can prepare only a partial toolchain.
-EOF
+install_java() {
+  if [[ -f gradlew ]]; then
+    chmod +x ./gradlew || true
+    maybe_run ./gradlew dependencies
+    return 0
+  fi
+
+  if [[ -f pom.xml ]]; then
+    have mvn || {
+      warn "pom.xml found but mvn unavailable; skipping maven dependency resolution"
+      return 0
+    }
+    maybe_run mvn -B -q -DskipTests dependency:go-offline
+  fi
+}
+
+run_repo_hook() {
+  local hook=""
+
+  for candidate in \
+    .codex/setup.sh \
+    codex/setup.sh \
+    scripts/codex-setup.sh \
+    scripts/setup-codex.sh \
+    .devcontainer/postCreateCommand.sh; do
+    if [[ -f "$candidate" ]]; then
+      hook="$candidate"
+      break
+    fi
+  done
+
+  if [[ -n "$hook" ]]; then
+    say "==> Running repo bootstrap hook: $hook"
+    bash "$hook"
+  else
+    say "==> No repo bootstrap hook found"
+  fi
 }
 
 main() {
-  log "Bootstrapping a Codex Web environment for ${REPO_ROOT}"
+  say "==> $SCRIPT_NAME starting"
 
-  export CI=true
-  export DOTNET_CLI_TELEMETRY_OPTOUT=1
-  export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
-  export DOTNET_MULTILEVEL_LOOKUP=0
-  export NUGET_XMLDOC_MODE=skip
+  local root
+  root="$(repo_root)"
+  cd "$root"
 
-  append_if_missing "${HOME}/.bashrc" 'export CI=true'
-  append_if_missing "${HOME}/.bashrc" 'export DOTNET_CLI_TELEMETRY_OPTOUT=1'
-  append_if_missing "${HOME}/.bashrc" 'export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1'
-  append_if_missing "${HOME}/.bashrc" 'export DOTNET_MULTILEVEL_LOOKUP=0'
-  append_if_missing "${HOME}/.bashrc" 'export NUGET_XMLDOC_MODE=skip'
+  say "==> Repository root: $root"
+  say "==> HEAD ref: $(head_ref)"
+  say "==> HEAD sha: $(head_sha)"
 
-  install_apt_packages
-  install_powershell
-  install_nuget
-  install_dotnet_sdk
-  install_dotnet_tools
-  install_dotnet_coverage
-  verify_required_task_tooling
-  install_actionlint
-  restore_packages_if_needed
-
-  if command -v git >/dev/null 2>&1; then
-    git config --global core.autocrlf input || true
+  if have git; then
+    say "==> Git status (short):"
+    git status --short || true
   fi
 
-  write_repo_notes
-  log "Setup complete."
+  install_node
+  install_dotnet
+  install_python
+  install_ruby
+  install_go
+  install_rust
+  install_php
+  install_java
+  run_repo_hook
+
+  say "==> $SCRIPT_NAME complete"
 }
 
 main "$@"

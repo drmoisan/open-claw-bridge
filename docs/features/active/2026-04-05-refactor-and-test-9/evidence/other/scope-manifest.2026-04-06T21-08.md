@@ -1,0 +1,44 @@
+Timestamp: 2026-04-06T21-08
+Command: git diff --name-status development...HEAD
+EXIT_CODE: 0
+Output Summary:
+- Selected for removal from branch scope:
+  - M	.codex/codex-web-setup.sh
+  - A	AGENTS.md
+- Current remediation review artifacts retained in scope:
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/code-review.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/feature-audit.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/policy-audit.2026-04-06T20-25.md
+- Stale draft audit files named later in the remediation plan are already absent from the current diff:
+  - docs/features/active/2026-04-05-refactor-and-test-9/code-review.2026-04-06T14-58.md
+  - docs/features/active/2026-04-05-refactor-and-test-9/feature-audit.2026-04-06T14-58.md
+  - docs/features/active/2026-04-05-refactor-and-test-9/policy-audit.2026-04-06T14-58.md
+- Current diff snapshot:
+  - M	.codex/codex-web-setup.sh
+  - A	AGENTS.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/code-review.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/evidence/baseline/policy-read.2026-04-06T14-55.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/coverage-summary.2026-04-06T14-56.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/coverage.2026-04-06T14-55.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/dotnet-test.2026-04-06T14-55.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/feature-audit.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/issue.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/plan.2026-04-06T14-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/policy-audit.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/remediation-inputs.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/remediation-plan.2026-04-06T20-25.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/spec.md
+  - A	docs/features/active/2026-04-05-refactor-and-test-9/user-story.md
+  - A	src/OpenClaw.MailBridge/BridgeApplication.cs
+  - A	src/OpenClaw.MailBridge/BridgeStateStore.cs
+  - A	src/OpenClaw.MailBridge/CacheRepository.cs
+  - A	src/OpenClaw.MailBridge/ComActiveObject.cs
+  - M	src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj
+  - A	src/OpenClaw.MailBridge/OutlookScanner.cs
+  - A	src/OpenClaw.MailBridge/OutlookStaExecutor.cs
+  - A	src/OpenClaw.MailBridge/PipeRpcWorker.cs
+  - M	src/OpenClaw.MailBridge/Program.cs
+  - A	src/OpenClaw.MailBridge/ScanWorker.cs
+  - A	tests/OpenClaw.MailBridge.Tests/BridgeContractsCoverageTests.cs
+  - A	tests/OpenClaw.MailBridge.Tests/MailBridgeRuntimeTests.cs
+  - M	tests/OpenClaw.MailBridge.Tests/OpenClaw.MailBridge.Tests.csproj
