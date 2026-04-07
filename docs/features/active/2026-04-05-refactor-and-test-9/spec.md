@@ -1,4 +1,3 @@
-<<<<<<< ours
 # 2026-04-05-refactor-and-test - Refactor Spec
 
 - **Issue:** #9
@@ -14,7 +13,6 @@ The bridge host currently concentrates multiple production classes inside `src/O
 
 This work is needed to bring the codebase back toward repo compliance: smaller, cohesive files; explicit ownership boundaries; and deterministic unit coverage for the extracted behaviors. The goal is to reduce maintenance risk without changing the bridge's external behavior.
 
-
 ## Invariants (must not change)
 
 List the behaviors, contracts, and external surfaces that must remain identical (CLIs, APIs, outputs, data formats, paths).
@@ -27,10 +25,11 @@ Refactor `src/OpenClaw.MailBridge/Program.cs` so that each production class move
 
 After the refactor, add or update unit tests in `tests/OpenClaw.MailBridge.Tests/` so they follow repository policy: MSTest test attributes, FluentAssertions assertions where practical, deterministic scenarios, and no reliance on external services. Coverage should specifically target the extracted logic that was previously trapped inside the monolithic `Program.cs` file.
 
-
 ## Non-Goals
 
 What is explicitly out of scope (new behavior, perf changes, UX changes, flags).
+- No protocol or contract changes in `OpenClaw.MailBridge.Contracts`.
+- No behavioral feature additions beyond testability and structure improvements.
 
 ## Dependencies / Touchpoints
 
@@ -43,7 +42,6 @@ Upstream/downstream modules, CLIs, data paths, automation, or external consumers
 - The refactor must avoid behavior drift in background service registration, named-pipe ACL construction, COM initialization, and SQLite state persistence.
 - Existing tests currently use NUnit, so bringing the area into policy compliance may require test-project migration work in addition to adding new coverage.
 - Tests must remain deterministic and cannot use temporary files or external processes unless an approved exception is introduced.
-
 
 ## Technical Specifications
 
@@ -59,9 +57,14 @@ Upstream/downstream modules, CLIs, data paths, automation, or external consumers
 - Invariant validation tests (ensuring outputs/behavior unchanged):
 - Edge cases and negative scenarios (import/path stability, CLI flags):
 - Error handling and logging verification:
-- Coverage impact and targets for changed lines/modules:
-- Toolchain commands to run (format → lint → type-check → test):
+- Coverage impact and targets for changed lines/modules: produce a coverage artifact with per-file percentages and verify at least `80%` for the targeted runtime files.
+- Toolchain commands to run (format → lint → type-check → test): build and test the solution with the repo-approved C# command loop.
 - Manual validation steps (if required):
+
+## Validation
+
+- Build and test the solution.
+- Produce a code coverage artifact with per-file percentages and verify at least `80%` for the targeted runtime files.
 
 ## Definition of Done
 
@@ -69,27 +72,12 @@ Upstream/downstream modules, CLIs, data paths, automation, or external consumers
 - [ ] Invariants validated with tests or comparisons
 - [ ] Imports/tooling/entry points updated
 - [ ] Edge cases and error handling verified
-- [ ] Tests, linting, and type checks clean
+- [x] Tests, linting, and type checks clean
 - [ ] Docs updated (initiative/README/tasks as needed)
-- [ ] Toolchain pass completed (format → lint → type-check → test)
+- [x] Toolchain pass completed (format → lint → type-check → test)
 
 ## Seeded Test Conditions (from potential)
+
 - [ ] Unit coverage areas: settings-path resolution, argument parsing, bridge state transitions, RPC request validation, oversized request rejection, and response-size fallback behavior.
 - [ ] Integration scenarios: host startup with valid settings, startup failure with invalid settings, and status RPC responses that reflect persisted scan-state timestamps.
 - [ ] CLI/API examples: `--config <path>` handling, `bridge.getStatus` request/response shape, and unsupported RPC method failures.
-=======
-# Specification: refactor-and-test
-
-## Scope
-- Refactor runtime classes from the monolithic `Program.cs` into dedicated files under `src/OpenClaw.MailBridge/`.
-- Preserve public/internal behaviors and dependency registration patterns.
-- Expand test coverage in `tests/OpenClaw.MailBridge.Tests` to cover refactored runtime classes.
-
-## Non-goals
-- No protocol or contract changes in `OpenClaw.MailBridge.Contracts`.
-- No behavioral feature additions beyond testability/structure improvements.
-
-## Validation
-- Build and test the solution.
-- Produce code coverage artifact with per-file percentages and verify ≥80% for targeted runtime files.
->>>>>>> theirs

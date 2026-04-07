@@ -50,13 +50,15 @@ internal class ComActiveObject
     /// <returns>The activated Outlook COM application object.</returns>
     public virtual object CreateAndLogonOutlook()
     {
-        if (!OperatingSystem.IsWindows())
+        if (!IsWindowsPlatform())
         {
             throw new PlatformNotSupportedException("Outlook COM activation requires Windows.");
         }
 
         return CreateAndLogonOutlookCore();
     }
+
+    protected virtual bool IsWindowsPlatform() => OperatingSystem.IsWindows();
 
     [ExcludeFromCodeCoverage]
     protected virtual object CreateAndLogonOutlookCore()

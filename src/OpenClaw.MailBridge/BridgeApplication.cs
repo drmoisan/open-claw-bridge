@@ -51,10 +51,10 @@ internal class BridgeApplication
 
     internal BridgeSettings LoadSettings(string path)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        if (!File.Exists(path))
+        EnsureSettingsDirectory(path);
+        if (!SettingsStoreExists(path))
         {
-            File.WriteAllText(
+            WriteSettingsStore(
                 path,
                 JsonSerializer.Serialize(
                     BridgeSettings.Default,
@@ -64,9 +64,19 @@ internal class BridgeApplication
             return BridgeSettings.Default;
         }
 
-        return JsonSerializer.Deserialize<BridgeSettings>(File.ReadAllText(path))
+        return JsonSerializer.Deserialize<BridgeSettings>(ReadSettingsStore(path))
             ?? BridgeSettings.Default;
     }
+
+    internal virtual void EnsureSettingsDirectory(string path) =>
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+
+    internal virtual bool SettingsStoreExists(string path) => File.Exists(path);
+
+    internal virtual void WriteSettingsStore(string path, string content) =>
+        File.WriteAllText(path, content);
+
+    internal virtual string ReadSettingsStore(string path) => File.ReadAllText(path);
 
     internal static string? GetArg(string[] args, string key)
     {

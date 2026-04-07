@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.MailBridge;
@@ -23,71 +24,94 @@ public class MailBridgeRuntimeTests
     }
 
     [TestMethod]
-    public void Bridge_application_load_settings_should_create_default_file_when_missing()
+    public void Bridge_application_get_arg_should_return_null_when_key_is_missing_or_trailing()
     {
-        var app = new BridgeApplication();
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-test-{Guid.NewGuid():N}");
-        var path = Path.Combine(tempRoot, "bridge.settings.json");
-        try
-        {
-            var settings = app.LoadSettings(path);
-            settings.Should().Be(BridgeSettings.Default);
-            File.Exists(path).Should().BeTrue();
-        }
-        finally
-        {
-            if (Directory.Exists(tempRoot))
-            {
-                Directory.Delete(tempRoot, true);
-            }
-        }
+        BridgeApplication.GetArg(new[] { "--mode", "safe" }, "--config").Should().BeNull();
+        BridgeApplication.GetArg(["--config"], "--config").Should().BeNull();
     }
 
     [TestMethod]
-    public async Task Bridge_application_run_async_should_return_two_for_invalid_settings()
+    public void Bridge_application_build_host_should_register_bridge_settings_and_state_store()
     {
-        var app = new BridgeApplication();
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-bad-{Guid.NewGuid():N}");
-        var path = Path.Combine(tempRoot, "bridge.settings.json");
-        Directory.CreateDirectory(tempRoot);
-        await File.WriteAllTextAsync(path, """{"pipeName":"x","mode":"bad"}""");
+        var settings = BridgeSettings.Default with { PipeName = "coverage-pipe" };
+        using var host = new BridgeApplication().BuildHost([], settings);
 
-        var code = await app.RunAsync(["--config", path]);
+        host.Services.GetRequiredService<BridgeSettings>().Should().BeSameAs(settings);
+        host.Services.GetRequiredService<BridgeStateStore>().Mode.Should().Be(settings.Mode);
+    }
+
+    [TestMethod]
+    public async Task Bridge_application_run_host_async_should_delegate_to_host_run_lifecycle()
+    {
+        var builder = Host.CreateApplicationBuilder();
+        builder.Services.AddSingleton(new RunLifecycleTracker());
+        builder.Services.AddHostedService<ImmediateStopHostedService>();
+        using var host = builder.Build();
+        var tracker = host.Services.GetRequiredService<RunLifecycleTracker>();
+
+        await new BridgeApplication().RunHostAsync(host);
+
+        tracker.StartCalls.Should().Be(1);
+        tracker.StopCalls.Should().Be(1);
+    }
+
+    [TestMethod]
+    public void Bridge_application_load_settings_should_return_default_settings_when_store_is_missing_without_touching_disk()
+    {
+        var app = new InMemoryBridgeApplication();
+
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        settings.Should().Be(BridgeSettings.Default);
+        app.EnsureSettingsDirectoryCalls.Should().Be(1);
+        app.StoreExists.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Bridge_application_load_settings_should_deserialize_stored_settings_from_in_memory_store()
+    {
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent = """{"PipeName":"x","Mode":"safe"}""",
+        };
+
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        settings.PipeName.Should().Be("x");
+        settings.Mode.Should().Be("safe");
+    }
+
+    [TestMethod]
+    public async Task Bridge_application_run_async_should_return_two_for_invalid_settings_from_in_memory_store()
+    {
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent = """{"PipeName":"x","Mode":"bad"}""",
+        };
+
+        var code = await app.RunAsync(["--config", "memory://invalid.json"]);
+
         code.Should().Be(2);
-
-        Directory.Delete(tempRoot, true);
+        app.BuildHostCalls.Should().Be(0);
     }
 
     [TestMethod]
-    public async Task Bridge_application_run_async_should_use_host_for_valid_settings()
+    public async Task Bridge_application_run_async_should_use_host_for_valid_settings_from_in_memory_store()
     {
-        var app = new TestBridgeApplication();
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-good-{Guid.NewGuid():N}");
-        var path = Path.Combine(tempRoot, "bridge.settings.json");
-        Directory.CreateDirectory(tempRoot);
-        await File.WriteAllTextAsync(
-            path,
-            """{"PipeName":"x","Mode":"safe","AutostartOutlook":false,"InboxPollSeconds":5,"CalendarPollSeconds":30,"InboxOverlapMinutes":5,"CalendarPastDays":1,"CalendarFutureDays":1,"MaxItemsPerScan":5,"BodyPreviewMaxChars":20,"LogLevel":"Information"}"""
-        );
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent =
+                """{"PipeName":"x","Mode":"safe","AutostartOutlook":false,"InboxPollSeconds":5,"CalendarPollSeconds":30,"InboxOverlapMinutes":5,"CalendarPastDays":1,"CalendarFutureDays":1,"MaxItemsPerScan":5,"BodyPreviewMaxChars":20,"LogLevel":"Information"}""",
+        };
 
-        var code = await app.RunAsync(["--config", path]);
+        var code = await app.RunAsync(["--config", "memory://valid.json"]);
 
         code.Should().Be(0);
         app.BuildHostCalls.Should().Be(1);
-        Directory.Delete(tempRoot, true);
-    }
-
-    [TestMethod]
-    public async Task Program_main_should_delegate_to_bridge_application()
-    {
-        var tempRoot = Path.Combine(Path.GetTempPath(), $"mailbridge-main-{Guid.NewGuid():N}");
-        var path = Path.Combine(tempRoot, "bridge.settings.json");
-        Directory.CreateDirectory(tempRoot);
-        await File.WriteAllTextAsync(path, """{"pipeName":"x","mode":"bad"}""");
-
-        var code = await Program.Main(["--config", path]);
-        code.Should().Be(2);
-        Directory.Delete(tempRoot, true);
+        app.RunHostCalls.Should().Be(1);
     }
 
     [TestMethod]
@@ -375,6 +399,65 @@ public class MailBridgeRuntimeTests
     }
 
     [TestMethod]
+    public void Com_active_object_create_and_logon_should_return_core_result_when_platform_probe_is_true()
+    {
+        var sut = new PlatformProbeComActiveObject { PlatformProbeResult = true };
+
+        var result = sut.CreateAndLogonOutlook();
+
+        result.Should().BeSameAs(sut.CoreResult);
+        sut.PlatformProbeCalls.Should().Be(1);
+    }
+
+    [TestMethod]
+    public void Com_active_object_create_and_logon_should_throw_when_platform_probe_reports_non_windows()
+    {
+        var sut = new PlatformProbeComActiveObject { PlatformProbeResult = false };
+        var act = () => sut.CreateAndLogonOutlook();
+
+        act.Should().Throw<PlatformNotSupportedException>();
+        sut.PlatformProbeCalls.Should().Be(1);
+    }
+
+    [TestMethod]
+    public void Com_active_object_create_and_logon_should_use_base_platform_probe_when_windows()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("This test targets Windows base-platform behavior only.");
+        }
+
+        var sut = new CoreOnlyComActiveObject();
+
+        var result = sut.CreateAndLogonOutlook();
+
+        result.Should().BeSameAs(sut.CoreResult);
+    }
+
+    [TestMethod]
+    public void Com_active_object_try_get_should_return_running_object_when_core_succeeds()
+    {
+        var sut = new TryGetComActiveObject();
+
+        var result = sut.TryGet("Outlook.Application");
+
+        result.Should().BeSameAs(sut.CoreResult);
+    }
+
+    [TestMethod]
+    public void Com_active_object_try_get_should_return_null_when_core_throws()
+    {
+        var sut = new TryGetComActiveObject
+        {
+            CoreException = new InvalidOperationException("boom"),
+        };
+
+        var result = sut.TryGet("Outlook.Application");
+
+        result.Should().BeNull();
+    }
+
+    [TestMethod]
     public void Com_active_object_try_get_should_return_null_for_unknown_prog_id()
     {
         new ComActiveObject().TryGet("Definitely.Not.A.Real.ProgId").Should().BeNull();
@@ -441,101 +524,5 @@ public class MailBridgeRuntimeTests
         }
 
         return Encoding.UTF8.GetString(ms.ToArray());
-    }
-
-    private sealed class FakeComActiveObject : ComActiveObject
-    {
-        public object? RunningObject { get; set; }
-        public bool ThrowOnCreate { get; set; }
-
-        public override object? TryGet(string progId) => RunningObject;
-
-        public override object CreateAndLogonOutlook()
-        {
-            if (ThrowOnCreate)
-            {
-                throw new InvalidOperationException("failed");
-            }
-
-            return new object();
-        }
-    }
-
-    private sealed class FakeScanStateRepository : IScanStateRepository
-    {
-        public bool Initialized { get; private set; }
-        public int Touches { get; private set; }
-        public Dictionary<string, DateTimeOffset?> Values { get; } = new();
-
-        public Task InitializeAsync()
-        {
-            Initialized = true;
-            return Task.CompletedTask;
-        }
-
-        public Task TouchScanStateAsync(string key, DateTimeOffset value)
-        {
-            Touches++;
-            Values[key] = value;
-            return Task.CompletedTask;
-        }
-
-        public Task<DateTimeOffset?> GetScanStateAsync(string key)
-        {
-            Values.TryGetValue(key, out var value);
-            return Task.FromResult(value);
-        }
-    }
-
-    private sealed class FakeOutlookScanner : IOutlookScanner
-    {
-        public int Calls { get; private set; }
-
-        public Task ScanAsync(IScanStateRepository repo)
-        {
-            Calls++;
-            return Task.CompletedTask;
-        }
-    }
-
-    private sealed class FakeStaExecutor : IOutlookStaExecutor
-    {
-        public int Calls { get; private set; }
-
-        public Task<T> InvokeAsync<T>(Func<T> operation)
-        {
-            Calls++;
-            return Task.FromResult(operation());
-        }
-
-        public void Dispose() { }
-    }
-
-    private sealed class TestBridgeApplication : BridgeApplication
-    {
-        public int BuildHostCalls { get; private set; }
-
-        internal override Microsoft.Extensions.Hosting.IHost BuildHost(
-            string[] args,
-            BridgeSettings settings
-        )
-        {
-            BuildHostCalls++;
-            return new NoOpHost();
-        }
-
-        internal override Task RunHostAsync(Microsoft.Extensions.Hosting.IHost host) =>
-            Task.CompletedTask;
-    }
-
-    private sealed class NoOpHost : Microsoft.Extensions.Hosting.IHost
-    {
-        public IServiceProvider Services => new ServiceCollection().BuildServiceProvider();
-
-        public void Dispose() { }
-
-        public Task StartAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
-
-        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }
