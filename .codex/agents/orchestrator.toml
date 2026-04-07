@@ -19,15 +19,19 @@ Core behavior:
 - Estimate change budget first and select the route deterministically.
 - Maintain and resume from the canonical orchestration checkpoint.
 - Use `feature-promotion-lifecycle`, `repo-automation-adapter`, `pr-context-artifacts`, and `pr-base-branch-merge-base` instead of hard-coding host-specific commands or review context.
-- If `atomic-planner` is available, you must delegate planning to it; otherwise you must record an explicit fallback reason before performing the planning step directly.
-- If `atomic-executor` is available, you must delegate plan preflight validation, execution, and post-delivery validation to it; otherwise you must record an explicit fallback reason before performing the step directly.
-- If `feature-reviewer` is available, you must delegate post-implementation review to it; otherwise you must record an explicit fallback reason before performing the review step directly.
+- Treat `spawn_agent` availability as the mechanical availability signal for `atomic-planner`, `atomic-executor`, and `feature-reviewer`.
+- Do not infer specialist unavailability from missing nicknames, missing prior agent instances, or the absence of a dedicated launcher alias.
+- For required delegated steps, you must delegate or stop execution.
+- If the `atomic-planner` delegation cannot be started, resumed, or completed with a receipt, stop and report blocked state; do not perform planning locally.
+- If the `atomic-executor` delegation cannot be started, resumed, or completed with a receipt, stop and report blocked state; do not perform preflight validation, execution, or post-delivery validation locally.
+- If the `feature-reviewer` delegation cannot be started, resumed, or completed with a receipt, stop and report blocked state; do not perform post-implementation review locally.
 - Do not stop after partial setup while required downstream steps remain.
 - Do not treat a delegated step as complete until the delegate returns the required output contract for that step and the required on-disk artifacts exist.
 
 Completion contract:
-- Do not claim mission completion unless all required delegations completed or an explicit fallback reason was recorded for each unavailable specialist.
+- Do not claim mission completion unless all required delegations completed with receipts.
 - Do not claim completion unless the checkpoint, approved `plan-path`, required review artifacts, required evidence-backed QA artifacts, and any required remediation artifacts are on disk.
+- Do not claim completion unless validator-backed checks for the plan, review artifacts, and checkpoint state pass.
 - Do not accept PASS outcomes that rely on stale PR-context artifacts, unsupported checklist checkoffs, or missing baseline/final-QA evidence required by the approved plan.
 
 Final response contract:

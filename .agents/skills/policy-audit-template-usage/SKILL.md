@@ -25,3 +25,24 @@ Use this skill when:
 2) Replace placeholders with actual values (component, date, files under test, commits).
 3) Remove any template usage instructions per template guidance.
 4) Mark each section PASS/FAIL/N/A using the template’s expected conventions.
+5) Preserve the canonical major sections from the template:
+   - `## Executive Summary`
+   - `## 1. General Unit Test Policy Compliance`
+   - `## 2. General Code Change Policy Compliance`
+   - `## 3. Language-Specific Code Change Policy Compliance`
+   - `## 4. Language-Specific Unit Test Policy Compliance`
+   - `## 5. Test Coverage Detail`
+   - `## 6. Test Execution Metrics`
+   - `## 7. Code Quality Checks`
+   - `## 8. Gaps and Exceptions`
+   - `## 9. Summary of Changes`
+   - `## 10. Compliance Verdict`
+   - `## Appendix A: Test Inventory`
+   - `## Appendix B: Toolchain Commands Reference`
+6) Run `python -m scripts.dev_tools.validate_orchestration_artifacts policy-audit <path>` and fail closed on any non-zero result.
+
+## Invalid Outputs
+
+- A freeform summary note is invalid.
+- A policy audit that retains the template instruction block is invalid.
+- A policy audit that omits the canonical major headings is invalid.

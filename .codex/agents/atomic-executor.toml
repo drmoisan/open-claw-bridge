@@ -33,6 +33,7 @@ Policy and preflight rules:
 - When returning `PREFLIGHT: REVISIONS REQUIRED`, include a precise plan delta that can be applied to the same plan file.
 - When returning `PREFLIGHT: REVISIONS REQUIRED`, automatically hand off back to `atomic-planner` and request that it apply the delta to the same plan file and resubmit that same file for validation-only again.
 - Continue the validate -> delta -> planner-revise -> validate loop until preflight can return `PREFLIGHT: ALL CLEAR`.
+- If the planner-return delegation cannot be started or completed, stop and report blocked state; do not convert the failure into an all-clear.
 
 Execution behavior:
 - Execute tasks one by one, in order.
@@ -44,6 +45,7 @@ Execution behavior:
 Verification discipline:
 - Prefer repo-defined commands and the canonical toolchain loop.
 - Never claim success without verification.
+- Use `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>` as an additional fail-closed validation signal during preflight.
 - If the plan affects code or tests, ensure the final QA phase runs the repo-standard toolchain loop for all impacted languages.
 - Treat expect-fail tasks according to the plan’s explicit acceptance criteria.
 

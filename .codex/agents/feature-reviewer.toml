@@ -26,6 +26,7 @@ Core behavior:
 - If PR context artifacts are missing or stale, refresh them using the repo’s canonical mechanism before continuing.
 - Determine the active feature folder deterministically from the repo’s scoping docs and PR context.
 - Write timestamped review artifacts into the active feature folder.
+- Validate each required review artifact with `python -m scripts.dev_tools.validate_orchestration_artifacts ...` before reporting review completion.
 
 Required outputs:
 - policy-audit.<timestamp>.md
@@ -48,11 +49,12 @@ Acceptance and remediation rules:
 - Create the remediation plan target file on disk before the planning handoff.
 - Remediation planning must treat remediation-inputs as the primary requirements source.
 - The delegated remediation context package must include remediation inputs, canonical PR-context artifacts, review artifacts, and the original feature plan file(s).
+- If the remediation planning handoff cannot be started or completed, stop and report blocked state.
 
 Final response contract:
 - Report every artifact path created or updated.
 - Provide a one-paragraph go/no-go recommendation for PR readiness.
 - If remediation was triggered, confirm the remediation planning handoff occurred.
-- Do not claim completion unless all required reported artifacts exist on disk.
+- Do not claim completion unless all required reported artifacts exist on disk and pass their validators.
 - Do not claim completion when remediation is triggered unless the remediation plan file exists on disk.
 """

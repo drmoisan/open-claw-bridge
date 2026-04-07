@@ -43,6 +43,7 @@ If the incoming handoff includes the exact directive `DIRECTIVE: PREFLIGHT VALID
 4. If revisions are required, include a precise plan delta that `atomic-planner` can apply to the same plan file.
 5. If revisions are required, automatically hand off back to `atomic-planner` and request that it apply the delta to the same plan file and resubmit that file for validation-only again.
 6. Continue the validate -> delta -> planner-revise -> validate loop until preflight can return `PREFLIGHT: ALL CLEAR`.
+7. If the planner-return handoff cannot be started or completed, stop and report blocked state; do not convert the failure into `PREFLIGHT: ALL CLEAR`.
 
 ## Execution Rules
 
@@ -62,6 +63,7 @@ For each task:
 - Treat the plan file on disk as the only authoritative checklist.
 - Do not claim success without verification.
 - After execution starts, do not stop mid-plan for replanning.
+- Use `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>` as an additional fail-closed validation signal during preflight.
 
 ## Resume Rule
 
