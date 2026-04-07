@@ -67,16 +67,16 @@ This remediation plan is limited to the review findings recorded in `remediation
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: csharpier check .`, `EXIT_CODE: 0`, and `Output Summary:` with the checked-file count.
 
 - [ ] [P0-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform='Any CPU' /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/baseline/msbuild-analyzers.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the analyzer-enabled build passed.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the analyzer-enabled build passed.
 
 - [ ] [P0-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform='Any CPU' /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/baseline/msbuild-nullable.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the nullable/type-safety build passed.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the nullable/type-safety build passed.
 
 - [ ] [P0-T7] Run `dotnet test tests/OpenClaw.MailBridge.Tests/OpenClaw.MailBridge.Tests.csproj -c Debug --collect:"XPlat Code Coverage" --results-directory TestResults/remediation-baseline` and save the command result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/baseline/coverage.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` with the overall line-coverage headline.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` with numeric lines for `BaselineOverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, and `ChangedOrNewLineCoverage:` derived from the generated Cobertura output.
 
 - [ ] [P0-T8] Parse the baseline Cobertura output into `docs/features/active/2026-04-05-refactor-and-test-9/evidence/baseline/coverage-summary.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains numeric lines for `OverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, and `ChangedOrNewLineCoverage:`.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:`, `EXIT_CODE: 0`, `Output Summary:`, and numeric lines for `BaselineOverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, and `ChangedOrNewLineCoverage:` parsed from `TestResults/remediation-baseline/**/coverage.cobertura.xml`.
 
 ### Phase 1 — Repair Feature Docs and Branch Scope
 
@@ -162,31 +162,34 @@ This remediation plan is limited to the review findings recorded in `remediation
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: csharpier check .`, `EXIT_CODE: 0`, and `Output Summary:` with the checked-file count.
 
 - [ ] [P4-T2] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform='Any CPU' /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/msbuild-analyzers.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the analyzer-enabled build passed.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the analyzer-enabled build passed.
 
 - [ ] [P4-T3] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform='Any CPU' /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/msbuild-nullable.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the nullable/type-safety build passed.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` showing the nullable/type-safety build passed.
 
 - [ ] [P4-T4] Run `vstest.console.exe tests\OpenClaw.MailBridge.Tests\bin\Debug\net10.0-windows\OpenClaw.MailBridge.Tests.dll /EnableCodeCoverage` and save the result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/vstest-coverage.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` stating the test assembly passed under the repo-preferred coverage command.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` with numeric lines for `PostChangeOverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, and `ChangedOrNewLineCoverage:` derived from the coverage attachment produced by the command.
 
 - [ ] [P4-T5] Run `dotnet test tests/OpenClaw.MailBridge.Tests/OpenClaw.MailBridge.Tests.csproj -c Debug --collect:"XPlat Code Coverage" --results-directory TestResults/review-coverage` and save the result in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/coverage.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains the exact command above, `EXIT_CODE: 0`, and `Output Summary:` with the overall line-coverage headline.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:` equal to the exact command above, `EXIT_CODE: 0`, and `Output Summary:` with numeric lines for `PostChangeOverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, and `ChangedOrNewLineCoverage:` derived from the generated Cobertura output.
 
 - [ ] [P4-T6] Parse the final Cobertura output into `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/coverage-summary.<timestamp>.md`.
-	- Acceptance: The artifact exists and contains numeric lines for `OverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, `ChangedOrNewLineCoverage:`, and each of `BridgeApplication.cs` and `ComActiveObject.cs` is greater than or equal to `80.0%`.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:`, `EXIT_CODE: 0`, `Output Summary:`, and numeric lines for `PostChangeOverallLineCoverage:`, `BridgeApplication.cs:`, `ComActiveObject.cs:`, and `ChangedOrNewLineCoverage:` parsed from `TestResults/review-coverage/**/coverage.cobertura.xml`.
 
-- [ ] [P4-T7] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-05-refactor-and-test-9/spec.md` against the verified remediation evidence.
+- [ ] [P4-T7] Compare the baseline and post-change coverage evidence in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/coverage-thresholds.<timestamp>.md`.
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command:`, `EXIT_CODE: 0`, `Output Summary:`, numeric lines for `BaselineOverallLineCoverage:`, `PostChangeOverallLineCoverage:`, `ChangedOrNewLineCoverage:`, `BridgeApplication.cs Baseline:`, `BridgeApplication.cs PostChange:`, `ComActiveObject.cs Baseline:`, and `ComActiveObject.cs PostChange:`, and a machine-checkable `ThresholdResult:` line that is `PASS` only when post-change overall coverage is greater than or equal to baseline coverage, changed/new-code coverage is recorded numerically, and both `BridgeApplication.cs` and `ComActiveObject.cs` are greater than or equal to `80.0%`.
+
+- [ ] [P4-T8] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-05-refactor-and-test-9/spec.md` against the verified remediation evidence.
 	- Acceptance: Every checkbox flipped to `[x]` in `docs/features/active/2026-04-05-refactor-and-test-9/spec.md` is backed by at least one artifact created in Phase 4, and any unmet item remains unchecked.
 
-- [ ] [P4-T8] Reconcile the acceptance summary in `docs/features/active/2026-04-05-refactor-and-test-9/user-story.md` against the verified remediation evidence.
+- [ ] [P4-T9] Reconcile the acceptance summary in `docs/features/active/2026-04-05-refactor-and-test-9/user-story.md` against the verified remediation evidence.
 	- Acceptance: `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/user-story-status.<timestamp>.md` exists and lists each prose acceptance bullet from `docs/features/active/2026-04-05-refactor-and-test-9/user-story.md` with a status derived from Phase 4 evidence, without rewriting the prose bullets in `user-story.md`.
 
-- [ ] [P4-T9] Reconcile `docs/features/active/2026-04-05-refactor-and-test-9/plan.2026-04-06T14-25.md` a second time after the final QA pass.
+- [ ] [P4-T10] Reconcile `docs/features/active/2026-04-05-refactor-and-test-9/plan.2026-04-06T14-25.md` a second time after the final QA pass.
 	- Acceptance: `docs/features/active/2026-04-05-refactor-and-test-9/plan.2026-04-06T14-25.md` contains only evidence-backed completed tasks, and its final checklist state matches the artifacts present under `evidence/baseline/`, `evidence/regression-testing/`, `evidence/other/`, and `evidence/qa-gates/`.
 
-- [ ] [P4-T10] Save the final doc-integrity verification in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/doc-integrity.<timestamp>.md`.
+- [ ] [P4-T11] Save the final doc-integrity verification in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/doc-integrity.<timestamp>.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: grep -n "<<<<<<<\|=======\|>>>>>>>" docs/features/active/2026-04-05-refactor-and-test-9/*`, `EXIT_CODE: 1`, and `Output Summary: no merge conflict markers remain in active feature docs`.
 
-- [ ] [P4-T11] Save the final branch-scope verification in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/branch-scope.<timestamp>.md`.
+- [ ] [P4-T12] Save the final branch-scope verification in `docs/features/active/2026-04-05-refactor-and-test-9/evidence/qa-gates/branch-scope.<timestamp>.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: git diff --name-status development...HEAD`, `EXIT_CODE: 0`, and no entries for `.codex/codex-web-setup.sh`, `AGENTS.md`, `docs/features/active/2026-04-05-refactor-and-test-9/code-review.2026-04-06T14-58.md`, `docs/features/active/2026-04-05-refactor-and-test-9/feature-audit.2026-04-06T14-58.md`, or `docs/features/active/2026-04-05-refactor-and-test-9/policy-audit.2026-04-06T14-58.md`.
