@@ -1,35 +1,41 @@
 Describe 'test-mailbridge.ps1' {
     BeforeEach {
-        $global:ScheduledTaskCalls = [System.Collections.Generic.List[string]]::new()
-        $global:ClientRequests = [System.Collections.Generic.List[string]]::new()
-        $global:WrittenEvidence = [System.Collections.Generic.List[string]]::new()
-        $global:WrittenEvidencePath = $null
-        $global:BridgeRuntimeConfigPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.runtimeconfig.json'
-        $global:ClientRuntimeConfigPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.runtimeconfig.json'
+        $script:ScheduledTaskCalls = [System.Collections.Generic.List[string]]::new()
+        $script:ClientRequests = [System.Collections.Generic.List[string]]::new()
+        $script:WrittenEvidence = [System.Collections.Generic.List[string]]::new()
+        $script:WrittenEvidencePath = $null
+        $script:WrittenEvidenceState = [pscustomobject]@{ Path = $null }
+        $script:BridgeRuntimeConfigPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.runtimeconfig.json'
+        $script:ClientRuntimeConfigPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.runtimeconfig.json'
+        $scheduledTaskCalls = $script:ScheduledTaskCalls
+        $writtenEvidence = $script:WrittenEvidence
+        $writtenEvidenceState = $script:WrittenEvidenceState
+        $bridgeRuntimeConfigPath = $script:BridgeRuntimeConfigPath
+        $clientRuntimeConfigPath = $script:ClientRuntimeConfigPath
 
-        function global:schtasks {
-            [CmdletBinding()]
-            [OutputType([void])]
-            param(
-                [Parameter(ValueFromRemainingArguments = $true)]
-                [object[]]$Arguments
-            )
+        Set-Item -Path Function:\Global:schtasks -Value ({
+                [CmdletBinding()]
+                [OutputType([void])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
 
-            $null = $Arguments.Count
-            $global:ScheduledTaskCalls.Add(($Arguments -join ' '))
-        }
+                $null = $Arguments.Count
+                $scheduledTaskCalls.Add(($Arguments -join ' '))
+            }.GetNewClosure())
 
-        function global:query {
-            [CmdletBinding()]
-            [OutputType([string])]
-            param(
-                [Parameter(ValueFromRemainingArguments = $true)]
-                [object[]]$Arguments
-            )
+        Set-Item -Path Function:\Global:query -Value ({
+                [CmdletBinding()]
+                [OutputType([string])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
 
-            $null = $Arguments.Count
-            "{0} console" -f $env:USERNAME
-        }
+                $null = $Arguments.Count
+                "{0} console" -f $env:USERNAME
+            }.GetNewClosure())
 
         Mock New-Item { [pscustomobject]@{ FullName = 'virtual:\operator-evidence.txt' } }
         Mock Test-Path {
@@ -37,7 +43,7 @@ Describe 'test-mailbridge.ps1' {
                 [string]$Path
             )
 
-            $Path -in @($global:BridgeRuntimeConfigPath, $global:ClientRuntimeConfigPath)
+            $Path -in @($bridgeRuntimeConfigPath, $clientRuntimeConfigPath)
         }
         Mock Get-Content {
             param(
@@ -46,11 +52,11 @@ Describe 'test-mailbridge.ps1' {
             )
 
             $null = $Raw
-            if ($Path -eq $global:BridgeRuntimeConfigPath) {
+            if ($Path -eq $bridgeRuntimeConfigPath) {
                 return '{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":"10.0.0"}}}'
             }
 
-            if ($Path -eq $global:ClientRuntimeConfigPath) {
+            if ($Path -eq $clientRuntimeConfigPath) {
                 return '{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":"10.0.0"}}}'
             }
 
@@ -62,9 +68,9 @@ Describe 'test-mailbridge.ps1' {
                 [object[]]$Value
             )
 
-            $global:WrittenEvidencePath = $Path
+            $writtenEvidenceState.Path = $Path
             foreach ($line in @($Value)) {
-                $global:WrittenEvidence.Add([string]$line)
+                $writtenEvidence.Add([string]$line)
             }
         }
     }
@@ -75,97 +81,101 @@ Describe 'test-mailbridge.ps1' {
         Remove-Item Function:\Global:Invoke-FakeClient -ErrorAction SilentlyContinue
         Remove-Item Function:\Global:Invoke-LeakyClient -ErrorAction SilentlyContinue
         Remove-Item Function:\Global:Invoke-NotReadyClient -ErrorAction SilentlyContinue
-        Remove-Variable -Name 'ScheduledTaskCalls' -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name 'ClientRequests' -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name 'WrittenEvidence' -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name 'WrittenEvidencePath' -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name 'BridgeRuntimeConfigPath' -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name 'ClientRuntimeConfigPath' -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ScheduledTaskCalls' -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ClientRequests' -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'WrittenEvidence' -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'WrittenEvidencePath' -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'WrittenEvidenceState' -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'BridgeRuntimeConfigPath' -Scope Script -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ClientRuntimeConfigPath' -Scope Script -ErrorAction SilentlyContinue
     }
 
     It 'fails when safe mode leaks protected message fields' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
+        $clientRequests = $script:ClientRequests
 
-        function global:Invoke-LeakyClient {
-            [CmdletBinding()]
-            [OutputType([string])]
-            param(
-                [Parameter(ValueFromRemainingArguments = $true)]
-                [object[]]$Arguments
-            )
+        Set-Item -Path Function:\Global:Invoke-LeakyClient -Value ({
+                [CmdletBinding()]
+                [OutputType([string])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
 
-            $commandName = [string]$Arguments[0]
-            $global:ClientRequests.Add($commandName)
+                $commandName = [string]$Arguments[0]
+                $clientRequests.Add($commandName)
 
-            switch ($commandName) {
-                'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
-                'list-messages' { '{"ok":true,"result":{"items":[{"bridgeId":"msg-1","body_preview":"secret"}]}}' }
-                'get-message' { '{"ok":true,"result":{"bridgeId":"msg-1","body_preview":"secret"}}' }
-                'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
-                'list-calendar' { '{"ok":true,"result":{"items":[]}}' }
-                default { throw "Unexpected client command: $commandName" }
-            }
-        }
+                switch ($commandName) {
+                    'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
+                    'list-messages' { '{"ok":true,"result":{"items":[{"bridgeId":"msg-1","body_preview":"secret"}]}}' }
+                    'get-message' { '{"ok":true,"result":{"bridgeId":"msg-1","body_preview":"secret"}}' }
+                    'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
+                    'list-calendar' { '{"ok":true,"result":{"items":[]}}' }
+                    default { throw "Unexpected client command: $commandName" }
+                }
+            }.GetNewClosure())
 
         {
             & $testScriptPath -ClientPath 'Invoke-LeakyClient' -TaskName 'OpenClaw MailBridge' -OperatorEvidenceOutputPath 'virtual:\operator-evidence.txt'
         } | Should -Throw 'Safe mode leaked body_preview.'
 
-        @($global:ClientRequests) | Should -Contain 'list-messages'
+        @($script:ClientRequests) | Should -Contain 'list-messages'
     }
 
     It 'fails when readiness does not arrive before the deadline' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
+        $clientRequests = $script:ClientRequests
 
-        function global:Invoke-NotReadyClient {
-            [CmdletBinding()]
-            [OutputType([string])]
-            param(
-                [Parameter(ValueFromRemainingArguments = $true)]
-                [object[]]$Arguments
-            )
+        Set-Item -Path Function:\Global:Invoke-NotReadyClient -Value ({
+                [CmdletBinding()]
+                [OutputType([string])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
 
-            $commandName = [string]$Arguments[0]
-            $global:ClientRequests.Add($commandName)
+                $commandName = [string]$Arguments[0]
+                $clientRequests.Add($commandName)
 
-            if ($commandName -eq 'status') {
-                return '{"ok":true,"result":{"state":"waiting_for_outlook","mode":"safe"}}'
-            }
+                if ($commandName -eq 'status') {
+                    return '{"ok":true,"result":{"state":"waiting_for_outlook","mode":"safe"}}'
+                }
 
-            throw "Unexpected client command: $commandName"
-        }
+                throw "Unexpected client command: $commandName"
+            }.GetNewClosure())
 
         {
             & $testScriptPath -ClientPath 'Invoke-NotReadyClient' -TaskName 'OpenClaw MailBridge' -ReadyTimeoutSeconds 0 -OperatorEvidenceOutputPath 'virtual:\operator-evidence.txt'
         } | Should -Throw 'Bridge readiness deadline expired before status.result.state reached ready.'
 
-        @($global:ScheduledTaskCalls) | Should -Contain '/run /tn OpenClaw MailBridge'
+        @($script:ScheduledTaskCalls) | Should -Contain '/run /tn OpenClaw MailBridge'
     }
 
     It 'emits suite E operator evidence keys' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
+        $clientRequests = $script:ClientRequests
 
-        function global:Invoke-FakeClient {
-            [CmdletBinding()]
-            [OutputType([string])]
-            param(
-                [Parameter(ValueFromRemainingArguments = $true)]
-                [object[]]$Arguments
-            )
+        Set-Item -Path Function:\Global:Invoke-FakeClient -Value ({
+                [CmdletBinding()]
+                [OutputType([string])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
 
-            $commandName = [string]$Arguments[0]
-            $global:ClientRequests.Add(($Arguments -join ' '))
+                $commandName = [string]$Arguments[0]
+                $clientRequests.Add(($Arguments -join ' '))
 
-            switch ($commandName) {
-                'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
-                'list-messages' { '{"ok":true,"result":{"items":[{"bridgeId":"msg-1"}]}}' }
-                'get-message' { '{"ok":true,"result":{"bridgeId":"msg-1"}}' }
-                'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
-                'list-calendar' { '{"ok":true,"result":{"items":[{"bridgeId":"evt-1"}]}}' }
-                'get-event' { '{"ok":true,"result":{"bridgeId":"evt-1"}}' }
-                default { throw "Unexpected client command: $commandName" }
-            }
-        }
+                switch ($commandName) {
+                    'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
+                    'list-messages' { '{"ok":true,"result":{"items":[{"bridgeId":"msg-1"}]}}' }
+                    'get-message' { '{"ok":true,"result":{"bridgeId":"msg-1"}}' }
+                    'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
+                    'list-calendar' { '{"ok":true,"result":{"items":[{"bridgeId":"evt-1"}]}}' }
+                    'get-event' { '{"ok":true,"result":{"bridgeId":"evt-1"}}' }
+                    default { throw "Unexpected client command: $commandName" }
+                }
+            }.GetNewClosure())
 
         $output = & $testScriptPath `
             -ClientPath 'Invoke-FakeClient' `
@@ -177,35 +187,35 @@ Describe 'test-mailbridge.ps1' {
             -NetworkDenyVerified $true
 
         @($output) | Should -Contain 'AutomatedSuitesPassed: A,B,C,D,F'
-        $global:WrittenEvidencePath | Should -Be 'virtual:\operator-evidence.txt'
-        @($global:WrittenEvidence) | Should -Contain 'PrimaryInteractiveSession: True'
-        @($global:WrittenEvidence) | Should -Contain 'OpenClawSvcPipeConnect: True'
-        @($global:WrittenEvidence) | Should -Contain 'NetworkDenyVerified: True'
-        @($global:ClientRequests | Where-Object { $_ -like 'get-message*' }).Count | Should -Be 1
-        @($global:ClientRequests | Where-Object { $_ -like 'get-event*' }).Count | Should -Be 1
+        $script:WrittenEvidenceState.Path | Should -Be 'virtual:\operator-evidence.txt'
+        @($script:WrittenEvidence) | Should -Contain 'PrimaryInteractiveSession: True'
+        @($script:WrittenEvidence) | Should -Contain 'OpenClawSvcPipeConnect: True'
+        @($script:WrittenEvidence) | Should -Contain 'NetworkDenyVerified: True'
+        @($script:ClientRequests | Where-Object { $_ -like 'get-message*' }).Count | Should -Be 1
+        @($script:ClientRequests | Where-Object { $_ -like 'get-event*' }).Count | Should -Be 1
     }
 
     It 'emits publish and runtime evidence keys for the installed host and client' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
 
-        function global:Invoke-FakeClient {
-            [CmdletBinding()]
-            [OutputType([string])]
-            param(
-                [Parameter(ValueFromRemainingArguments = $true)]
-                [object[]]$Arguments
-            )
+        Set-Item -Path Function:\Global:Invoke-FakeClient -Value ({
+                [CmdletBinding()]
+                [OutputType([string])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
 
-            $commandName = [string]$Arguments[0]
+                $commandName = [string]$Arguments[0]
 
-            switch ($commandName) {
-                'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
-                'list-messages' { '{"ok":true,"result":{"items":[]}}' }
-                'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
-                'list-calendar' { '{"ok":true,"result":{"items":[]}}' }
-                default { throw "Unexpected client command: $commandName" }
-            }
-        }
+                switch ($commandName) {
+                    'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
+                    'list-messages' { '{"ok":true,"result":{"items":[]}}' }
+                    'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
+                    'list-calendar' { '{"ok":true,"result":{"items":[]}}' }
+                    default { throw "Unexpected client command: $commandName" }
+                }
+            }.GetNewClosure())
 
         $output = & $testScriptPath `
             -ClientPath 'Invoke-FakeClient' `
@@ -219,4 +229,5 @@ Describe 'test-mailbridge.ps1' {
         @($output) | Should -Contain 'ClientRuntimeFramework: Microsoft.NETCore.App 10.0.0'
     }
 }
+
 
