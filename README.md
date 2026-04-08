@@ -7,9 +7,11 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 ## Current State
 
 - The bridge host, client, contracts library, PowerShell scripts, and MSTest/Pester suite are all present in this repository.
-- All production and test projects target `net8.0-windows`.
+- All production and test projects target `net10.0-windows`.
 - The bridge scans the default Inbox and Calendar on one dedicated STA thread, persists cached message/event metadata in SQLite, and serves cache-backed results for the full supported RPC surface.
 - The client resolves its pipe name from `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` and accepts an optional `--pipe-name` override.
+- Non-status RPC methods are fully cache-backed: recent-message, meeting-request, calendar-window, and single-item lookups all return repository-backed results instead of placeholders.
+- Response shaping preserves `safe` versus `enhanced` behavior, with `safe` as the default install mode and `enhanced` reserved for post-validation opt-in.
 - Acceptance evidence is split between scripted deterministic coverage (`scripts/test-mailbridge.ps1`) and operator-only Windows validation steps documented in `docs/mailbridge-runbook.md`.
 
 ## Solution Layout
@@ -64,7 +66,7 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 
 ### Non-Windows contributor note
 
-The runtime projects target `net8.0-windows`, so the bridge itself is Windows-only. The Codex/bootstrap workflow supports non-Windows restore scenarios by enabling Windows targeting during restore when needed.
+The runtime projects target `net10.0-windows`, so the bridge itself is Windows-only. The Codex/bootstrap workflow supports non-Windows restore scenarios by enabling Windows targeting during restore when needed.
 
 ## Build And Test
 
@@ -248,7 +250,7 @@ Current test coverage includes:
 ## Additional Docs
 
 - Workspace setup: [`docs/setup.md`](./docs/setup.md)
-- Operator runbook: [`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md)
+- Operator runbook: [`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md) for install steps, `safe` versus `enhanced` guidance, scripted acceptance suites, and operator-only validation steps.
 - Active feature and remediation docs: [`docs/features/active/`](./docs/features/active/)
 
 ## Known Gaps And Follow-Ups

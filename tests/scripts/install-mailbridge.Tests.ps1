@@ -8,9 +8,12 @@ Describe 'install-mailbridge.ps1' {
         foreach ($functionName in @(
                 'Get-BridgeDefaultConfiguration',
                 'Get-OutlookApplicationType',
+                'Get-RuntimeFrameworkDescription',
                 'New-OutlookApplication',
                 'Remove-ComObjectReference',
-                'Test-OutlookProfilePrerequisite')) {
+                'Test-IsElevated',
+                'Test-OutlookProfilePrerequisite',
+                'Assert-DotNet10RuntimeConfig')) {
             Remove-Item -Path ("Function:\{0}" -f $functionName) -ErrorAction SilentlyContinue
         }
     }
@@ -22,6 +25,12 @@ Describe 'install-mailbridge.ps1' {
         $config.pipeName | Should -Be 'openclaw_mailbridge_v1'
         $config.autostartOutlook | Should -BeTrue
         $config.bodyPreviewMaxChars | Should -Be 500
+    }
+
+    It 'returns a boolean from Test-IsElevated' {
+        $result = Test-IsElevated
+
+        $result | Should -BeOfType [bool]
     }
 
     It 'fails preflight when Outlook COM is unavailable' {
@@ -70,4 +79,39 @@ Describe 'install-mailbridge.ps1' {
         @($script:ReleasedObjects) | Should -Contain $script:FakeNamespace
         @($script:ReleasedObjects) | Should -Contain $fakeOutlook
     }
+
+    It 'rejects a bridge host runtimeconfig that does not require .NET 10' {
+        Mock Test-Path {
+            param($Path)
+
+            $Path -eq 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.runtimeconfig.json'
+        }
+        Mock Get-Content {
+            '{"runtimeOptions":{"tfm":"net8.0","framework":{"name":"Microsoft.NETCore.App","version":"8.0.0"}}}'
+        }
+
+        {
+            Assert-DotNet10RuntimeConfig `
+                -RuntimeConfigPath 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.runtimeconfig.json' `
+                -ComponentName 'Bridge host'
+        } | Should -Throw '*requires .NET 10*'
+    }
+
+    It 'rejects a client runtimeconfig that does not require .NET 10' {
+        Mock Test-Path {
+            param($Path)
+
+            $Path -eq 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.runtimeconfig.json'
+        }
+        Mock Get-Content {
+            '{"runtimeOptions":{"tfm":"net8.0","framework":{"name":"Microsoft.NETCore.App","version":"8.0.0"}}}'
+        }
+
+        {
+            Assert-DotNet10RuntimeConfig `
+                -RuntimeConfigPath 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.runtimeconfig.json' `
+                -ComponentName 'Client'
+        } | Should -Throw '*requires .NET 10*'
+    }
 }
+

@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$TaskName = 'OpenClaw MailBridge',
-    [string]$ClientPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.exe',
+    [string]$InstallRoot = 'C:\Program Files\OpenClaw\MailBridge',
+    [string]$ClientPath,
     [int]$ReadyTimeoutSeconds = 120,
     [string]$OperatorEvidenceOutputPath = 'TestResults\mailbridge-operator-evidence.txt',
     [switch]$ExpectMessageData,
@@ -11,6 +12,10 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+if (-not $PSBoundParameters.ContainsKey('ClientPath')) {
+    $ClientPath = Join-Path $InstallRoot 'OpenClaw.MailBridge.Client.exe'
+}
 
 function Invoke-Json {
     [CmdletBinding()]
@@ -75,9 +80,9 @@ function Wait-BridgeReady {
 }
 
 function Assert-SafeModePrivacy {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseApprovedVerbs', '', Justification = 'Assert communicates a deterministic test/validation contract already used by the scripts.')]
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory = $true)]
         [object[]]$Items
     )
 
@@ -114,13 +119,67 @@ function Write-OperatorEvidence {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
 
-    # Write operator evidence fields for downstream audit consumption
+    # Write operator evidence fields for downstream audit consumption.
     $evidence = @(
         "PrimaryInteractiveSession: $PrimaryInteractiveSession"
         "OpenClawSvcPipeConnect: $SvcPipeConnect"
         "NetworkDenyVerified: $NetworkDenyState"
     )
     Set-Content -Path $OutputPath -Value $evidence
+}
+
+function Get-InstalledFrameworkEvidence {
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$InstallPath
+    )
+
+    $runtimeConfigs = @(
+        [pscustomobject]@{
+            Label = 'Bridge'
+            Path  = Join-Path $InstallPath 'OpenClaw.MailBridge.runtimeconfig.json'
+        }
+        [pscustomobject]@{
+            Label = 'Client'
+            Path  = Join-Path $InstallPath 'OpenClaw.MailBridge.Client.runtimeconfig.json'
+        }
+    )
+
+    $evidence = [System.Collections.Generic.List[string]]::new()
+
+    # Capture installed framework evidence before Suite A runs so acceptance artifacts prove the exact published/runtime target.
+    foreach ($runtimeConfigInfo in $runtimeConfigs) {
+        if (-not (Test-Path $runtimeConfigInfo.Path)) {
+            throw "Installed runtimeconfig missing: $($runtimeConfigInfo.Path)"
+        }
+
+        $runtimeConfig = Get-Content -Path $runtimeConfigInfo.Path -Raw | ConvertFrom-Json
+        $frameworkName = [string]$runtimeConfig.runtimeOptions.framework.name
+        $frameworkVersion = [string]$runtimeConfig.runtimeOptions.framework.version
+        $runtimeFramework = "$frameworkName $frameworkVersion"
+
+        if ($runtimeConfig.runtimeOptions.tfm -ne 'net10.0' -or $frameworkName -ne 'Microsoft.NETCore.App' -or $frameworkVersion -notlike '10.*') {
+            throw "Installed $($runtimeConfigInfo.Label.ToLowerInvariant()) runtimeconfig requires .NET 10. Found $runtimeFramework with tfm $($runtimeConfig.runtimeOptions.tfm)."
+        }
+
+        if ($runtimeConfigInfo.Label -eq 'Bridge') {
+            $evidence.Add('PublishedBridgeTargetFramework: net10.0-windows')
+            $evidence.Add("BridgeRuntimeFramework: $runtimeFramework")
+        }
+        else {
+            $evidence.Add('PublishedClientTargetFramework: net10.0-windows')
+            $evidence.Add("ClientRuntimeFramework: $runtimeFramework")
+        }
+    }
+
+    return $evidence.ToArray()
+}
+
+$frameworkEvidence = Get-InstalledFrameworkEvidence -InstallPath $InstallRoot
+foreach ($line in $frameworkEvidence) {
+    Write-Output $line
 }
 
 $status = Wait-BridgeReady -ScheduledTaskName $TaskName -ClientExecutablePath $ClientPath -TimeoutSeconds $ReadyTimeoutSeconds
@@ -193,3 +252,4 @@ for ($i = 0; $i -lt 25; $i++) {
 
 Write-Output 'AutomatedSuitesPassed: A,B,C,D,F'
 Write-Output "OperatorEvidencePath: $OperatorEvidenceOutputPath"
+

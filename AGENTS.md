@@ -1176,20 +1176,20 @@ You must:
 
 **Agent execution requirement (explicit):**
 
-- Agents must use the MCP server functions: `mcp__drmCopilotExtension__run_poshqc_format`, `mcp__drmCopilotExtension__run_poshqc_analyze`, `mcp__drmCopilotExtension__run_poshqc_test`, and `mcp__drmCopilotExtension__run_poshqc_analyze_autofix`.
+- Agents must use the MCP server functions: `mcp_drmcopilotext_run_poshqc_format`, `mcp_drmcopilotext_run_poshqc_analyze`, `mcp_drmcopilotext_run_poshqc_test`, and `mcp_drmcopilotext_run_poshqc_analyze_autofix`.
 - Agents must **not** use VS Code task wrappers as a substitute.
 
 1) **Formatting - Invoke-Formatter**
 
 - Format all PowerShell files using the PoshQC formatter (Invoke-Formatter).
-- **Agent execution:** `mcp__drmCopilotExtension__run_poshqc_format`
+- **Agent execution:** `mcp_drmcopilotext_run_poshqc_format`
 - Do not hand-format; re-run the formatter whenever PSScriptAnalyzer would change whitespace/indentation.
 
 2) **Linting - PSScriptAnalyzer**
 
 - Run the PoshQC analyzer (PSScriptAnalyzer) with repo settings.
-- **Agent execution:** `mcp__drmCopilotExtension__run_poshqc_analyze`
-- Optional autofix: `mcp__drmCopilotExtension__run_poshqc_analyze_autofix`; review diffs after running.
+- **Agent execution:** `mcp_drmcopilotext_run_poshqc_analyze`
+- Optional autofix: `mcp_drmcopilotext_run_poshqc_analyze_autofix`; review diffs after running.
 - Fix **all** findings (Error/Warning/Information). No rule suppressions unless strictly necessary and localized with a comment.
 
 3) **Compatibility**
@@ -1224,10 +1224,10 @@ You must:
 
 When PowerShell code changes, your toolchain loop must include:
 
-1. Format: `mcp__drmCopilotExtension__run_poshqc_format`
-2. Analyze: `mcp__drmCopilotExtension__run_poshqc_analyze`
+1. Format: `mcp_drmcopilotext_run_poshqc_format`
+2. Analyze: `mcp_drmcopilotext_run_poshqc_analyze`
 3. (Type checking is not applicable for PowerShell; skip to testing.)
-4. Test: `mcp__drmCopilotExtension__run_poshqc_test`
+4. Test: `mcp_drmcopilotext_run_poshqc_test`
 
 The MCP server functions above are the approved toolchain contract for agents.
 
@@ -1251,7 +1251,7 @@ Rerun the loop from step 1 if any step changes code or fails.
 
 - **Testing framework:** All PowerShell tests must use **Pester** (v5.x).
 - Use the repo config at `scripts/powershell/PoshQC/settings/pester.runsettings.psd1`.
-- **Agent execution requirement:** use the MCP server function `mcp__drmCopilotExtension__run_poshqc_test`. Do **not** use VS Code task wrappers as a substitute.
+- **Agent execution requirement:** use the MCP server function `mcp_drmcopilotext_run_poshqc_test`. Do **not** use VS Code task wrappers as a substitute.
 - Keep tests compatible with PowerShell 7+.
 
 ---
@@ -1293,7 +1293,7 @@ Rerun the loop from step 1 if any step changes code or fails.
 ## 4. Running the Toolchain (PowerShell Tests)
 
 - When running the "After Making Changes" toolchain, the **testing step** for PowerShell must use:
-  - MCP server function: `mcp__drmCopilotExtension__run_poshqc_test`
+  - MCP server function: `mcp_drmcopilotext_run_poshqc_test`
 - Agents must use the MCP server function. VS Code task wrappers are not an approved substitute.
 - Do **not** substitute other test runners for PowerShell work without explicit approval.
 

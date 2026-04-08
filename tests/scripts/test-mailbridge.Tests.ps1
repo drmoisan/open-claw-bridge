@@ -4,6 +4,8 @@ Describe 'test-mailbridge.ps1' {
         $global:ClientRequests = [System.Collections.Generic.List[string]]::new()
         $global:WrittenEvidence = [System.Collections.Generic.List[string]]::new()
         $global:WrittenEvidencePath = $null
+        $global:BridgeRuntimeConfigPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.runtimeconfig.json'
+        $global:ClientRuntimeConfigPath = 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.runtimeconfig.json'
 
         function global:schtasks {
             [CmdletBinding()]
@@ -30,6 +32,30 @@ Describe 'test-mailbridge.ps1' {
         }
 
         Mock New-Item { [pscustomobject]@{ FullName = 'virtual:\operator-evidence.txt' } }
+        Mock Test-Path {
+            param(
+                [string]$Path
+            )
+
+            $Path -in @($global:BridgeRuntimeConfigPath, $global:ClientRuntimeConfigPath)
+        }
+        Mock Get-Content {
+            param(
+                [string]$Path,
+                [string]$Raw
+            )
+
+            $null = $Raw
+            if ($Path -eq $global:BridgeRuntimeConfigPath) {
+                return '{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":"10.0.0"}}}'
+            }
+
+            if ($Path -eq $global:ClientRuntimeConfigPath) {
+                return '{"runtimeOptions":{"tfm":"net10.0","framework":{"name":"Microsoft.NETCore.App","version":"10.0.0"}}}'
+            }
+
+            throw "Unexpected Get-Content path: $Path"
+        }
         Mock Set-Content {
             param(
                 [string]$Path,
@@ -53,6 +79,8 @@ Describe 'test-mailbridge.ps1' {
         Remove-Variable -Name 'ClientRequests' -Scope Global -ErrorAction SilentlyContinue
         Remove-Variable -Name 'WrittenEvidence' -Scope Global -ErrorAction SilentlyContinue
         Remove-Variable -Name 'WrittenEvidencePath' -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'BridgeRuntimeConfigPath' -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ClientRuntimeConfigPath' -Scope Global -ErrorAction SilentlyContinue
     }
 
     It 'fails when safe mode leaks protected message fields' {
@@ -156,4 +184,39 @@ Describe 'test-mailbridge.ps1' {
         @($global:ClientRequests | Where-Object { $_ -like 'get-message*' }).Count | Should -Be 1
         @($global:ClientRequests | Where-Object { $_ -like 'get-event*' }).Count | Should -Be 1
     }
+
+    It 'emits publish and runtime evidence keys for the installed host and client' {
+        $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
+
+        function global:Invoke-FakeClient {
+            [CmdletBinding()]
+            [OutputType([string])]
+            param(
+                [Parameter(ValueFromRemainingArguments = $true)]
+                [object[]]$Arguments
+            )
+
+            $commandName = [string]$Arguments[0]
+
+            switch ($commandName) {
+                'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
+                'list-messages' { '{"ok":true,"result":{"items":[]}}' }
+                'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
+                'list-calendar' { '{"ok":true,"result":{"items":[]}}' }
+                default { throw "Unexpected client command: $commandName" }
+            }
+        }
+
+        $output = & $testScriptPath `
+            -ClientPath 'Invoke-FakeClient' `
+            -InstallRoot 'C:\Program Files\OpenClaw\MailBridge' `
+            -TaskName 'OpenClaw MailBridge' `
+            -OperatorEvidenceOutputPath 'virtual:\operator-evidence.txt'
+
+        @($output) | Should -Contain 'PublishedBridgeTargetFramework: net10.0-windows'
+        @($output) | Should -Contain 'PublishedClientTargetFramework: net10.0-windows'
+        @($output) | Should -Contain 'BridgeRuntimeFramework: Microsoft.NETCore.App 10.0.0'
+        @($output) | Should -Contain 'ClientRuntimeFramework: Microsoft.NETCore.App 10.0.0'
+    }
 }
+

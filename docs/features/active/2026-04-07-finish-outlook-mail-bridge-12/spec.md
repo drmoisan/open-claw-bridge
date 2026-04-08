@@ -11,12 +11,14 @@
 
 The Outlook mail bridge is only partially implemented today: settings load, bridge status, Outlook acquisition, and scan timestamps exist, but message and calendar RPC methods still return placeholders and the scanner does not enumerate or normalize Inbox or Calendar data. Until the original fixed spec is completed end to end, `openclaw-svc` cannot reliably read local-only, read-only Outlook metadata through `OpenClaw.MailBridge.Client.exe` in the required interactive-session-only topology.
 
+The branch must be corrected back to the existing .NET 10 environment before publish and acceptance evidence are rerun.
+
 This feature completes the already-chosen cache-first design rather than replacing it. The implementation stays inside the existing bridge host, client, contracts library, scripts, tests, and runbook so the bridge can scan Outlook metadata on one dedicated STA thread, persist normalized rows in SQLite, and serve deterministic named-pipe responses without introducing a new transport, service model, or write capability.
 
 
 ## Behavior
 
-Finish the existing bridge architecture in `src/OpenClaw.MailBridge`, `src/OpenClaw.MailBridge.Client`, `src/OpenClaw.MailBridge.Contracts`, `tests/OpenClaw.MailBridge.Tests`, the existing install/test scripts, and `docs/mailbridge-runbook.md` without adding unrelated projects or replacement transports. The completed behavior must retarget all projects to `net8.0-windows`, acquire Outlook on one dedicated STA thread, scan and normalize default Inbox and Calendar metadata into SQLite, expose that cached data through the exact named-pipe/client contract, and prove the required preflight plus acceptance flows with automated tests and scripts.
+Finish the existing bridge architecture in `src/OpenClaw.MailBridge`, `src/OpenClaw.MailBridge.Client`, `src/OpenClaw.MailBridge.Contracts`, `tests/OpenClaw.MailBridge.Tests`, the existing install/test scripts, and `docs/mailbridge-runbook.md` without adding unrelated projects or replacement transports. The completed behavior must retarget all projects to `net10.0-windows`, acquire Outlook on one dedicated STA thread, scan and normalize default Inbox and Calendar metadata into SQLite, expose that cached data through the exact named-pipe/client contract, and prove the required preflight plus acceptance flows with automated tests and scripts.
 
 Expected end-to-end runtime flow:
 
@@ -58,7 +60,7 @@ Expected end-to-end runtime flow:
 	- `bodyPreviewMaxChars`: default `500`; maximum preview length after sanitization/truncation.
 	- `logLevel`: default `Information`; forwarded into host logging.
 - Versioning or backward-compatibility constraints:
-	- All production and test projects must target `net8.0-windows`; the repo remains pinned to SDK `10.0.201`, which can build `net8.0-windows` projects.
+	- All production and test projects must target `net10.0-windows`; the repo remains pinned to SDK `10.0.201`, which matches the intended .NET 10 runtime environment for this repository.
 	- Keep the existing projects, method names, DTO fields, and named-pipe transport contract in `src/OpenClaw.MailBridge.Contracts`; do not introduce replacement RPC transports or unrelated projects.
 	- Preserve local-only, read-only behavior and the existing settings/cache file locations so install scripts, client usage, and operator runbooks stay aligned.
 
@@ -116,7 +118,7 @@ Data flow, storage, or state changes introduced by this feature.
 ## Implementation Strategy
 
 - Implementation scope (what changes, not sequencing):
-	- Retarget the four existing project files to `net8.0-windows`.
+	- Retarget the four existing project files to `net10.0-windows`.
 	- Complete `CacheRepository.cs` so it persists and queries `messages`, `events`, and `scan_state` rather than scan-state only.
 	- Complete `OutlookScanner.cs` so it enumerates the default Inbox and Calendar, applies the research-backed filtering rules, normalizes metadata, and updates the cache through the repository.
 	- Update `ScanWorker.cs` so Inbox and Calendar polling cadence are both honored while still running every Outlook operation through `OutlookStaExecutor`.
