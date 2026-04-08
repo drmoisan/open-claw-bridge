@@ -1,384 +1,293 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+echo "=== drm-copilot setup: start ==="
+echo "Working directory: $(pwd)"
 
-# Codex Web copies this script to /tmp before running it, so the script-relative
-# REPO_ROOT resolves to / rather than the actual checkout.  Fall back to the
-# working directory, which Codex sets to the repo root.
-if [ ! -f "${REPO_ROOT}/TaskMaster.sln" ]; then
-  REPO_ROOT="$(pwd)"
+# Prefer an explicit Python interpreter when provided by the workflow.
+# This avoids pip interacting with OS-managed site-packages when the script runs under sudo.
+PYTHON_EXE="${PYTHON_EXE:-}"
+if [ -n "$PYTHON_EXE" ]; then
+  if [ ! -x "$PYTHON_EXE" ]; then
+    echo "ERROR: PYTHON_EXE was provided but is not executable: $PYTHON_EXE" >&2
+    exit 1
+  fi
+
+  python_bin_dir="$(dirname "$PYTHON_EXE")"
+  export PATH="$python_bin_dir:$PATH"
+  echo "Using explicit PYTHON_EXE=$PYTHON_EXE"
+else
+  # Fall back to PATH resolution; on GitHub runners this may be system Python if run under sudo.
+  PYTHON_EXE="python3"
+  echo "PYTHON_EXE not provided; falling back to $PYTHON_EXE from PATH"
 fi
 
-log() {
-  printf '[codex-web-setup] %s\n' "$*"
-}
+REPO_ROOT="${WORKSPACE_FOLDER:-}"
+if [ -z "$REPO_ROOT" ] || [ ! -d "$REPO_ROOT" ]; then
+  REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+fi
 
-fail() {
-  printf '[codex-web-setup] error: %s\n' "$*" >&2
-  exit 1
-}
+# Normalize to an absolute path
+REPO_ROOT="$(cd "$REPO_ROOT" && pwd)"
+export REPO_ROOT
 
-warn() {
-  printf '[codex-web-setup] warning: %s\n' "$*" >&2
-}
+# If the repo root doesn't contain expected tooling, try common workspace mounts.
+if [ ! -f "$REPO_ROOT/scripts/powershell/PoshQC/PoshQC.psd1" ]; then
+  repo_name="$(basename "$REPO_ROOT")"
+  for candidate in "/workspaces/$repo_name" "/workspace/$repo_name"; do
+    if [ -f "$candidate/scripts/powershell/PoshQC/PoshQC.psd1" ]; then
+      REPO_ROOT="$candidate"
+      export REPO_ROOT
+      break
+    fi
+  done
+fi
 
-read_global_json_sdk_version() {
-  local global_json_path="${REPO_ROOT}/global.json"
-
-  if [ ! -f "${global_json_path}" ]; then
-    return 1
+# Quick connectivity preflight to avoid long retries when PyPI is unreachable.
+check_pypi_connectivity() {
+  if [ "${ALLOW_OFFLINE_INSTALL:-0}" = "1" ]; then
+    echo "ALLOW_OFFLINE_INSTALL=1 set; skipping PyPI connectivity check."
+    return 0
   fi
 
-  grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' "${global_json_path}" |
-    head -n 1 |
-    sed -E 's/.*"version"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/'
-}
-
-append_if_missing() {
-  local file="$1"
-  local line="$2"
-
-  touch "$file"
-  if ! grep -Fqx "$line" "$file"; then
-    printf '%s\n' "$line" >>"$file"
-  fi
-}
-
-install_apt_packages() {
-  if ! command -v apt-get >/dev/null 2>&1; then
-    warn "apt-get is unavailable; skipping OS package installation."
-    return
+  if curl -I -s --max-time 5 https://pypi.org/simple >/dev/null; then
+    return 0
   fi
 
-  local runner=""
-  if [ "$(id -u)" -eq 0 ]; then
-    runner=""
-  elif command -v sudo >/dev/null 2>&1; then
-    runner="sudo"
-  else
-    warn "apt-get requires root and sudo is unavailable; skipping OS package installation."
-    return
-  fi
-
-  log "Installing Codex Web dependencies with apt-get..."
-  ${runner} apt-get update
-  ${runner} apt-get install -y \
-    ca-certificates \
-    curl \
-    git \
-    jq \
-    lsb-release \
-    mono-complete \
-    ripgrep \
-    unzip \
-    zip
+  echo "ERROR: Unable to reach pypi.org (check network/DNS or set ALLOW_OFFLINE_INSTALL=1 to skip)." >&2
+  echo "Tip: set POETRY_PYPI_URL to a reachable mirror if direct PyPI access is blocked." >&2
+  return 1
 }
 
-install_powershell() {
+#
+# 0. Ensure Poetry is available (reuse existing install to avoid extra PyPI traffic); prefer 2.2.1 if absent
+#
+if command -v poetry >/dev/null 2>&1; then
+  echo "Poetry present ($(poetry --version)); reusing existing installation."
+else
+  echo "Poetry not found; installing Poetry 2.2.1 (devcontainer baseline)..."
+  "$PYTHON_EXE" -m pip install --no-cache-dir "poetry==2.2.1"
+fi
+
+#
+# 1. Python dependencies via Poetry (devcontainer parity: in-project venv, --with dev)
+#
+cd "$REPO_ROOT"
+poetry config virtualenvs.in-project true --local
+
+# If a custom index is provided, surface it before installs so we know which endpoint Poetry will hit.
+if [ -n "${POETRY_PYPI_URL:-}" ]; then
+  echo "Using custom POETRY_PYPI_URL=${POETRY_PYPI_URL}"
+  poetry config repositories.main "$POETRY_PYPI_URL"
+  poetry config pypi-token.main "" 2>/dev/null || true
+fi
+
+# Bail out early if PyPI is unreachable (unless ALLOW_OFFLINE_INSTALL=1)
+check_pypi_connectivity
+
+if [ -d ".venv" ] && [ ! -x ".venv/bin/python" ]; then
+  echo "Detected broken .venv; removing and recreating..."
+  rm -rf .venv
+fi
+
+install_with_retries() {
+  # Retry wrapper to cope with transient network/DNS hiccups when hitting PyPI
+  local attempts=5
+  local delay=5
+  local i=1
+  while [ "$i" -le "$attempts" ]; do
+    if "$@"; then
+      return 0
+    fi
+    echo "Attempt $i/$attempts failed; retrying in ${delay}s..."
+    sleep "$delay"
+    i=$((i + 1))
+  done
+  echo "ERROR: command failed after $attempts attempts: $*" >&2
+  return 1
+}
+
+if [ -f "poetry.lock" ]; then
+  echo "poetry.lock found; installing locked dependencies with --with dev..."
+  install_with_retries poetry install --no-interaction --no-ansi --with dev
+elif [ -f "pyproject.toml" ]; then
+  echo "poetry.lock missing; locking and installing with --with dev..."
+  install_with_retries poetry lock --no-interaction --no-ansi
+  install_with_retries poetry install --no-interaction --no-ansi --with dev
+else
+  echo "No pyproject.toml found; skipping Python dependency installation."
+fi
+
+#
+# 2. Install/upgrade PowerShell with distro-aware selection (fall back to GitHub .deb)
+ensure_pwsh() {
+  # Keep requirement aligned with devcontainer but allow the known-good 7.4.x fallback
+  local required="7.4.0"
+
   if command -v pwsh >/dev/null 2>&1; then
-    log "PowerShell is already available; skipping."
-    return
+    local current
+    current="$(pwsh --version | awk '{print $2}')"
+    if dpkg --compare-versions "$current" ge "$required"; then
+      echo "pwsh $current present; meets requirement ($required)."
+      return 0
+    fi
+    echo "pwsh $current present; upgrading to >= $required..."
+  else
+    echo "pwsh not found; installing PowerShell..."
   fi
 
-  if ! command -v apt-get >/dev/null 2>&1; then
-    warn "apt-get is unavailable; skipping PowerShell installation."
-    return
+  local os_id="" os_version="" repo_url="" fallback_version="7.4.13"
+  if [ -r /etc/os-release ]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    os_id="${ID:-}"
+    os_version="${VERSION_ID:-}"
   fi
 
-  local runner=""
-  if [ "$(id -u)" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1; then
-      runner="sudo"
-    else
-      warn "PowerShell installation requires root; skipping."
-      return
+  # Choose the correct Microsoft feed for the host; Ubuntu images were failing with the Debian feed.
+  if [[ "$os_id" == "ubuntu" || "$os_id" == "debian" ]]; then
+    repo_url="https://packages.microsoft.com/config/${os_id}/${os_version:-12}/packages-microsoft-prod.deb"
+  else
+    repo_url="https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb"
+  fi
+
+  apt-get update -qq
+  apt-get install -y --no-install-recommends \
+    ca-certificates curl wget apt-transport-https gnupg software-properties-common
+
+  local repo_ok=0
+  if wget -q "$repo_url" -O /tmp/packages-microsoft-prod.deb; then
+    if dpkg -i /tmp/packages-microsoft-prod.deb; then
+      repo_ok=1
+    fi
+  fi
+  rm -f /tmp/packages-microsoft-prod.deb
+
+  if [ "$repo_ok" -eq 1 ]; then
+    apt-get update -qq
+    if apt-get install -y --no-install-recommends powershell; then
+      return 0
+    fi
+    echo "PowerShell install from distro feed failed; falling back to GitHub package." >&2
+  else
+    echo "PowerShell feed bootstrap failed for ${os_id:-unknown}; falling back to GitHub package." >&2
+  fi
+
+  local pwsh_deb="powershell_${fallback_version}-1.deb_amd64.deb"
+  local pwsh_url="https://github.com/PowerShell/PowerShell/releases/download/v${fallback_version}/${pwsh_deb}"
+  echo "Downloading PowerShell fallback from: ${pwsh_url}"
+  wget -qO /tmp/powershell.deb "$pwsh_url"
+  apt-get install -y /tmp/powershell.deb
+  rm -f /tmp/powershell.deb
+}
+
+ensure_pwsh
+
+#
+# 3. Install PSScriptAnalyzer & Pester (pinned to devcontainer minimums)
+if command -v pwsh >/dev/null 2>&1; then
+  echo "PowerShell installed. Checking modules from PSGallery..."
+
+  pwsh -NoLogo -NoProfile -Command '
+    $ErrorActionPreference = "Stop"
+
+    Write-Host "=== [ps] Checking PSScriptAnalyzer / Pester availability ==="
+
+    try {
+      if (-not (Get-PSRepository -Name "PSGallery" -ErrorAction SilentlyContinue)) {
+        Register-PSRepository -Default -ErrorAction SilentlyContinue
+      }
+    } catch {
+      Write-Warning "Register-PSRepository -Default failed: $($_.Exception.Message)"
+    }
+
+    try {
+      Set-PSRepository -Name "PSGallery" -InstallationPolicy Trusted -ErrorAction SilentlyContinue
+    } catch {
+      Write-Warning "Set-PSRepository PSGallery failed: $($_.Exception.Message)"
+    }
+
+    $required = @(
+      @{ Name = "PSScriptAnalyzer"; Version = "1.22.0" },
+      @{ Name = "Pester"; Version = "5.6.1" }
+    )
+
+    foreach ($module in $required) {
+      $installed = Get-Module -ListAvailable -Name $module.Name |
+        Where-Object { $_.Version -ge [version]$module.Version } |
+        Sort-Object Version -Descending |
+        Select-Object -First 1
+
+      if ($installed) {
+        Write-Host "Found $($module.Name) $($installed.Version)"
+        continue
+      }
+
+      Write-Host "Installing $($module.Name) $($module.Version) (CurrentUser scope)..."
+      Install-Module -Name $module.Name -RequiredVersion $module.Version -Scope CurrentUser -AllowClobber -Force -ErrorAction Stop
+    }
+
+    Write-Host "=== [ps] Final module list ==="
+    Get-Module -ListAvailable PSScriptAnalyzer, Pester |
+      Sort-Object Name, Version -Descending |
+      Format-Table Name, Version, ModuleBase
+  '
+
+  POSHQC_PATH="$REPO_ROOT/scripts/powershell/PoshQC/PoshQC.psd1"
+  if [ ! -f "$POSHQC_PATH" ]; then
+    echo "PoshQC module missing; attempting to restore from git..." >&2
+    if command -v git >/dev/null 2>&1 && git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      # 1. Sparse checkout handling
+      if git -C "$REPO_ROOT" sparse-checkout list >/dev/null 2>&1; then
+        echo "Check for sparse-checkout..." >&2
+        # We don't blindly disable anymore; we try checkout first.
+        # But if checkout fails, we might need to disable it.
+        # For now, let's try the direct checkout.
+      fi
+
+      # 2. Try restoring from local HEAD
+      echo "Attempting restore from HEAD..." >&2
+      git -C "$REPO_ROOT" checkout HEAD -- scripts/powershell/PoshQC >/dev/null 2>&1 || true
+
+      # 3. If still missing, try fetching and restoring from origin/development
+      if [ ! -f "$POSHQC_PATH" ]; then
+        echo "PoshQC still missing; attempting fetch from origin/development..." >&2
+        git -C "$REPO_ROOT" fetch origin development:refs/remotes/origin/development >/dev/null 2>&1 || true
+        git -C "$REPO_ROOT" checkout origin/development -- scripts/powershell/PoshQC >/dev/null 2>&1 || true
+      fi
+
+      # 4. Fallback to master
+      if [ ! -f "$POSHQC_PATH" ]; then
+        echo "PoshQC still missing; attempting fetch from origin/master..." >&2
+        git -C "$REPO_ROOT" fetch origin master:refs/remotes/origin/master >/dev/null 2>&1 || true
+        git -C "$REPO_ROOT" checkout origin/master -- scripts/powershell/PoshQC >/dev/null 2>&1 || true
+      fi
     fi
   fi
 
-  local ubuntu_version
-  ubuntu_version="$(lsb_release -rs 2>/dev/null || echo '24.04')"
-
-  log "Registering Microsoft package repository for PowerShell (Ubuntu ${ubuntu_version})..."
-  local ms_pkg
-  ms_pkg="$(mktemp --suffix=.deb)"
-  if curl -fsSL "https://packages.microsoft.com/config/ubuntu/${ubuntu_version}/packages-microsoft-prod.deb" -o "${ms_pkg}"; then
-    ${runner} dpkg -i "${ms_pkg}" || true
-    rm -f "${ms_pkg}"
-    ${runner} apt-get update
-    ${runner} apt-get install -y powershell
+  if [ -f "$POSHQC_PATH" ]; then
+    echo "Importing PoshQC module (required for parity)..."
+    pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass \
+      -Command '& { Import-Module "$env:REPO_ROOT/scripts/powershell/PoshQC/PoshQC.psd1" -Force; Get-Command -Module PoshQC | Out-Host }'
   else
-    rm -f "${ms_pkg}"
-    warn "Could not download Microsoft package repo; skipping PowerShell installation."
-  fi
-}
-
-install_nuget() {
-  if command -v nuget >/dev/null 2>&1; then
-    log "nuget is already available; skipping."
-    return
-  fi
-
-  if ! command -v mono >/dev/null 2>&1; then
-    warn "mono is unavailable; cannot install nuget wrapper."
-    return
-  fi
-
-  log "Downloading nuget.exe and creating mono wrapper..."
-  local nuget_exe="/usr/local/bin/nuget.exe"
-  local nuget_wrapper="/usr/local/bin/nuget"
-
-  local runner=""
-  if [ "$(id -u)" -ne 0 ]; then
-    runner="sudo"
-  fi
-
-  if curl -fsSL "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe" -o "${nuget_exe}"; then
-    printf '#!/usr/bin/env bash\nexec mono %s "$@"\n' "${nuget_exe}" | ${runner} tee "${nuget_wrapper}" >/dev/null
-    ${runner} chmod +x "${nuget_wrapper}"
-    log "nuget wrapper installed at ${nuget_wrapper}."
-  else
-    warn "Could not download nuget.exe; skipping."
-  fi
-}
-
-install_dotnet_sdk() {
-  local dotnet_root="${REPO_ROOT}/.dotnet-sdk"
-  local dotnet_version=""
-  local install_script=""
-
-  dotnet_version="$(read_global_json_sdk_version || true)"
-  if [ -z "${dotnet_version}" ]; then
-    warn "Could not read the SDK version from global.json; skipping repo-local .NET SDK installation."
-    return
-  fi
-
-  if [ -x "${dotnet_root}/dotnet" ] && [ -d "${dotnet_root}/sdk/${dotnet_version}" ]; then
-    log "Repo-local .NET SDK ${dotnet_version} is already available at ${dotnet_root}."
-  else
-    log "Installing repo-local .NET SDK ${dotnet_version} into ${dotnet_root}..."
-    install_script="$(mktemp)"
-    curl -fsSL https://dot.net/v1/dotnet-install.sh -o "${install_script}"
-    bash "${install_script}" --version "${dotnet_version}" --install-dir "${dotnet_root}"
-    rm -f "${install_script}"
-  fi
-
-  export DOTNET_ROOT="${dotnet_root}"
-  export PATH="${dotnet_root}:${PATH}"
-
-  append_if_missing "${HOME}/.bashrc" "export DOTNET_ROOT=\"${dotnet_root}\""
-  append_if_missing "${HOME}/.bashrc" "export PATH=\"${dotnet_root}:\$PATH\""
-}
-
-install_dotnet_tools() {
-  if ! command -v dotnet >/dev/null 2>&1; then
-    fail "dotnet is unavailable; cannot restore the required dotnet tool manifest."
-  fi
-
-  if [ ! -f "${REPO_ROOT}/dotnet-tools.json" ]; then
-    fail "Required dotnet tool manifest not found at ${REPO_ROOT}/dotnet-tools.json."
-  fi
-
-  log "Restoring repo-local dotnet tools from dotnet-tools.json..."
-  (
-    cd "${REPO_ROOT}"
-    dotnet tool restore --tool-manifest "${REPO_ROOT}/dotnet-tools.json"
-  )
-}
-
-install_dotnet_coverage() {
-  if ! command -v dotnet >/dev/null 2>&1; then
-    fail "dotnet is unavailable; cannot install dotnet-coverage."
-  fi
-
-  local dotnet_tools_dir="${HOME}/.dotnet/tools"
-  mkdir -p "${dotnet_tools_dir}"
-
-  export PATH="${dotnet_tools_dir}:${PATH}"
-  append_if_missing "${HOME}/.bashrc" "export PATH=\"\$HOME/.dotnet/tools:\$PATH\""
-
-  if command -v dotnet-coverage >/dev/null 2>&1; then
-    log "dotnet-coverage is already available; skipping."
-    return
-  fi
-
-  log "Installing dotnet-coverage as a global dotnet tool..."
-  if dotnet tool list --global | grep -Eq '^dotnet-coverage\s'; then
-    dotnet tool update --global dotnet-coverage
-  else
-    dotnet tool install --global dotnet-coverage
-  fi
-}
-
-install_actionlint() {
-  if command -v actionlint >/dev/null 2>&1; then
-    log "actionlint is already available; skipping."
-    return
-  fi
-
-  if ! command -v tar >/dev/null 2>&1; then
-    warn "tar is unavailable; skipping actionlint installation."
-    return
-  fi
-
-  local actionlint_version="1.7.7"
-  local temp_dir=""
-  local runner=""
-
-  if [ "$(id -u)" -ne 0 ]; then
-    if command -v sudo >/dev/null 2>&1; then
-      runner="sudo"
-    else
-      warn "actionlint installation requires root or sudo; skipping."
-      return
+    echo "ERROR: PoshQC module not found at $POSHQC_PATH" >&2
+    if command -v git >/dev/null 2>&1 && git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      echo "ERROR: git tracking info for PoshQC:" >&2
+      git -C "$REPO_ROOT" ls-files --stage scripts/powershell/PoshQC/PoshQC.psd1 >&2 || true
     fi
+    exit 1
   fi
+else
+  echo "pwsh is not available; skipping PowerShell tooling setup."
+fi
 
-  temp_dir="$(mktemp -d)"
-  log "Installing actionlint v${actionlint_version}..."
-  if curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${actionlint_version}/actionlint_${actionlint_version}_linux_amd64.tar.gz" -o "${temp_dir}/actionlint.tar.gz"; then
-    tar -xzf "${temp_dir}/actionlint.tar.gz" -C "${temp_dir}" actionlint
-    ${runner} install -m 0755 "${temp_dir}/actionlint" /usr/local/bin/actionlint
-    log "actionlint installed at /usr/local/bin/actionlint."
-  else
-    warn "Could not download actionlint; skipping."
-  fi
+# 4. Install actionlint to match devcontainer tooling
+if ! command -v actionlint >/dev/null 2>&1; then
+  echo "Installing actionlint..."
+  wget -q -O - https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s -- latest /usr/local/bin
+else
+  echo "actionlint already installed"
+fi
 
-  rm -rf "${temp_dir}"
-}
-
-restore_packages_if_needed() {
-  cd "${REPO_ROOT}"
-
-  if [ -d "${REPO_ROOT}/packages" ] && [ -n "$(find "${REPO_ROOT}/packages" -mindepth 1 -maxdepth 1 -print -quit)" ]; then
-    log "packages/ is already populated; skipping restore."
-    return
-  fi
-
-  if ! command -v nuget >/dev/null 2>&1; then
-    warn "nuget is unavailable; cannot restore packages.config dependencies."
-    return
-  fi
-
-  log "Restoring solution packages into packages/..."
-  nuget restore "${REPO_ROOT}/TaskMaster.sln" -PackagesDirectory "${REPO_ROOT}/packages"
-}
-
-verify_formatting_capability() {
-  log "Verifying formatting capability..."
-
-  command -v dotnet >/dev/null 2>&1 || fail "dotnet is not available after setup."
-  command -v pwsh >/dev/null 2>&1 || fail "pwsh is not available after setup."
-
-  (
-    cd "${REPO_ROOT}"
-    dotnet tool run csharpier --version >/dev/null
-  ) || fail "CSharpier is not runnable via 'dotnet tool run csharpier'."
-}
-
-is_windows_powershell_host() {
-  pwsh -NoProfile -ExecutionPolicy Bypass -Command "& { if (\$IsWindows) { exit 0 } ; exit 1 }" >/dev/null 2>&1
-}
-
-verify_windows_visual_studio_task_capability() {
-  pwsh -NoProfile -ExecutionPolicy Bypass -File "${REPO_ROOT}/scripts/vscode/Invoke-VSBuild.ps1" -SolutionPath TaskMaster.sln -Configuration Debug -Platform 'Any CPU' -NoExecute >/dev/null || fail "MSBuild tooling required by the restore/build/lint/type-check tasks is unavailable."
-
-  pwsh -NoProfile -ExecutionPolicy Bypass -Command "& {
-    \$vswherePath = Join-Path \${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (-not (Test-Path \$vswherePath)) {
-      throw 'vswhere.exe was not found. Install Visual Studio 2022 (or Build Tools) with Test Platform components.'
-    }
-
-    \$vstestPath = & \$vswherePath -latest -products * -find 'Common7\IDE\Extensions\TestPlatform\vstest.console.exe' | Select-Object -First 1
-    if (-not \$vstestPath) {
-      throw 'vstest.console.exe not found via vswhere. Install Visual Studio Test Platform components.'
-    }
-  }" >/dev/null || fail "Visual Studio test tooling required by the MSTest tasks is unavailable."
-}
-
-verify_build_and_test_capability() {
-  log "Verifying restore/build/lint/type-check/test capability..."
-
-  command -v pwsh >/dev/null 2>&1 || fail "pwsh is not available after setup."
-  command -v dotnet-coverage >/dev/null 2>&1 || fail "dotnet-coverage is not available after setup."
-  [ -f "${REPO_ROOT}/coverage.config" ] || fail "coverage.config is missing from the repository root."
-
-  if ! is_windows_powershell_host; then
-    warn "Skipping Windows-only Visual Studio task verification because this host is not Windows. Restore/build/test parity still requires Windows plus Visual Studio tooling discoverable via vswhere.exe."
-    return
-  fi
-
-  verify_windows_visual_studio_task_capability
-}
-
-verify_required_task_tooling() {
-  verify_formatting_capability
-  verify_build_and_test_capability
-}
-
-write_repo_notes() {
-  cat <<'EOF'
-
-Workspace profile detected:
-- Legacy Visual Studio solution targeting .NET Framework 4.8.1
-- Repo-pinned .NET SDK via global.json with install path rooted at .dotnet-sdk/
-- Local dotnet tool manifest for CSharpier
-- Global dotnet-coverage installation for MSTest coverage collection
-- Windows-first build/test scripts that rely on VS tools such as vswhere, MSBuild.exe, and vstest.console.exe
-- Outlook interop and VSTO references across the main add-in and supporting libraries
-
-Codex Web caveat:
-- This script verifies general Codex Web prerequisites everywhere, and it verifies the full Visual Studio task chain only on Windows hosts.
-- In Linux-based Codex Web, the script completes with a warning after skipping the Windows-only Visual Studio checks because the restore/build/test tasks require Windows plus Visual Studio 2022 or Build Tools components discoverable through vswhere.exe.
-- Full add-in build/debug parity still requires Windows with Visual Studio 2022, Office/VSTO tooling, and Outlook desktop.
-
-Useful follow-up commands after a successful setup run:
-- source ~/.bashrc
-- dotnet --info
-- dotnet tool run csharpier format .
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-Restore.ps1 -SolutionPath TaskMaster.sln -Configuration Debug -Platform "Any CPU"
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-VSBuild.ps1 -SolutionPath TaskMaster.sln -Configuration Debug -Platform "Any CPU" -EnableNETAnalyzers -EnforceCodeStyleInBuild
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-VSBuild.ps1 -SolutionPath TaskMaster.sln -Configuration Debug -Platform "Any CPU" -EnableNullable -TreatWarningsAsErrors
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-MSTest.ps1 -SearchRoot . -Configuration Debug
-- pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/vscode/Invoke-MSTestWithCoverage.ps1 -SearchRoot . -Configuration Debug
-
-Note:
-- The repo's existing PowerShell helper scripts under scripts/vscode/ are Windows/Visual Studio oriented by design, so Linux-based Codex Web setup can prepare only a partial toolchain.
-EOF
-}
-
-main() {
-  log "Bootstrapping a Codex Web environment for ${REPO_ROOT}"
-
-  export CI=true
-  export DOTNET_CLI_TELEMETRY_OPTOUT=1
-  export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1
-  export DOTNET_MULTILEVEL_LOOKUP=0
-  export NUGET_XMLDOC_MODE=skip
-
-  append_if_missing "${HOME}/.bashrc" 'export CI=true'
-  append_if_missing "${HOME}/.bashrc" 'export DOTNET_CLI_TELEMETRY_OPTOUT=1'
-  append_if_missing "${HOME}/.bashrc" 'export DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1'
-  append_if_missing "${HOME}/.bashrc" 'export DOTNET_MULTILEVEL_LOOKUP=0'
-  append_if_missing "${HOME}/.bashrc" 'export NUGET_XMLDOC_MODE=skip'
-
-  install_apt_packages
-  install_powershell
-  install_nuget
-  install_dotnet_sdk
-  install_dotnet_tools
-  install_dotnet_coverage
-  verify_required_task_tooling
-  install_actionlint
-  restore_packages_if_needed
-
-  if command -v git >/dev/null 2>&1; then
-    git config --global core.autocrlf input || true
-  fi
-
-  write_repo_notes
-  log "Setup complete."
-}
-
-main "$@"
+echo "=== drm-copilot setup: done ==="
