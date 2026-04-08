@@ -1,8 +1,8 @@
 Describe 'root PowerShell runner scripts' {
     BeforeEach {
-        $script:DotnetCalls = [System.Collections.Generic.List[string]]::new()
+        $global:DotnetCalls = [System.Collections.Generic.List[string]]::new()
 
-        function dotnet {
+        function global:dotnet {
             [CmdletBinding()]
             [OutputType([void])]
             param(
@@ -11,32 +11,33 @@ Describe 'root PowerShell runner scripts' {
             )
 
             $null = $Arguments.Count
-            $script:DotnetCalls.Add(($Arguments -join ' '))
+            $global:DotnetCalls.Add(($Arguments -join ' '))
         }
     }
 
     AfterEach {
-        Remove-Item Function:\dotnet -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:dotnet -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'DotnetCalls' -Scope Global -ErrorAction SilentlyContinue
     }
 
     It 'builds the solution with the requested configuration' {
         $buildScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\Build.ps1'
         & $buildScriptPath -Configuration Release
 
-        @($script:DotnetCalls).Count | Should -Be 1
-        $script:DotnetCalls[0] | Should -Match '^build '
-        $script:DotnetCalls[0] | Should -Match '-c Release'
-        $script:DotnetCalls[0] | Should -Match [regex]::Escape('OpenClaw.MailBridge.sln')
+        @($global:DotnetCalls).Count | Should -Be 1
+        $global:DotnetCalls[0] | Should -Match '^build '
+        $global:DotnetCalls[0] | Should -Match '-c Release'
+        $global:DotnetCalls[0] | Should -Match ([regex]::Escape('OpenClaw.MailBridge.sln'))
     }
 
     It 'tests the solution with the requested configuration' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\Test.ps1'
         & $testScriptPath -Configuration Release
 
-        @($script:DotnetCalls).Count | Should -Be 1
-        $script:DotnetCalls[0] | Should -Match '^test '
-        $script:DotnetCalls[0] | Should -Match '-c Release'
-        $script:DotnetCalls[0] | Should -Match [regex]::Escape('OpenClaw.MailBridge.sln')
+        @($global:DotnetCalls).Count | Should -Be 1
+        $global:DotnetCalls[0] | Should -Match '^test '
+        $global:DotnetCalls[0] | Should -Match '-c Release'
+        $global:DotnetCalls[0] | Should -Match ([regex]::Escape('OpenClaw.MailBridge.sln'))
     }
 
     It 'runs the bridge project in Development mode' {
@@ -46,10 +47,10 @@ Describe 'root PowerShell runner scripts' {
 
         & $runBridgeScriptPath -Configuration Release
 
-        @($script:DotnetCalls).Count | Should -Be 1
-        $script:DotnetCalls[0] | Should -Match '^run '
-        $script:DotnetCalls[0] | Should -Match '--configuration Release'
-        $script:DotnetCalls[0] | Should -Match [regex]::Escape('OpenClaw.MailBridge\OpenClaw.MailBridge.csproj')
+        @($global:DotnetCalls).Count | Should -Be 1
+        $global:DotnetCalls[0] | Should -Match '^run '
+        $global:DotnetCalls[0] | Should -Match '--configuration Release'
+        $global:DotnetCalls[0] | Should -Match ([regex]::Escape('OpenClaw.MailBridge\OpenClaw.MailBridge.csproj'))
         $env:ASPNETCORE_ENVIRONMENT | Should -Be 'Development'
         $env:DOTNET_ENVIRONMENT | Should -Be 'Development'
     }
@@ -58,10 +59,10 @@ Describe 'root PowerShell runner scripts' {
         $runClientScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\Run-Client.ps1'
         & $runClientScriptPath -Configuration Release -PipeName 'custom-pipe' -Message 'hello'
 
-        @($script:DotnetCalls).Count | Should -Be 1
-        $script:DotnetCalls[0] | Should -Match '^run '
-        $script:DotnetCalls[0] | Should -Match '--configuration Release'
-        $script:DotnetCalls[0] | Should -Match '-- --pipe-name custom-pipe --message hello'
-        $script:DotnetCalls[0] | Should -Match [regex]::Escape('OpenClaw.MailBridge.Client\OpenClaw.MailBridge.Client.csproj')
+        @($global:DotnetCalls).Count | Should -Be 1
+        $global:DotnetCalls[0] | Should -Match '^run '
+        $global:DotnetCalls[0] | Should -Match '--configuration Release'
+        $global:DotnetCalls[0] | Should -Match '--pipe-name custom-pipe --message hello'
+        $global:DotnetCalls[0] | Should -Match ([regex]::Escape('OpenClaw.MailBridge.Client\OpenClaw.MailBridge.Client.csproj'))
     }
 }

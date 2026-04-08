@@ -1,8 +1,0 @@
-Timestamp: 2026-04-07T14:00:00Z
-Command: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$base = git merge-base HEAD main; $coverage = Get-Content 'TestResults/qa-powershell/coverage.json' -Raw | ConvertFrom-Json; $overall = [math]::Round([double]$coverage.OverallLineCoverage, 2); $changedScripts = @(git diff --name-only $base -- 'scripts/*.ps1' | Where-Object { $_ }); $changedTotal = 0; $changedHit = 0; foreach ($path in $changedScripts) { $file = $coverage.Files | Where-Object { $_.Path -eq $path -or $_.Path -like ('*' + $path) } | Select-Object -First 1; if ($file) { foreach ($line in $file.Lines) { $changedTotal++; if ([bool]$line.Hit) { $changedHit++ } } } }; $changedPct = if ($changedTotal -gt 0) { [math]::Round(($changedHit / $changedTotal) * 100, 2) } else { 100.0 }; $newScripts = @(git diff --name-only --diff-filter=A $base -- 'scripts/*.ps1' | Where-Object { $_ }); $newTotal = 0; $newHit = 0; foreach ($path in $newScripts) { $file = $coverage.Files | Where-Object { $_.Path -eq $path -or $_.Path -like ('*' + $path) } | Select-Object -First 1; if ($file) { foreach ($line in $file.Lines) { $newTotal++; if ([bool]$line.Hit) { $newHit++ } } } }; $newPct = if ($newTotal -gt 0) { [math]::Round(($newHit / $newTotal) * 100, 2) } else { 100.0 }; Write-Output \"PostChangeOverallLineCoverage: $overall\"; Write-Output \"ChangedOrNewLineCoverage: $changedPct\"; Write-Output \"NewProductionCoverage: $newPct\"; Write-Output \"CoverageArtifactPath: TestResults/qa-powershell/coverage.json\""
-EXIT_CODE: 0
-Output Summary:
-PostChangeOverallLineCoverage: 0
-ChangedOrNewLineCoverage: 100
-NewProductionCoverage: 100
-CoverageArtifactPath: TestResults/qa-powershell/coverage.json

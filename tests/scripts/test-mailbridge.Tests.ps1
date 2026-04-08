@@ -1,11 +1,11 @@
 Describe 'test-mailbridge.ps1' {
     BeforeEach {
-        $script:ScheduledTaskCalls = [System.Collections.Generic.List[string]]::new()
-        $script:ClientRequests = [System.Collections.Generic.List[string]]::new()
-        $script:WrittenEvidence = [System.Collections.Generic.List[string]]::new()
-        $script:WrittenEvidencePath = $null
+        $global:ScheduledTaskCalls = [System.Collections.Generic.List[string]]::new()
+        $global:ClientRequests = [System.Collections.Generic.List[string]]::new()
+        $global:WrittenEvidence = [System.Collections.Generic.List[string]]::new()
+        $global:WrittenEvidencePath = $null
 
-        function schtasks {
+        function global:schtasks {
             [CmdletBinding()]
             [OutputType([void])]
             param(
@@ -14,10 +14,10 @@ Describe 'test-mailbridge.ps1' {
             )
 
             $null = $Arguments.Count
-            $script:ScheduledTaskCalls.Add(($Arguments -join ' '))
+            $global:ScheduledTaskCalls.Add(($Arguments -join ' '))
         }
 
-        function query {
+        function global:query {
             [CmdletBinding()]
             [OutputType([string])]
             param(
@@ -32,36 +32,33 @@ Describe 'test-mailbridge.ps1' {
         Mock New-Item { [pscustomobject]@{ FullName = 'virtual:\operator-evidence.txt' } }
         Mock Set-Content {
             param(
-                [Parameter(Mandatory = $true)]
                 [string]$Path,
-                [string]$Encoding,
-                [Parameter(ValueFromPipeline = $true)]
-                [object]$InputObject
+                [object[]]$Value
             )
 
-            begin {
-                $script:WrittenEvidencePath = $Path
-                $null = $Encoding
-            }
-
-            process {
-                $script:WrittenEvidence.Add([string]$InputObject)
+            $global:WrittenEvidencePath = $Path
+            foreach ($line in @($Value)) {
+                $global:WrittenEvidence.Add([string]$line)
             }
         }
     }
 
     AfterEach {
-        Remove-Item Function:\schtasks -ErrorAction SilentlyContinue
-        Remove-Item Function:\query -ErrorAction SilentlyContinue
-        Remove-Item Function:\Invoke-FakeClient -ErrorAction SilentlyContinue
-        Remove-Item Function:\Invoke-LeakyClient -ErrorAction SilentlyContinue
-        Remove-Item Function:\Invoke-NotReadyClient -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:schtasks -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:query -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:Invoke-FakeClient -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:Invoke-LeakyClient -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:Invoke-NotReadyClient -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ScheduledTaskCalls' -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ClientRequests' -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'WrittenEvidence' -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'WrittenEvidencePath' -Scope Global -ErrorAction SilentlyContinue
     }
 
     It 'fails when safe mode leaks protected message fields' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
 
-        function Invoke-LeakyClient {
+        function global:Invoke-LeakyClient {
             [CmdletBinding()]
             [OutputType([string])]
             param(
@@ -70,11 +67,14 @@ Describe 'test-mailbridge.ps1' {
             )
 
             $commandName = [string]$Arguments[0]
-            $script:ClientRequests.Add($commandName)
+            $global:ClientRequests.Add($commandName)
 
             switch ($commandName) {
                 'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
                 'list-messages' { '{"ok":true,"result":{"items":[{"bridgeId":"msg-1","body_preview":"secret"}]}}' }
+                'get-message' { '{"ok":true,"result":{"bridgeId":"msg-1","body_preview":"secret"}}' }
+                'list-meeting-requests' { '{"ok":true,"result":{"items":[]}}' }
+                'list-calendar' { '{"ok":true,"result":{"items":[]}}' }
                 default { throw "Unexpected client command: $commandName" }
             }
         }
@@ -83,13 +83,13 @@ Describe 'test-mailbridge.ps1' {
             & $testScriptPath -ClientPath 'Invoke-LeakyClient' -TaskName 'OpenClaw MailBridge' -OperatorEvidenceOutputPath 'virtual:\operator-evidence.txt'
         } | Should -Throw 'Safe mode leaked body_preview.'
 
-        @($script:ClientRequests) | Should -Contain 'list-messages'
+        @($global:ClientRequests) | Should -Contain 'list-messages'
     }
 
     It 'fails when readiness does not arrive before the deadline' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
 
-        function Invoke-NotReadyClient {
+        function global:Invoke-NotReadyClient {
             [CmdletBinding()]
             [OutputType([string])]
             param(
@@ -98,7 +98,7 @@ Describe 'test-mailbridge.ps1' {
             )
 
             $commandName = [string]$Arguments[0]
-            $script:ClientRequests.Add($commandName)
+            $global:ClientRequests.Add($commandName)
 
             if ($commandName -eq 'status') {
                 return '{"ok":true,"result":{"state":"waiting_for_outlook","mode":"safe"}}'
@@ -111,13 +111,13 @@ Describe 'test-mailbridge.ps1' {
             & $testScriptPath -ClientPath 'Invoke-NotReadyClient' -TaskName 'OpenClaw MailBridge' -ReadyTimeoutSeconds 0 -OperatorEvidenceOutputPath 'virtual:\operator-evidence.txt'
         } | Should -Throw 'Bridge readiness deadline expired before status.result.state reached ready.'
 
-        @($script:ScheduledTaskCalls) | Should -Contain '/run /tn OpenClaw MailBridge'
+        @($global:ScheduledTaskCalls) | Should -Contain '/run /tn OpenClaw MailBridge'
     }
 
     It 'emits suite E operator evidence keys' {
         $testScriptPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path 'scripts\test-mailbridge.ps1'
 
-        function Invoke-FakeClient {
+        function global:Invoke-FakeClient {
             [CmdletBinding()]
             [OutputType([string])]
             param(
@@ -126,7 +126,7 @@ Describe 'test-mailbridge.ps1' {
             )
 
             $commandName = [string]$Arguments[0]
-            $script:ClientRequests.Add(($Arguments -join ' '))
+            $global:ClientRequests.Add(($Arguments -join ' '))
 
             switch ($commandName) {
                 'status' { '{"ok":true,"result":{"state":"ready","mode":"safe"}}' }
@@ -149,11 +149,11 @@ Describe 'test-mailbridge.ps1' {
             -NetworkDenyVerified $true
 
         @($output) | Should -Contain 'AutomatedSuitesPassed: A,B,C,D,F'
-        $script:WrittenEvidencePath | Should -Be 'virtual:\operator-evidence.txt'
-        @($script:WrittenEvidence) | Should -Contain 'PrimaryInteractiveSession: True'
-        @($script:WrittenEvidence) | Should -Contain 'OpenClawSvcPipeConnect: True'
-        @($script:WrittenEvidence) | Should -Contain 'NetworkDenyVerified: True'
-        @($script:ClientRequests | Where-Object { $_ -like 'get-message*' }).Count | Should -Be 1
-        @($script:ClientRequests | Where-Object { $_ -like 'get-event*' }).Count | Should -Be 1
+        $global:WrittenEvidencePath | Should -Be 'virtual:\operator-evidence.txt'
+        @($global:WrittenEvidence) | Should -Contain 'PrimaryInteractiveSession: True'
+        @($global:WrittenEvidence) | Should -Contain 'OpenClawSvcPipeConnect: True'
+        @($global:WrittenEvidence) | Should -Contain 'NetworkDenyVerified: True'
+        @($global:ClientRequests | Where-Object { $_ -like 'get-message*' }).Count | Should -Be 1
+        @($global:ClientRequests | Where-Object { $_ -like 'get-event*' }).Count | Should -Be 1
     }
 }

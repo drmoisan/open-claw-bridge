@@ -1,8 +1,8 @@
 Describe 'register-mailbridge-task.ps1' {
     BeforeEach {
-        $script:ScheduledTaskCalls = [System.Collections.Generic.List[string]]::new()
+        $global:ScheduledTaskCalls = [System.Collections.Generic.List[string]]::new()
 
-        function schtasks {
+        function global:schtasks {
             [CmdletBinding()]
             [OutputType([void])]
             param(
@@ -11,7 +11,7 @@ Describe 'register-mailbridge-task.ps1' {
             )
 
             $null = $Arguments.Count
-            $script:ScheduledTaskCalls.Add(($Arguments -join ' '))
+            $global:ScheduledTaskCalls.Add(($Arguments -join ' '))
         }
 
         function query {
@@ -30,8 +30,9 @@ Describe 'register-mailbridge-task.ps1' {
     }
 
     AfterEach {
-        Remove-Item Function:\schtasks -ErrorAction SilentlyContinue
+        Remove-Item Function:\Global:schtasks -ErrorAction SilentlyContinue
         Remove-Item Function:\query -ErrorAction SilentlyContinue
+        Remove-Variable -Name 'ScheduledTaskCalls' -Scope Global -ErrorAction SilentlyContinue
     }
 
     It 'preserves /sc onlogon and /it registration semantics' {
@@ -40,13 +41,13 @@ Describe 'register-mailbridge-task.ps1' {
 
         & $scriptPath -PrimaryUser 'PrimaryUser' -InstallRoot 'C:\Bridge' -Confirm:$false
 
-        $createCall = @($script:ScheduledTaskCalls | Where-Object { $_ -like '/create*' })[0]
-        $runCall = @($script:ScheduledTaskCalls | Where-Object { $_ -like '/run*' })[0]
+        $createCall = @($global:ScheduledTaskCalls | Where-Object { $_ -like '/create*' })[0]
+        $runCall = @($global:ScheduledTaskCalls | Where-Object { $_ -like '/run*' })[0]
 
         $createCall | Should -Match '/sc onlogon'
         $createCall | Should -Match '/it'
         $createCall | Should -Match '/ru PrimaryUser'
-        $createCall | Should -Match [regex]::Escape('"C:\Bridge\OpenClaw.MailBridge.exe" --config "C:\Users\PrimaryUser\AppData\Local\OpenClaw\MailBridge\bridge.settings.json"')
+        $createCall | Should -Match ([regex]::Escape('"C:\Bridge\OpenClaw.MailBridge.exe" --config "C:\Users\PrimaryUser\AppData\Local\OpenClaw\MailBridge\bridge.settings.json"'))
         $runCall | Should -Match '/run /tn OpenClaw MailBridge'
     }
 }

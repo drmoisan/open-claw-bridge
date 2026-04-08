@@ -1,9 +1,0 @@
-Timestamp: 2026-04-07T14:00:00Z
-Command: pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -Command "$baseline = Get-ChildItem 'docs/features/active/2026-04-07-finish-outlook-mail-bridge-12/evidence/baseline' -Filter 'powershell-coverage-summary.*.md' | Sort-Object LastWriteTimeUtc | Select-Object -Last 1; $post = Get-ChildItem 'docs/features/active/2026-04-07-finish-outlook-mail-bridge-12/evidence/qa-gates' -Filter 'powershell-coverage-summary.*.md' | Sort-Object LastWriteTimeUtc | Select-Object -Last 1; if (-not $baseline -or -not $post) { throw 'PowerShell coverage summary artifacts missing'; }; $baselineOverall = [double](([regex]::Match((Get-Content $baseline.FullName -Raw), 'BaselineOverallLineCoverage:\s*(?<value>[0-9]+(?:\.[0-9]+)?)')).Groups['value'].Value); $postOverall = [double](([regex]::Match((Get-Content $post.FullName -Raw), 'PostChangeOverallLineCoverage:\s*(?<value>[0-9]+(?:\.[0-9]+)?)')).Groups['value'].Value); $changedPct = [double](([regex]::Match((Get-Content $post.FullName -Raw), 'ChangedOrNewLineCoverage:\s*(?<value>[0-9]+(?:\.[0-9]+)?)')).Groups['value'].Value); $newPct = [double](([regex]::Match((Get-Content $post.FullName -Raw), 'NewProductionCoverage:\s*(?<value>[0-9]+(?:\.[0-9]+)?)')).Groups['value'].Value); $threshold = if ($postOverall -ge 80.0 -and $postOverall -ge $baselineOverall -and $changedPct -ge 80.0 -and $newPct -ge 90.0) { 'PASS' } else { 'FAIL' }; Write-Output \"BaselineOverallLineCoverage: $baselineOverall\"; Write-Output \"PostChangeOverallLineCoverage: $postOverall\"; Write-Output \"ChangedOrNewLineCoverage: $changedPct\"; Write-Output \"NewProductionCoverage: $newPct\"; Write-Output \"ThresholdResult: $threshold\""
-EXIT_CODE: 0
-Output Summary:
-BaselineOverallLineCoverage: 100
-PostChangeOverallLineCoverage: 0
-ChangedOrNewLineCoverage: 100
-NewProductionCoverage: 100
-ThresholdResult: FAIL

@@ -114,11 +114,13 @@ function Write-OperatorEvidence {
         New-Item -ItemType Directory -Force -Path $parent | Out-Null
     }
 
-    @(
+    # Write operator evidence fields for downstream audit consumption
+    $evidence = @(
         "PrimaryInteractiveSession: $PrimaryInteractiveSession"
         "OpenClawSvcPipeConnect: $SvcPipeConnect"
         "NetworkDenyVerified: $NetworkDenyState"
-    ) | Set-Content -Path $OutputPath -Encoding utf8
+    )
+    Set-Content -Path $OutputPath -Value $evidence
 }
 
 $status = Wait-BridgeReady -ScheduledTaskName $TaskName -ClientExecutablePath $ClientPath -TimeoutSeconds $ReadyTimeoutSeconds
