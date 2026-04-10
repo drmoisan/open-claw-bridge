@@ -31,6 +31,7 @@ graph TB
         subgraph Core["Core Services (DI)"]
             BSS["BridgeStateStore<br/><i>Lifecycle state machine</i>"]
             OS["OutlookScanner<br/><i>COM scan logic</i>"]
+            OCH["OutlookComHelpers<br/><i>COM reflection helpers</i>"]
             STA["OutlookStaExecutor<br/><i>Dedicated STA thread</i>"]
             CR["CacheRepository<br/><i>SQLite persistence</i>"]
             RS["ResponseShaper<br/><i>Safe / Enhanced mode</i>"]
@@ -40,6 +41,7 @@ graph TB
         BA --> Core
         SW --> STA
         STA --> OS
+        OS --> OCH
         OS --> CR
         OS --> BSS
         PRW --> CR
@@ -65,6 +67,7 @@ sequenceDiagram
     participant SW as ScanWorker
     participant STA as OutlookStaExecutor<br/>(STA Thread)
     participant OS as OutlookScanner
+    participant OCH as OutlookComHelpers
     participant OL as Outlook (COM)
     participant CR as CacheRepository
     participant BSS as BridgeStateStore
@@ -91,6 +94,9 @@ sequenceDiagram
         OL-->>OS: Filtered items
 
         loop Each mail item (up to maxItemsPerScan)
+            OS->>OCH: GetOptionalString, GetOptionalInt,<br/>GetOptionalBool, etc.
+            OCH->>OL: COM reflection (IDispatch)
+            OCH-->>OS: Property values
             OS->>OS: Normalize: BridgeIdCodec,<br/>BodySanitizer
             OS->>CR: UpsertMessageAsync(msg)
         end
@@ -102,6 +108,9 @@ sequenceDiagram
         OL-->>OS: Filtered appointments
 
         loop Each appointment
+            OS->>OCH: GetOptionalString, GetOptionalDateTimeOffset, etc.
+            OCH->>OL: COM reflection (IDispatch)
+            OCH-->>OS: Property values
             OS->>OS: Normalize: BridgeIdCodec,<br/>BodySanitizer
             OS->>CR: UpsertEventAsync(evt)
         end
@@ -191,19 +200,26 @@ stateDiagram-v2
 flowchart TD
     REQ["RPC Response Ready"]
     MODE{{"mode setting?"}}
-    SAFE["Safe Mode"]
-    ENH["Enhanced Mode"]
-    STRIP["Strip:<br/>• BodyPreview → null<br/>• SenderName → null<br/>• SenderEmail → null<br/>• IsRedacted = true"]
-    KEEP["Include:<br/>• Sanitized BodyPreview<br/>• SenderName<br/>• SenderEmail<br/>• IsRedacted = false"]
+    TYPE{{"DTO type?"}}
+    TYPE2{{"DTO type?"}}
+
+    SAFE_MSG["Message — Safe Mode<br/>Strip:<br/>• BodyPreview → null<br/>• SenderName → null<br/>• SenderEmail → null<br/>• IsRedacted = true"]
+    SAFE_EVT["Event — Safe Mode<br/>Strip:<br/>• BodyPreview → null<br/>• IsRedacted = true"]
+    ENH_MSG["Message — Enhanced Mode<br/>Include:<br/>• Sanitized BodyPreview<br/>• SenderName<br/>• SenderEmail<br/>• IsRedacted = false"]
+    ENH_EVT["Event — Enhanced Mode<br/>Include:<br/>• Sanitized BodyPreview<br/>• IsRedacted = false"]
     OUT["Send RpcResponse to client"]
 
     REQ --> MODE
-    MODE -- "safe" --> SAFE
-    MODE -- "enhanced" --> ENH
-    SAFE --> STRIP
-    ENH --> KEEP
-    STRIP --> OUT
-    KEEP --> OUT
+    MODE -- "safe" --> TYPE
+    MODE -- "enhanced" --> TYPE2
+    TYPE -- "MessageDto" --> SAFE_MSG
+    TYPE -- "EventDto" --> SAFE_EVT
+    TYPE2 -- "MessageDto" --> ENH_MSG
+    TYPE2 -- "EventDto" --> ENH_EVT
+    SAFE_MSG --> OUT
+    SAFE_EVT --> OUT
+    ENH_MSG --> OUT
+    ENH_EVT --> OUT
 ```
 
 ## 7. Data Model — SQLite Cache
@@ -212,9 +228,9 @@ flowchart TD
 erDiagram
     messages {
         text bridge_id PK "msg:base64 or mtg:base64"
-        text entry_id
+        text entry_id "NOT NULL"
         text store_id
-        text item_kind "mail | meeting"
+        text item_kind "NOT NULL — mail | meeting"
         text subject
         text sender_name
         text sender_email
@@ -222,13 +238,15 @@ erDiagram
         text sent_utc
         int importance
         int sensitivity
-        int unread
-        int has_attachments
+        int unread "NOT NULL — 0 or 1"
+        int has_attachments "NOT NULL — 0 or 1"
         text message_class
+        text to_json
+        text cc_json
         text body_preview
-        int protected_fields_available
-        int is_redacted
-        text last_seen_utc
+        int protected_fields_available "NOT NULL — 0 or 1"
+        int is_redacted "NOT NULL — 0 or 1"
+        text last_seen_utc "NOT NULL"
     }
 
     events {
@@ -236,21 +254,29 @@ erDiagram
         text entry_id
         text store_id
         text global_appointment_id
+        text item_kind "NOT NULL — appointment"
         text subject
-        text start_utc
-        text end_utc
+        text start_utc "NOT NULL"
+        text end_utc "NOT NULL"
         text location
         int busy_status
         int meeting_status
-        int is_recurring
+        int is_recurring "NOT NULL — 0 or 1"
+        int sensitivity
         text organizer
+        text required_attendees_json
+        text optional_attendees_json
+        text resources_json
         text body_preview
-        text last_seen_utc
+        int protected_fields_available "NOT NULL — 0 or 1"
+        int is_redacted "NOT NULL — 0 or 1"
+        text last_modified_utc
+        text last_seen_utc "NOT NULL"
     }
 
     scan_state {
         text key PK "last_inbox_scan_utc etc."
-        text value "ISO8601 timestamp"
+        text value "NOT NULL — ISO8601 timestamp"
     }
 ```
 

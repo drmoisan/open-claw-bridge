@@ -145,7 +145,7 @@ Data flow, storage, or state changes introduced by this feature.
 ## Definition of Done
 
 - [x] Acceptance criteria documented and mapped to named coverage in `tests.OpenClaw.MailBridge.Tests` and the acceptance-suite entry points in `scripts/test-mailbridge.ps1`
-- [ ] Behavior matches acceptance criteria in the documented Windows interactive-session environment and the cache-backed RPC surface no longer returns placeholder payloads for supported non-status methods
+- [x] Behavior matches acceptance criteria in the documented Windows interactive-session environment and the cache-backed RPC surface no longer returns placeholder payloads for supported non-status methods
 - [x] Tests updated/added for helper logic, repository persistence/query semantics, RPC validation/error mapping, privacy shaping, stale-cache handling, client exit-code behavior, and script assertions
 - [x] Edge cases and error handling covered by tests, including Outlook-unavailable states, ACL resolution failures, recurring-calendar caps, malformed request inputs, and cache-miss behavior
 - [x] Docs updated in `README.md`, `docs/mailbridge-runbook.md`, and the active feature docs so published behavior matches the shipped implementation

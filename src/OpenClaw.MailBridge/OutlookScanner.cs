@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Diagnostics;
-using System.Reflection;
 using Microsoft.Extensions.Logging;
 using OpenClaw.MailBridge.Contracts.Models;
 
@@ -200,7 +199,7 @@ internal sealed class OutlookScanner : IOutlookScanner
 
         try
         {
-            items = GetMemberValue(inboxFolder, "Items");
+            items = OutlookComHelpers.GetMemberValue(inboxFolder, "Items");
             if (items is null)
             {
                 throw new InvalidOperationException("Inbox items collection was unavailable.");
@@ -208,7 +207,7 @@ internal sealed class OutlookScanner : IOutlookScanner
 
             var lastSuccessfulInboxScan = await repo.GetScanStateAsync("last_inbox_scan_utc");
             var filter = BuildInboxFilter(lastSuccessfulInboxScan, _settings.InboxOverlapMinutes);
-            restrictedItems = InvokeMember(items, "Restrict", filter);
+            restrictedItems = OutlookComHelpers.InvokeMember(items, "Restrict", filter);
             if (restrictedItems is null)
             {
                 throw new InvalidOperationException(
@@ -251,19 +250,19 @@ internal sealed class OutlookScanner : IOutlookScanner
 
         try
         {
-            items = GetMemberValue(calendarFolder, "Items");
+            items = OutlookComHelpers.GetMemberValue(calendarFolder, "Items");
             if (items is null)
             {
                 throw new InvalidOperationException("Calendar items collection was unavailable.");
             }
 
-            InvokeMember(items, "Sort", "[Start]");
-            SetMemberValue(items, "IncludeRecurrences", true);
+            OutlookComHelpers.InvokeMember(items, "Sort", "[Start]");
+            OutlookComHelpers.SetMemberValue(items, "IncludeRecurrences", true);
 
             var windowStartUtc = _utcNow().AddDays(-_settings.CalendarPastDays);
             var windowEndUtc = _utcNow().AddDays(_settings.CalendarFutureDays);
             var filter = BuildCalendarFilter(windowStartUtc, windowEndUtc);
-            restrictedItems = InvokeMember(items, "Restrict", filter);
+            restrictedItems = OutlookComHelpers.InvokeMember(items, "Restrict", filter);
             if (restrictedItems is null)
             {
                 throw new InvalidOperationException(
@@ -301,7 +300,7 @@ internal sealed class OutlookScanner : IOutlookScanner
     }
 
     private object GetNamespace(object outlookApp) =>
-        InvokeMember(outlookApp, "GetNamespace", "MAPI")
+        OutlookComHelpers.InvokeMember(outlookApp, "GetNamespace", "MAPI")
         ?? throw new InvalidOperationException("Outlook MAPI namespace was unavailable.");
 
     private object? ResolveDefaultFolder(
@@ -312,7 +311,7 @@ internal sealed class OutlookScanner : IOutlookScanner
     {
         try
         {
-            return InvokeMember(outlookNamespace, "GetDefaultFolder", folderType);
+            return OutlookComHelpers.InvokeMember(outlookNamespace, "GetDefaultFolder", folderType);
         }
         catch (Exception ex)
         {
@@ -365,31 +364,35 @@ internal sealed class OutlookScanner : IOutlookScanner
 
     private NormalizedMessage? NormalizeMessage(object item)
     {
-        var entryId = GetOptionalString(item, "EntryID");
+        var entryId = OutlookComHelpers.GetOptionalString(item, "EntryID");
         if (string.IsNullOrWhiteSpace(entryId))
         {
             return null;
         }
 
-        var messageClass = GetOptionalString(item, "MessageClass");
+        var messageClass = OutlookComHelpers.GetOptionalString(item, "MessageClass");
         var isMeeting = IsMeetingItem(item, messageClass);
         var bridgeId = BridgeIdCodec.MessageId(entryId, isMeeting);
         var storeId = GetStoreId(item);
-        var senderName = GetOptionalString(item, "SenderName");
+        var senderName = OutlookComHelpers.GetOptionalString(item, "SenderName");
         var senderEmail =
-            GetOptionalString(item, "SenderEmailAddress")
-            ?? GetOptionalString(item, "SenderEmailType");
-        var bodyPreview = ResponseShaper.ShapePreview(GetOptionalString(item, "Body"), _settings);
+            OutlookComHelpers.GetOptionalString(item, "SenderEmailAddress")
+            ?? OutlookComHelpers.GetOptionalString(item, "SenderEmailType");
+        var bodyPreview = ResponseShaper.ShapePreview(
+            OutlookComHelpers.GetOptionalString(item, "Body"),
+            _settings
+        );
         var dto = new MessageDto(
             bridgeId,
             isMeeting ? "meeting" : "mail",
-            GetOptionalString(item, "Subject"),
-            GetOptionalDateTimeOffset(item, "ReceivedTime"),
-            GetOptionalDateTimeOffset(item, "SentOn"),
-            GetOptionalInt(item, "Importance"),
-            GetOptionalInt(item, "Sensitivity"),
-            GetOptionalBool(item, "Unread"),
-            GetOptionalBool(item, "Attachments") || GetOptionalBool(item, "HasAttachments"),
+            OutlookComHelpers.GetOptionalString(item, "Subject"),
+            OutlookComHelpers.GetOptionalDateTimeOffset(item, "ReceivedTime"),
+            OutlookComHelpers.GetOptionalDateTimeOffset(item, "SentOn"),
+            OutlookComHelpers.GetOptionalInt(item, "Importance"),
+            OutlookComHelpers.GetOptionalInt(item, "Sensitivity"),
+            OutlookComHelpers.GetOptionalBool(item, "Unread"),
+            OutlookComHelpers.GetOptionalBool(item, "Attachments")
+                || OutlookComHelpers.GetOptionalBool(item, "HasAttachments"),
             messageClass,
             senderName,
             senderEmail,
@@ -407,35 +410,40 @@ internal sealed class OutlookScanner : IOutlookScanner
 
     private NormalizedEvent? NormalizeEvent(object item)
     {
-        var entryId = GetOptionalString(item, "EntryID");
+        var entryId = OutlookComHelpers.GetOptionalString(item, "EntryID");
         var startUtc =
-            GetOptionalDateTimeOffset(item, "StartUTC") ?? GetOptionalDateTimeOffset(item, "Start");
+            OutlookComHelpers.GetOptionalDateTimeOffset(item, "StartUTC")
+            ?? OutlookComHelpers.GetOptionalDateTimeOffset(item, "Start");
         var endUtc =
-            GetOptionalDateTimeOffset(item, "EndUTC") ?? GetOptionalDateTimeOffset(item, "End");
+            OutlookComHelpers.GetOptionalDateTimeOffset(item, "EndUTC")
+            ?? OutlookComHelpers.GetOptionalDateTimeOffset(item, "End");
         if (string.IsNullOrWhiteSpace(entryId) || startUtc is null || endUtc is null)
         {
             return null;
         }
 
-        var globalAppointmentId = GetOptionalString(item, "GlobalAppointmentID");
+        var globalAppointmentId = OutlookComHelpers.GetOptionalString(item, "GlobalAppointmentID");
         var bridgeId = BridgeIdCodec.EventId(globalAppointmentId, entryId, startUtc.Value);
         var dto = new EventDto(
             bridgeId,
             globalAppointmentId,
-            GetOptionalString(item, "Subject"),
+            OutlookComHelpers.GetOptionalString(item, "Subject"),
             startUtc.Value,
             endUtc.Value,
-            GetOptionalString(item, "Location"),
-            GetOptionalInt(item, "BusyStatus"),
-            GetOptionalInt(item, "MeetingStatus"),
-            GetOptionalBool(item, "IsRecurring"),
-            GetOptionalInt(item, "Sensitivity"),
-            GetOptionalString(item, "Organizer"),
+            OutlookComHelpers.GetOptionalString(item, "Location"),
+            OutlookComHelpers.GetOptionalInt(item, "BusyStatus"),
+            OutlookComHelpers.GetOptionalInt(item, "MeetingStatus"),
+            OutlookComHelpers.GetOptionalBool(item, "IsRecurring"),
+            OutlookComHelpers.GetOptionalInt(item, "Sensitivity"),
+            OutlookComHelpers.GetOptionalString(item, "Organizer"),
             null,
             null,
             null,
-            ResponseShaper.ShapePreview(GetOptionalString(item, "Body"), _settings),
-            !string.IsNullOrWhiteSpace(GetOptionalString(item, "Body")),
+            ResponseShaper.ShapePreview(
+                OutlookComHelpers.GetOptionalString(item, "Body"),
+                _settings
+            ),
+            !string.IsNullOrWhiteSpace(OutlookComHelpers.GetOptionalString(item, "Body")),
             false
         );
 
@@ -459,113 +467,20 @@ internal sealed class OutlookScanner : IOutlookScanner
         object? store = null;
         try
         {
-            parent = GetOptionalMemberValue(item, "Parent");
+            parent = OutlookComHelpers.GetOptionalMemberValue(item, "Parent");
             if (parent is null)
             {
                 return null;
             }
 
-            store = GetOptionalMemberValue(parent, "Store");
+            store = OutlookComHelpers.GetOptionalMemberValue(parent, "Store");
             return store is null
-                ? GetOptionalString(parent, "StoreID")
-                : GetOptionalString(store, "StoreID");
+                ? OutlookComHelpers.GetOptionalString(parent, "StoreID")
+                : OutlookComHelpers.GetOptionalString(store, "StoreID");
         }
         finally
         {
             _com.ReleaseAll(store, parent);
-        }
-    }
-
-    private static object? InvokeMember(object target, string memberName, params object?[] args) =>
-        target
-            .GetType()
-            .InvokeMember(memberName, BindingFlags.InvokeMethod, binder: null, target, args);
-
-    private static object? GetMemberValue(object target, string memberName) =>
-        target.GetType().InvokeMember(memberName, BindingFlags.GetProperty, null, target, null);
-
-    private static object? GetOptionalMemberValue(object target, string memberName)
-    {
-        try
-        {
-            return GetMemberValue(target, memberName);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static void SetMemberValue(object target, string memberName, object? value) =>
-        target
-            .GetType()
-            .InvokeMember(
-                memberName,
-                BindingFlags.SetProperty,
-                binder: null,
-                target,
-                args: [value]
-            );
-
-    private static string? GetOptionalString(object target, string memberName)
-    {
-        try
-        {
-            return GetMemberValue(target, memberName)?.ToString();
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static bool GetOptionalBool(object target, string memberName)
-    {
-        try
-        {
-            var value = GetMemberValue(target, memberName);
-            return value switch
-            {
-                bool boolValue => boolValue,
-                int intValue => intValue != 0,
-                _ => false,
-            };
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    private static int? GetOptionalInt(object target, string memberName)
-    {
-        try
-        {
-            var value = GetMemberValue(target, memberName);
-            return value is null ? null : Convert.ToInt32(value);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static DateTimeOffset? GetOptionalDateTimeOffset(object target, string memberName)
-    {
-        try
-        {
-            var value = GetMemberValue(target, memberName);
-            return value switch
-            {
-                DateTimeOffset dto => dto,
-                DateTime dateTime => new DateTimeOffset(dateTime.ToUniversalTime()),
-                _ when DateTimeOffset.TryParse(value?.ToString(), out var parsed) => parsed,
-                _ => null,
-            };
-        }
-        catch
-        {
-            return null;
         }
     }
 
