@@ -6,10 +6,13 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 
 ## Current State
 
-- The bridge host, client, contracts library, PowerShell scripts, and MSTest suite are all present in this repository.
-- The bridge currently implements settings loading/validation, host startup, Outlook connectivity/state transitions, scan timestamp persistence, and the `get_status` RPC path.
-- The broader RPC contract surface for messages, meeting requests, calendar windows, and event lookup is already defined end to end, but the current server implementation returns placeholder empty collections for supported non-status methods.
-- This README reflects the code as it exists today. Some older secondary docs and helper scripts in the repo still show an earlier client invocation shape.
+- The bridge host, client, contracts library, PowerShell scripts, and MSTest/Pester suite are all present in this repository.
+- All production and test projects target `net10.0-windows`.
+- The bridge scans the default Inbox and Calendar on one dedicated STA thread, persists cached message/event metadata in SQLite, and serves cache-backed results for the full supported RPC surface.
+- The client resolves its pipe name from `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` and accepts an optional `--pipe-name` override.
+- Non-status RPC methods are fully cache-backed: recent-message, meeting-request, calendar-window, and single-item lookups all return repository-backed results instead of placeholders.
+- Response shaping preserves `safe` versus `enhanced` behavior, with `safe` as the default install mode and `enhanced` reserved for post-validation opt-in.
+- Acceptance evidence is split between scripted deterministic coverage (`scripts/test-mailbridge.ps1`) and operator-only Windows validation steps documented in `docs/mailbridge-runbook.md`.
 
 ## Solution Layout
 
@@ -29,11 +32,11 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 | Area | What is implemented today |
 | --- | --- |
 | Bridge startup | `BridgeApplication` loads or creates `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json`, validates settings, builds the generic host, and runs it. |
-| Outlook integration | `OutlookScanner` detects or starts classic Outlook, updates bridge lifecycle state, and records scan timestamps. |
+| Outlook integration | `OutlookScanner` attaches to a running Outlook instance first, creates/logs on only when allowed, resolves the default Inbox and Calendar, and normalizes cached message/event metadata. |
 | COM safety | `OutlookStaExecutor` runs Outlook-bound work on a dedicated STA thread. |
-| Local persistence | `CacheRepository` creates a local SQLite database under `%LOCALAPPDATA%\OpenClaw\MailBridge\cache.db` and persists scan-state timestamps. |
-| RPC server | `PipeRpcWorker` hosts a named pipe, validates request size and method names, and returns JSON RPC-style responses. |
-| RPC client | `OpenClaw.MailBridge.Client` builds requests for the supported command set and converts bridge/error results into process exit codes. |
+| Local persistence | `CacheRepository` creates a local SQLite database under `%LOCALAPPDATA%\OpenClaw\MailBridge\cache.db` and persists `messages`, `events`, and `scan_state`. |
+| RPC server | `PipeRpcWorker` hosts a named pipe, validates requests deterministically, enforces strict pipe ACL setup, and returns cache-backed JSON RPC-style responses. |
+| RPC client | `OpenClaw.MailBridge.Client` builds requests for the supported command set, resolves the configured pipe name, keeps JSON on stdout, and maps bridge/error results into deterministic process exit codes. |
 | Shared models | `OpenClaw.MailBridge.Contracts` contains DTOs, settings, error codes, `BridgeIdCodec`, `BodySanitizer`, and `BridgeSettingsValidator`. |
 | Install automation | PowerShell scripts create config directories, register an interactive scheduled task, run preflight checks, and smoke-test an installed bridge. |
 | Dev/bootstrap tooling | `.codex/codex-web-setup.sh` restores .NET prerequisites in Codex Web and runs an optional repo bootstrap hook. |
@@ -44,8 +47,8 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 2. `BridgeApplication` resolves the config path, loads settings, validates them, and builds the host.
 3. The host registers `BridgeStateStore`, `CacheRepository`, `OutlookStaExecutor`, `OutlookScanner`, `ScanWorker`, and `PipeRpcWorker`.
 4. `ScanWorker` initializes the SQLite cache and repeatedly invokes `OutlookScanner` on the dedicated STA executor.
-5. `OutlookScanner` either attaches to a running Outlook instance or launches/logs on to Outlook, then updates bridge readiness and scan timestamps.
-6. `PipeRpcWorker` listens on a named pipe, applies a local-only ACL, validates payloads, and serves RPC responses.
+5. `OutlookScanner` attaches to a running Outlook instance first, launches/logs on only when allowed, scans the default Inbox and Calendar, and updates bridge readiness plus stale-cache metadata.
+6. `PipeRpcWorker` listens on a named pipe, applies strict local-only ACLs, validates payloads, and serves repository-backed RPC responses.
 
 ## Prerequisites
 
@@ -172,11 +175,11 @@ The client command surface is defined in [`src/OpenClaw.MailBridge.Client/Progra
 | Client command | Required options | RPC method | Current server behavior |
 | --- | --- | --- | --- |
 | `status` | none | `get_status` | Implemented. Returns lifecycle state, mode, cache flags, and latest scan timestamps. |
-| `list-messages` | `--since`, `--limit` | `list_recent_messages` | Accepted, but currently returns a placeholder success payload with an empty `items` collection. |
-| `get-message` | `--id` | `get_message` | Accepted, but currently returns the same placeholder empty `items` payload. |
-| `list-meeting-requests` | `--since`, `--limit` | `list_recent_meeting_requests` | Accepted, but currently returns the same placeholder empty `items` payload. |
-| `list-calendar` | `--start`, `--end`, `--limit` | `list_calendar_window` | Accepted, but currently returns the same placeholder empty `items` payload. |
-| `get-event` | `--id` | `get_event` | Accepted, but currently returns the same placeholder empty `items` payload. |
+| `list-messages` | `--since`, `--limit` | `list_recent_messages` | Returns cache-backed message rows ordered newest-first. |
+| `get-message` | `--id` | `get_message` | Returns a cached message or `NOT_FOUND`. |
+| `list-meeting-requests` | `--since`, `--limit` | `list_recent_meeting_requests` | Returns cache-backed meeting-request rows. |
+| `list-calendar` | `--start`, `--end`, `--limit` | `list_calendar_window` | Returns cache-backed event rows ordered by start time. |
+| `get-event` | `--id` | `get_event` | Returns a cached event or `NOT_FOUND`. |
 
 ### Client exit codes
 
@@ -189,9 +192,10 @@ The client command surface is defined in [`src/OpenClaw.MailBridge.Client/Progra
 | `5` | Invalid usage or invalid request. |
 | `6` | Other bridge-side failure. |
 
-### Important current limitation
+### Safe versus enhanced responses
 
-The client currently always connects to the hard-coded pipe name `openclaw_mailbridge_v1`. It does not yet honor a pipe override from the command line or bridge settings.
+- `safe` mode suppresses protected fields such as `body_preview`, `sender_name`, and `sender_email`.
+- `enhanced` mode keeps sanitized/truncated previews and should only be enabled after operator validation.
 
 ## Install, Register, Test, And Uninstall Scripts
 
@@ -199,7 +203,7 @@ The client currently always connects to the hard-coded pipe name `openclaw_mailb
 | --- | --- | --- |
 | [`scripts/install-mailbridge.ps1`](./scripts/install-mailbridge.ps1) | Creates the install/config directories, seeds default config, performs Outlook preflight checks, registers the scheduled task, and smoke-checks client status. | Intended for installed binaries under `C:\Program Files\OpenClaw\MailBridge`. |
 | [`scripts/register-mailbridge-task.ps1`](./scripts/register-mailbridge-task.ps1) | Registers an interactive `schtasks` on-logon entry for the primary user. | Starts the task immediately if that user is already logged on. |
-| [`scripts/test-mailbridge.ps1`](./scripts/test-mailbridge.ps1) | Runs an acceptance-style smoke test against an installed bridge. | Verifies lifecycle readiness, query calls, privacy expectations, and repeated request hygiene. |
+| [`scripts/test-mailbridge.ps1`](./scripts/test-mailbridge.ps1) | Runs the scripted acceptance suites against an installed bridge. | Covers readiness, cache-backed message/event reads, safe-mode privacy checks, operator evidence keys, and repeated request hygiene. |
 | [`scripts/uninstall-mailbridge.ps1`](./scripts/uninstall-mailbridge.ps1) | Stops and deletes the scheduled task. | Leaves user data/config in place. |
 | [`scripts/Run-Bridge.ps1`](./scripts/Run-Bridge.ps1) | Runs the bridge project in `Development`. | Good for local debugging. |
 | [`scripts/Run-Client.ps1`](./scripts/Run-Client.ps1) | Convenience client runner. | Still reflects an older CLI shape and should be updated before relying on it. |
@@ -209,7 +213,7 @@ The client currently always connects to the hard-coded pipe name `openclaw_mailb
 ## Security And Operational Notes
 
 - The bridge is designed for local machine use through a named pipe, not as a network service.
-- The named-pipe ACL explicitly grants access to `SYSTEM`, Administrators, the current user, and optionally `openclaw-svc`, while denying the `NETWORK` SID.
+- The named-pipe ACL explicitly grants access to `SYSTEM`, Administrators, the current user, and `openclaw-svc`, while denying the `NETWORK` SID. Pipe startup fails if required identities cannot be resolved.
 - `safe` and `enhanced` modes are part of the settings contract. The repository defaults to `safe`.
 - `BodySanitizer` removes HTML tags, squashes whitespace, and replaces Windows file paths with `[path]` in preview text.
 - SQLite persistence is local to the current user profile under `%LOCALAPPDATA%\OpenClaw\MailBridge\cache.db`.
@@ -246,11 +250,10 @@ Current test coverage includes:
 ## Additional Docs
 
 - Workspace setup: [`docs/setup.md`](./docs/setup.md)
-- Operator runbook: [`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md)
+- Operator runbook: [`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md) for install steps, `safe` versus `enhanced` guidance, scripted acceptance suites, and operator-only validation steps.
 - Active feature and remediation docs: [`docs/features/active/`](./docs/features/active/)
 
 ## Known Gaps And Follow-Ups
 
-- The message, meeting-request, calendar, and event RPC methods are contract-complete but still stubbed in the current bridge worker.
-- The convenience client helper script and some older docs still reference an earlier command shape and pipe-name example.
-- The local SQLite schema already includes `messages` and `events` tables, but the current runtime path only persists `scan_state`.
+- Real Outlook/operator acceptance still requires a Windows machine with classic Outlook, an interactive user session, and a provisioned `openclaw-svc` identity.
+- The definitive operator guidance now lives in [`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md), including the scripted/operator validation split.

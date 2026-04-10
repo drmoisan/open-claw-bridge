@@ -1,31 +1,28 @@
 # OpenClaw MailBridge Runbook
 
 ## Overview
-Local-only, read-only Windows Outlook bridge for classic Outlook. The bridge runs in the primary interactive user session and serves read APIs over `\\.\pipe\openclaw_mailbridge_v1` to `openclaw-svc` via `OpenClaw.MailBridge.Client.exe`.
+
+OpenClaw MailBridge is a local-only, read-only Windows Outlook bridge for classic Outlook. The bridge runs inside the primary interactive user session, scans the default Inbox and Calendar on one dedicated STA thread, caches normalized metadata in SQLite, and serves that cached data over a named pipe to `OpenClaw.MailBridge.Client.exe`.
+
+The supported host, client, contracts, and test projects target `net10.0-windows`, and the installed runtime evidence must confirm `Microsoft.NETCore.App 10.0.0` for both the bridge host and the client before Windows acceptance is reported as complete.
 
 ## Install
-1. Publish binaries to `C:\Program Files\OpenClaw\MailBridge\`.
+
+1. Publish the host and client to `C:\Program Files\OpenClaw\MailBridge\` using the `net10.0-windows` target.
 2. Run:
+
    ```powershell
    .\scripts\install-mailbridge.ps1 -PrimaryUser '<PRIMARY_USER>'
    ```
-3. Installer creates `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` in **safe** mode.
 
-## Task registration
-Use:
-```powershell
-.\scripts\register-mailbridge-task.ps1 -PrimaryUser '<PRIMARY_USER>'
-```
-Creates on-logon interactive task (`/sc onlogon /it`).
-
-## Uninstall
-```powershell
-.\scripts\uninstall-mailbridge.ps1
-```
+3. The installer seeds `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` in **safe** mode, validates classic Outlook/profile/default-folder prerequisites, verifies the installed runtimeconfig files require .NET 10, and registers the on-logon interactive task.
 
 ## Configuration
-Config file: `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json`.
-Default:
+
+Config file: `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json`
+
+Default settings:
+
 ```json
 {
   "pipeName": "openclaw_mailbridge_v1",
@@ -42,27 +39,81 @@ Default:
 }
 ```
 
-## Operations
-- Bridge states: `starting`, `waiting_for_outlook`, `ready`, `degraded`, `error`.
-- Client commands:
-  - `status`
-  - `list-messages --since <ISO8601> --limit <n>`
-  - `get-message --id <bridge_id>`
-  - `list-meeting-requests --since <ISO8601> --limit <n>`
-  - `list-calendar --start <ISO8601> --end <ISO8601> --limit <n>`
-  - `get-event --id <bridge_id>`
+### Safe mode defaults
 
-## Troubleshooting
-- `waiting_for_outlook`: start classic Outlook or set `autostartOutlook=true`.
-- `degraded`: inspect HRESULT/high-level startup errors and confirm profile/default folders.
-- Pipe access issues: validate ACL grants for SYSTEM, Administrators, primary user SID, openclaw-svc SID; NETWORK denied.
+- `safe` is the default install mode.
+- Safe mode suppresses protected response fields such as `body_preview`, `sender_name`, and `sender_email` before cached messages are returned.
+- Keep the bridge in `safe` mode until scripted acceptance and operator-only validation are both complete.
 
-## Enhanced mode caveat
-`enhanced` mode is optional and may trigger Outlook protected-property prompts. Keep disabled by default and enable only after operator validation.
+### Enhanced mode caveats
 
-## Acceptance test
+- `enhanced` is opt-in.
+- Enhanced mode returns sanitized and truncated preview data and may expose additional protected metadata already defined by the contracts.
+- Enable enhanced mode only after operator validation because Outlook protected-property prompts may appear in some environments.
+
+## Task registration
+
+Use:
+
+```powershell
+.\scripts\register-mailbridge-task.ps1 -PrimaryUser '<PRIMARY_USER>'
+```
+
+The registration path preserves `/sc onlogon /it` so the bridge stays tied to the interactive user session.
+
+## Uninstall
+
+Use:
+
+```powershell
+.\scripts\uninstall-mailbridge.ps1
+```
+
+Uninstall removes the scheduled task only. Cache, logs, and settings are intentionally left in place for troubleshooting and rollback.
+
+## Scripted acceptance suites
+
 Run:
+
 ```powershell
 .\scripts\test-mailbridge.ps1
 ```
-Covers lifecycle, mail/calendar read paths, privacy checks, isolation checks, and COM hygiene loop.
+
+The scripted suites cover:
+
+- **Suite A** — readiness and status
+- **Suite B** — cache-backed message list/get
+- **Suite C** — cache-backed calendar list/get
+- **Suite D** — safe-mode privacy enforcement
+- **Suite F** — repeated-request hygiene
+
+The acceptance output must also record these framework-evidence keys before Suite A begins:
+
+- `PublishedBridgeTargetFramework`
+- `PublishedClientTargetFramework`
+- `BridgeRuntimeFramework`
+- `ClientRuntimeFramework`
+
+The script also writes operator evidence keys to its output path:
+
+- `PrimaryInteractiveSession`
+- `OpenClawSvcPipeConnect`
+- `NetworkDenyVerified`
+
+## Operator-only validation steps
+
+The following checks remain operator validation work and should be recorded separately after the scripted suites pass:
+
+1. Confirm the bridge is running in the **primary interactive user session**.
+2. Confirm `openclaw-svc` can connect to the pipe in the target environment.
+3. Confirm the pipe ACL denies the `NETWORK` SID.
+4. Confirm classic Outlook is using the expected profile and that the default Inbox and Calendar are present.
+5. Confirm the installed `OpenClaw.MailBridge.runtimeconfig.json` and `OpenClaw.MailBridge.Client.runtimeconfig.json` files require `Microsoft.NETCore.App 10.0.0`.
+
+## Troubleshooting
+
+- `waiting_for_outlook`: start classic Outlook or set `autostartOutlook=true`.
+- `degraded`: inspect startup/log output, verify Outlook profile/default folders, and confirm stale-cache reason.
+- `requires .NET 10`: the installed runtimeconfig files do not require the expected framework; republish and rerun `scripts/install-mailbridge.ps1`.
+- Pipe access failures: validate ACL grants for `SYSTEM`, Administrators, the primary user SID, and `openclaw-svc`, with `NETWORK` denied.
+- Missing cached message or calendar data: run the scripted acceptance suites again after Outlook has had time to populate the cache.

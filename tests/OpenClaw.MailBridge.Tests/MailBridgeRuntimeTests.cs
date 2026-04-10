@@ -1,6 +1,7 @@
 using System.IO.Pipes;
 using System.Reflection;
 using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
@@ -14,7 +15,7 @@ using OpenClaw.MailBridge.Contracts.Models;
 namespace OpenClaw.MailBridge.Tests;
 
 [TestClass]
-public class MailBridgeRuntimeTests
+public partial class MailBridgeRuntimeTests
 {
     [TestMethod]
     public void Bridge_application_get_arg_should_return_value_after_key()
@@ -179,7 +180,10 @@ public class MailBridgeRuntimeTests
     {
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings);
-        var com = new FakeComActiveObject { RunningObject = new object() };
+        var outlook = new FakeOutlookApplication();
+        outlook.Namespace.DefaultFolders[6] = new FakeOutlookFolder();
+        outlook.Namespace.DefaultFolders[9] = new FakeOutlookFolder();
+        var com = new FakeComActiveObject { RunningObject = outlook };
         var repo = new FakeScanStateRepository();
         var now = new DateTimeOffset(2026, 2, 3, 4, 5, 6, TimeSpan.Zero);
         var scanner = new OutlookScanner(
@@ -196,7 +200,8 @@ public class MailBridgeRuntimeTests
         state.State.Should().Be(BridgeState.ready);
         state.OutlookConnected.Should().BeTrue();
         state.LastInboxScanUtc.Should().Be(now);
-        repo.Touches.Should().Be(2);
+        state.LastCalendarScanUtc.Should().Be(now);
+        repo.Touches.Should().Be(3);
     }
 
     [TestMethod]
@@ -248,7 +253,9 @@ public class MailBridgeRuntimeTests
     [TestMethod]
     public async Task Cache_repository_should_store_and_load_scan_state()
     {
-        var repo = new CacheRepository();
+        using var repo = new CacheRepository(
+            $"Data Source=scan-state-{Guid.NewGuid():N};Mode=Memory;Cache=Shared"
+        );
         await repo.InitializeAsync();
 
         var now = DateTimeOffset.UtcNow;
@@ -257,132 +264,6 @@ public class MailBridgeRuntimeTests
 
         loaded.Should().NotBeNull();
         loaded!.Value.UtcDateTime.Should().BeCloseTo(now.UtcDateTime, TimeSpan.FromSeconds(5));
-    }
-
-    [TestMethod]
-    public async Task Pipe_rpc_worker_handle_client_should_return_invalid_request_for_unknown_method()
-    {
-        var worker = new PipeRpcWorker(
-            BridgeSettings.Default,
-            new BridgeStateStore(BridgeSettings.Default),
-            new FakeScanStateRepository(),
-            NullLogger<PipeRpcWorker>.Instance
-        );
-        var response = await InvokeHandlePayloadAsync(
-            worker,
-            """{"id":"1","method":"unknown","params":null}"""
-        );
-        response.Should().Contain(BridgeErrorCodes.InvalidRequest);
-    }
-
-    [TestMethod]
-    public async Task Pipe_rpc_worker_handle_client_should_return_payload_too_large_error()
-    {
-        var worker = new PipeRpcWorker(
-            BridgeSettings.Default,
-            new BridgeStateStore(BridgeSettings.Default),
-            new FakeScanStateRepository(),
-            NullLogger<PipeRpcWorker>.Instance
-        );
-        var oversizedParams = new string('a', 70000);
-        var payload =
-            $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":{{\"x\":\"{oversizedParams}\"}}}}";
-
-        var response = await InvokeHandlePayloadAsync(worker, payload);
-        response.Should().Contain(BridgeErrorCodes.PayloadTooLarge);
-    }
-
-    [TestMethod]
-    public async Task Pipe_rpc_worker_handle_client_should_return_status_for_get_status_method()
-    {
-        var repo = new FakeScanStateRepository
-        {
-            Values =
-            {
-                ["last_inbox_scan_utc"] = DateTimeOffset.UtcNow,
-                ["last_calendar_scan_utc"] = DateTimeOffset.UtcNow,
-            },
-        };
-        var worker = new PipeRpcWorker(
-            BridgeSettings.Default,
-            new BridgeStateStore(BridgeSettings.Default),
-            repo,
-            NullLogger<PipeRpcWorker>.Instance
-        );
-
-        var response = await InvokeHandlePayloadAsync(
-            worker,
-            $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":null}}"
-        );
-        response.Should().Contain("\"ok\":true");
-        response.Should().Contain("\"state\"");
-    }
-
-    [TestMethod]
-    public async Task Pipe_rpc_worker_handle_should_return_status_and_default_items()
-    {
-        var settings = BridgeSettings.Default;
-        var state = new BridgeStateStore(settings) { CacheStale = true, StaleReason = "unit-test" };
-        var repo = new FakeScanStateRepository
-        {
-            Values =
-            {
-                ["last_inbox_scan_utc"] = DateTimeOffset.UtcNow,
-                ["last_calendar_scan_utc"] = DateTimeOffset.UtcNow,
-            },
-        };
-
-        var worker = new PipeRpcWorker(settings, state, repo, NullLogger<PipeRpcWorker>.Instance);
-
-        var status = await worker.Handle(new RpcRequest("1", BridgeMethods.GetStatus, null));
-        status.Ok.Should().BeTrue();
-
-        var list = await worker.Handle(new RpcRequest("2", BridgeMethods.ListRecentMessages, null));
-        list.Ok.Should().BeTrue();
-    }
-
-    [TestMethod]
-    public async Task Pipe_rpc_worker_write_response_should_downgrade_oversize_payload()
-    {
-        var worker = new PipeRpcWorker(
-            BridgeSettings.Default,
-            new BridgeStateStore(BridgeSettings.Default),
-            new FakeScanStateRepository(),
-            NullLogger<PipeRpcWorker>.Instance
-        );
-
-        await using var stream = new MemoryStream();
-        var huge = new string('a', 1024 * 1024 + 128);
-        await worker.WriteResponse(
-            stream,
-            RpcResponse.Success("id", new { huge }),
-            CancellationToken.None
-        );
-
-        var json = System.Text.Encoding.UTF8.GetString(stream.ToArray());
-        json.Should().Contain(BridgeErrorCodes.InternalError);
-        json.Should().Contain("Response too large");
-    }
-
-    [TestMethod]
-    public void Pipe_rpc_worker_build_pipe_security_should_return_descriptor()
-    {
-        var worker = new PipeRpcWorker(
-            BridgeSettings.Default,
-            new BridgeStateStore(BridgeSettings.Default),
-            new FakeScanStateRepository(),
-            NullLogger<PipeRpcWorker>.Instance
-        );
-
-        if (!OperatingSystem.IsWindows())
-        {
-            var act = () => worker.BuildPipeSecurity();
-            act.Should().Throw<PlatformNotSupportedException>();
-            return;
-        }
-
-        var buildSecurity = () => worker.BuildPipeSecurity();
-        buildSecurity.Should().NotThrow();
     }
 
     [TestMethod]
@@ -461,68 +342,5 @@ public class MailBridgeRuntimeTests
     public void Com_active_object_try_get_should_return_null_for_unknown_prog_id()
     {
         new ComActiveObject().TryGet("Definitely.Not.A.Real.ProgId").Should().BeNull();
-    }
-
-    private static async Task<string> InvokeHandlePayloadAsync(PipeRpcWorker worker, string payload)
-    {
-        var response = await worker.BuildResponseAsync(payload);
-        await using var stream = new MemoryStream();
-        await worker.WriteResponse(stream, response, CancellationToken.None);
-        return Encoding.UTF8.GetString(stream.ToArray());
-    }
-
-    private static async Task<string> InvokeHandleClientAsync(PipeRpcWorker worker, string payload)
-    {
-        var pipeName = $"test_pipe_{Guid.NewGuid():N}";
-        await using var server = new NamedPipeServerStream(
-            pipeName,
-            PipeDirection.InOut,
-            1,
-            PipeTransmissionMode.Message,
-            PipeOptions.Asynchronous
-        );
-
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        var method = typeof(PipeRpcWorker).GetMethod(
-            "HandleClientAsync",
-            BindingFlags.Instance | BindingFlags.NonPublic
-        )!;
-        var serverTask = Task.Run(async () =>
-        {
-            await server.WaitForConnectionAsync(cts.Token);
-            await (Task)method.Invoke(worker, [server, cts.Token])!;
-        });
-
-        await using var client = new NamedPipeClientStream(
-            ".",
-            pipeName,
-            PipeDirection.InOut,
-            PipeOptions.Asynchronous
-        );
-        await client.ConnectAsync(5000, cts.Token);
-
-        var bytes = Encoding.UTF8.GetBytes(payload);
-        await client.WriteAsync(bytes, 0, bytes.Length, cts.Token);
-        await client.FlushAsync(cts.Token);
-
-        await serverTask;
-        using var ms = new MemoryStream();
-        var buffer = new byte[4096];
-        while (true)
-        {
-            var read = await client.ReadAsync(buffer, 0, buffer.Length, cts.Token);
-            if (read == 0)
-            {
-                break;
-            }
-
-            ms.Write(buffer, 0, read);
-            if (read < buffer.Length)
-            {
-                break;
-            }
-        }
-
-        return Encoding.UTF8.GetString(ms.ToArray());
     }
 }

@@ -19,6 +19,7 @@ Use this skill when:
 - Phase headings must be: `### Phase N — <Title>`
 - Tasks must start with: `- [ ] [P#-T#]` (or `[x]` for completed)
 - Task IDs must match their phase and be sequential per phase.
+- Plans must pass `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>` before they can be reported as approved.
 
 ## Short-Path Minimal Plan Contract
 
@@ -131,6 +132,15 @@ When validating or handing off plans for execution:
 	- `PREFLIGHT: ALL CLEAR`
 	- `PREFLIGHT: REVISIONS REQUIRED`
 - If revisions are required, provide a precise plan delta and repeat validation until all clear.
+- If the required planner ↔ executor handoff cannot be started or completed, stop and report blocked state; do not self-approve the plan.
+
+## Validator Gate (Mandatory)
+
+Before a plan can be treated as approved:
+
+- run `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`,
+- reject the plan if that validator exits non-zero,
+- do not treat human-readable summaries as a substitute for validator success.
 
 ## Plan-Path Continuity Contract (Mandatory)
 

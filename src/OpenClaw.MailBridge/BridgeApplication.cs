@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using Microsoft.Extensions.Logging;
 using OpenClaw.MailBridge.Contracts.Models;
 
@@ -37,11 +38,21 @@ internal class BridgeApplication
         var builder = Host.CreateApplicationBuilder(args);
         builder.Services.AddSingleton(settings);
         builder.Services.AddSingleton(new BridgeStateStore(settings));
-        builder.Services.AddSingleton<IScanStateRepository, CacheRepository>();
+        builder.Services.AddSingleton<CacheRepository>();
+        builder.Services.AddSingleton<IBridgeRepository>(sp =>
+            sp.GetRequiredService<CacheRepository>()
+        );
+        builder.Services.AddSingleton<IScanStateRepository>(sp =>
+            sp.GetRequiredService<CacheRepository>()
+        );
         builder.Services.AddSingleton<IOutlookStaExecutor, OutlookStaExecutor>();
         builder.Services.AddSingleton<IOutlookScanner, OutlookScanner>();
         builder.Services.AddHostedService<ScanWorker>();
         builder.Services.AddHostedService<PipeRpcWorker>();
+        builder.Services.AddWindowsService(options =>
+        {
+            options.ServiceName = "OpenClaw.MailBridge";
+        });
         builder.Logging.ClearProviders();
         builder.Logging.AddSimpleConsole();
         return builder.Build();

@@ -54,6 +54,8 @@ Do not finalize a plan before preflight clears it.
 - If revisions are required, `atomic-executor` MUST provide a precise plan delta that can be applied to the same plan file.
 - Continue the validate -> revise -> validate loop until `PREFLIGHT: ALL CLEAR`.
 - Do not treat a partial summary as a valid substitute for the exact preflight signal.
+- If the required `atomic-executor` handoff cannot be started or completed, stop and report blocked state; do not self-approve the plan.
+- Before reporting completion, the target plan MUST pass `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`.
 
 ## Write Scope
 

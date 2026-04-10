@@ -43,6 +43,7 @@ Mandatory orchestration rule:
   - `PREFLIGHT: REVISIONS REQUIRED`
 - If `atomic-executor` returns `PREFLIGHT: REVISIONS REQUIRED`, revise the same plan file and then explicitly spawn `atomic-executor` again in preflight-validation-only mode.
 - Repeat this planner → executor-preflight loop until `atomic-executor` returns `PREFLIGHT: ALL CLEAR`.
+- If the required `atomic-executor` delegation cannot be started, resumed, or completed, stop and report blocked state; do not self-approve the plan.
 - Do not finalize the plan before that result is obtained.
 
 Preflight loop behavior:
@@ -53,6 +54,7 @@ Preflight loop behavior:
 
 Self-checking:
 - Before each executor preflight pass, confirm zero placeholders, atomic tasks only, canonical phase headings, canonical checkbox syntax, machine-verifiable acceptance criteria, and policy compatibility.
+- Before reporting completion, ensure the target plan passes `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`.
 - Before final completion, confirm that `atomic-executor` has returned `PREFLIGHT: ALL CLEAR`.
 - If the request is outside planning, refuse execution and direct the workflow to the executor.
 """

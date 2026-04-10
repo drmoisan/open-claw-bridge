@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <!--
+        XPlat Code Coverage (coverlet): used by the CLI "dotnet test" command
+        with "XPlat Code Coverage" collect flag. Produces coverage.cobertura.xml.
+      -->
+      <DataCollector friendlyName="XPlat Code Coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <Exclude>[*.Tests]*</Exclude>
+          <ExcludeByAttribute>GeneratedCodeAttribute,CompilerGeneratedAttribute,ExcludeFromCodeCoverageAttribute</ExcludeByAttribute>
+        </Configuration>
+      </DataCollector>
+      <!--
+        Code Coverage (Microsoft/Vanguard): used by VS Code C# Dev Kit's
+        Microsoft.CodeCoverage.VSCode.CollectionService (18.x) when "Run with
+        Coverage" is invoked in the Test Explorer. The ModulePaths section tells
+        VS Code which assemblies to instrument. Without explicit includes, all
+        assemblies may be excluded by default, producing 0% coverage.
+      -->
+      <DataCollector friendlyName="Code Coverage" uri="datacollector://microsoft/CodeCoverage/2.0">
+        <Configuration>
+          <CodeCoverage>
+            <ModulePaths>
+              <Include>
+                <ModulePath>.*\\OpenClaw\.MailBridge\.dll$</ModulePath>
+                <ModulePath>.*\\OpenClaw\.MailBridge\.Contracts\.dll$</ModulePath>
+                <ModulePath>.*\\OpenClaw\.MailBridge\.Client\.dll$</ModulePath>
+              </Include>
+              <Exclude>
+                <ModulePath>.*\\OpenClaw\.MailBridge\.Tests\.dll$</ModulePath>
+              </Exclude>
+            </ModulePaths>
+            <UseVerifiableInstrumentation>False</UseVerifiableInstrumentation>
+            <AllowLowIntegrityProcesses>True</AllowLowIntegrityProcesses>
+            <CollectFromChildProcesses>True</CollectFromChildProcesses>
+          </CodeCoverage>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

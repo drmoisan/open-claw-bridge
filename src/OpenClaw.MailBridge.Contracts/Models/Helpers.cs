@@ -15,12 +15,91 @@ public static class BridgeIdCodec
     ) =>
         $"evt:{B64(string.IsNullOrWhiteSpace(globalAppointmentId) ? entryId : globalAppointmentId)}:{startUtc.UtcDateTime:O}";
 
+    public static bool TryDecodeMessageId(string? bridgeId, out string entryId, out bool isMeeting)
+    {
+        entryId = string.Empty;
+        isMeeting = false;
+
+        if (string.IsNullOrWhiteSpace(bridgeId))
+        {
+            return false;
+        }
+
+        var parts = bridgeId.Split(':', 2, StringSplitOptions.None);
+        if (parts.Length != 2 || (parts[0] != "msg" && parts[0] != "mtg"))
+        {
+            return false;
+        }
+
+        if (!TryDecode(parts[1], out entryId))
+        {
+            return false;
+        }
+
+        isMeeting = parts[0] == "mtg";
+        return true;
+    }
+
+    public static bool TryDecodeEventId(
+        string? bridgeId,
+        out string appointmentIdentity,
+        out DateTimeOffset startUtc
+    )
+    {
+        appointmentIdentity = string.Empty;
+        startUtc = default;
+
+        if (string.IsNullOrWhiteSpace(bridgeId))
+        {
+            return false;
+        }
+
+        var parts = bridgeId.Split(':', 3, StringSplitOptions.None);
+        if (parts.Length != 3 || parts[0] != "evt")
+        {
+            return false;
+        }
+
+        if (!TryDecode(parts[1], out appointmentIdentity))
+        {
+            return false;
+        }
+
+        return DateTimeOffset.TryParse(parts[2], out startUtc);
+    }
+
     private static string B64(string value) =>
         Convert
             .ToBase64String(Encoding.UTF8.GetBytes(value))
             .TrimEnd('=')
             .Replace('+', '-')
             .Replace('/', '_');
+
+    private static bool TryDecode(string encodedValue, out string decodedValue)
+    {
+        decodedValue = string.Empty;
+        if (string.IsNullOrWhiteSpace(encodedValue))
+        {
+            return false;
+        }
+
+        var normalized = encodedValue.Replace('-', '+').Replace('_', '/');
+        var remainder = normalized.Length % 4;
+        if (remainder > 0)
+        {
+            normalized = normalized.PadRight(normalized.Length + (4 - remainder), '=');
+        }
+
+        try
+        {
+            decodedValue = Encoding.UTF8.GetString(Convert.FromBase64String(normalized));
+            return true;
+        }
+        catch (FormatException)
+        {
+            return false;
+        }
+    }
 }
 
 public static class BodySanitizer

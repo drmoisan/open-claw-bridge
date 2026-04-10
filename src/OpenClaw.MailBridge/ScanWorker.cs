@@ -9,7 +9,7 @@ namespace OpenClaw.MailBridge;
 internal sealed class ScanWorker(
     IOutlookStaExecutor sta,
     IOutlookScanner scanner,
-    IScanStateRepository repo,
+    IBridgeRepository repo,
     BridgeSettings settings
 ) : BackgroundService
 {
@@ -17,14 +17,41 @@ internal sealed class ScanWorker(
     {
         await repo.InitializeAsync();
 
+        var nextInboxScanUtc = DateTimeOffset.UtcNow;
+        var nextCalendarScanUtc = DateTimeOffset.UtcNow;
+
         while (!stoppingToken.IsCancellationRequested)
         {
-            await sta.InvokeAsync(() =>
+            var now = DateTimeOffset.UtcNow;
+            if (now >= nextInboxScanUtc)
             {
-                scanner.ScanAsync(repo).GetAwaiter().GetResult();
-                return 0;
-            });
-            await Task.Delay(TimeSpan.FromSeconds(settings.InboxPollSeconds), stoppingToken);
+                await sta.InvokeAsync(() =>
+                {
+                    scanner.ScanInboxAsync(repo).GetAwaiter().GetResult();
+                    return 0;
+                });
+                nextInboxScanUtc = now.AddSeconds(settings.InboxPollSeconds);
+            }
+
+            if (now >= nextCalendarScanUtc)
+            {
+                await sta.InvokeAsync(() =>
+                {
+                    scanner.ScanCalendarAsync(repo).GetAwaiter().GetResult();
+                    return 0;
+                });
+                nextCalendarScanUtc = now.AddSeconds(settings.CalendarPollSeconds);
+            }
+
+            var nextDueUtc =
+                nextInboxScanUtc < nextCalendarScanUtc ? nextInboxScanUtc : nextCalendarScanUtc;
+            var delay = nextDueUtc - DateTimeOffset.UtcNow;
+            if (delay < TimeSpan.FromMilliseconds(50))
+            {
+                delay = TimeSpan.FromMilliseconds(50);
+            }
+
+            await Task.Delay(delay, stoppingToken);
         }
     }
 }

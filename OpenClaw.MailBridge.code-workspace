@@ -23,7 +23,8 @@
     "editor.formatOnSave": true,
     "csharp.experimental.debug.hotReload": false,
     "csharp.debug.hotReloadOnSave": false,
-    "powershell.cwd": "scripts"
+    "powershell.cwd": "scripts",
+    "dotnet.unitTests.runSettingsPath": "${workspaceFolder}/mailbridge.runsettings"
   },
   "extensions": {
     "recommendations": [
