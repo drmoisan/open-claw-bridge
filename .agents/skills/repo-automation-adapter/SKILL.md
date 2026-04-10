@@ -48,6 +48,7 @@ Prefer these semantic MCP tools when the server is configured:
 - `collect_commit_context`
 - `collect_pr_context`
 - `push_down_copilot_customizations`
+- `push_down_codex_and_agents_customizations`
 - `new_potential_bug_entry`
 - `new_potential_entry`
 - `potential_to_issue`
@@ -59,6 +60,7 @@ Legacy VS Code command IDs remain historical source material only:
 - `drmCopilotExtension.collectCommitContext`
 - `drmCopilotExtension.collectPrContext`
 - `drmCopilotExtension.pushDownCopilotCustomizations`
+- `drmCopilotExtension.pushDownCodexAndAgentsCustomizations`
 - `drmCopilotExtension.newPotentialBugEntry`
 - `drmCopilotExtension.newPotentialEntry`
 - `drmCopilotExtension.potentialToIssue`
@@ -113,6 +115,7 @@ For any host-specific workflow step:
 
 - Preferred MCP tools:
   - `push_down_copilot_customizations`
+  - `push_down_codex_and_agents_customizations`
   - `resolve_execute_hard_lock_prompt`
 - If the MCP server is unavailable, stop unless the caller explicitly provides an approved alternate path.
 

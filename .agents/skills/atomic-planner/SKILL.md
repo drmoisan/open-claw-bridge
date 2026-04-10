@@ -44,6 +44,19 @@ Before a plan is finalized:
 
 Do not finalize a plan before preflight clears it.
 
+### Enforced Handoff Contract
+
+- The delegated preflight prompt MUST include the exact directive `DIRECTIVE: PREFLIGHT VALIDATION ONLY`.
+- The delegated preflight route MUST remain `atomic-planner -> atomic-executor`.
+- `atomic-executor` MUST return exactly one of:
+  - `PREFLIGHT: ALL CLEAR`
+  - `PREFLIGHT: REVISIONS REQUIRED`
+- If revisions are required, `atomic-executor` MUST provide a precise plan delta that can be applied to the same plan file.
+- Continue the validate -> revise -> validate loop until `PREFLIGHT: ALL CLEAR`.
+- Do not treat a partial summary as a valid substitute for the exact preflight signal.
+- If the required `atomic-executor` handoff cannot be started or completed, stop and report blocked state; do not self-approve the plan.
+- Before reporting completion, the target plan MUST pass `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`.
+
 ## Write Scope
 
 Allowed writes:
@@ -55,6 +68,14 @@ Forbidden writes:
 - tests,
 - configuration outside the plan file,
 - workflow execution artifacts.
+
+## Authoritative Plan Path Rule
+
+When a caller provides an explicit target plan path:
+
+- update that exact file in place,
+- reuse that same file for all preflight revision iterations,
+- do not create additional sibling `plan.*.md` files during the same planning cycle.
 
 ## Determinism Gates
 

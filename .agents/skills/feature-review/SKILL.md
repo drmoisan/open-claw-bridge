@@ -37,6 +37,11 @@ Write timestamped artifacts into the active feature folder:
 - `remediation-inputs.<timestamp>.md` when remediation is required
 - `remediation-plan.<timestamp>.md` when remediation is required
 
+Each required review artifact MUST pass the matching validator command before review can be reported as complete:
+- `python -m scripts.dev_tools.validate_orchestration_artifacts policy-audit <path>`
+- `python -m scripts.dev_tools.validate_orchestration_artifacts code-review <path>`
+- `python -m scripts.dev_tools.validate_orchestration_artifacts feature-audit <path>`
+
 ## Review Flow
 
 1. Resolve the base branch.
@@ -46,12 +51,41 @@ Write timestamped artifacts into the active feature folder:
 3. If PR context is missing or stale, refresh it through `repo-automation-adapter`.
 4. Determine the active feature folder deterministically from the scoping docs and PR context.
 5. Create the policy audit, code review, and feature audit.
+   - validate each artifact immediately after writing it
 6. Check off passing acceptance criteria in the authoritative requirement sources per `acceptance-criteria-tracking`.
 7. If remediation is required, create remediation inputs first and then hand off plan creation using `remediation-handoff-atomic-planner`.
+
+### Enforced Remediation Handoff Contract
+
+When remediation is required:
+
+- create `remediation-inputs.<timestamp>.md` before any remediation planning handoff,
+- create the remediation plan target file on disk before delegating plan creation,
+- automatically delegate remediation planning to `atomic-planner`,
+- treat `remediation-inputs.<timestamp>.md` as the primary requirements source,
+- include the canonical PR-context summary and appendix, the review artifacts, and the original feature plan file(s) in the delegated context package,
+- if the remediation planning handoff cannot be started or does not return a receipt, stop and report blocked state,
+- do not claim review completion until the remediation plan file exists on disk.
+
+## Required Artifact Shapes
+
+- `policy-audit.<timestamp>.md`
+  - MUST be copied from the canonical template and MUST NOT retain the template instruction block.
+  - MUST contain the canonical major headings and Appendix B command reference.
+- `code-review.<timestamp>.md`
+  - MUST contain `## Executive Summary`.
+  - MUST contain `## Findings Table`.
+  - MUST contain a Markdown table header with `Severity | File | Location | Finding | Recommendation | Rationale | Evidence`.
+- `feature-audit.<timestamp>.md`
+  - MUST contain `## Scope and Baseline`.
+  - MUST contain `## Acceptance Criteria Inventory`.
+  - MUST contain `## Acceptance Criteria Evaluation`.
+  - MUST contain `## Summary`.
+  - MUST contain `## Acceptance Criteria Check-off`.
 
 ## Review Constraints
 
 - Do not silently fix code during review.
 - Prefer check-only commands.
 - If a tool cannot be run, mark the related section as unverified or partial with a concrete reason.
-- Do not claim completion until every required artifact exists on disk.
+- Do not claim completion until every required artifact exists on disk and its validator passes.
