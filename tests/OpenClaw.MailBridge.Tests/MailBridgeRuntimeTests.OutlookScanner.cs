@@ -68,11 +68,11 @@ public partial class MailBridgeRuntimeTests
     }
 
     [TestMethod]
-    public void EnsureOutlook_should_mark_unavailable_when_process_running_but_com_fails()
+    public void EnsureOutlook_should_mark_unavailable_when_process_running_and_create_and_logon_fails()
     {
-        var settings = BridgeSettings.Default;
+        var settings = BridgeSettings.Default with { AutostartOutlook = true };
         var state = new BridgeStateStore(settings);
-        var com = new FakeComActiveObject { RunningObject = null };
+        var com = new FakeComActiveObject { RunningObject = null, ThrowOnCreate = true };
         var scanner = BuildScanner(
             settings: settings,
             state: state,
@@ -82,9 +82,33 @@ public partial class MailBridgeRuntimeTests
 
         scanner.EnsureOutlook();
 
+        com.CreateAndLogonCalls.Should().Be(1);
         state.OutlookConnected.Should().BeFalse();
         state.CacheStale.Should().BeTrue();
         state.StaleReason.Should().Be("running_instance_unavailable");
+    }
+
+    [TestMethod]
+    public void EnsureOutlook_should_fall_back_to_create_and_logon_when_AutostartOutlook_is_true_and_rot_attachment_fails_for_a_running_process()
+    {
+        var settings = BridgeSettings.Default with { AutostartOutlook = true };
+        var state = new BridgeStateStore(settings);
+        var createdOutlook = new FakeOutlookApplication();
+        var com = new FakeComActiveObject { RunningObject = null, CreatedObject = createdOutlook };
+        var scanner = BuildScanner(
+            settings: settings,
+            state: state,
+            com: com,
+            processCount: _ => 1
+        );
+
+        scanner.EnsureOutlook();
+
+        com.TryGetCalls.Should().Be(1);
+        com.CreateAndLogonCalls.Should().Be(1);
+        state.CacheStale.Should().BeFalse();
+        state.StaleReason.Should().BeNull();
+        state.State.Should().Be(BridgeState.starting);
     }
 
     // ── ScanInboxAsync / ScanCalendarAsync entry points ─────────────────

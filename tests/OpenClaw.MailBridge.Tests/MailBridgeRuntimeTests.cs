@@ -253,7 +253,9 @@ public partial class MailBridgeRuntimeTests
     [TestMethod]
     public async Task Cache_repository_should_store_and_load_scan_state()
     {
-        var repo = new CacheRepository();
+        using var repo = new CacheRepository(
+            $"Data Source=scan-state-{Guid.NewGuid():N};Mode=Memory;Cache=Shared"
+        );
         await repo.InitializeAsync();
 
         var now = DateTimeOffset.UtcNow;
@@ -572,5 +574,114 @@ public partial class MailBridgeRuntimeTests
         }
 
         return Encoding.UTF8.GetString(ms.ToArray());
+    }
+
+    private static async Task<string> InvokeHandlePayloadThroughBackgroundWorkerAsync(
+        PipeRpcWorker worker,
+        string pipeName,
+        string payload
+    )
+    {
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        await worker.StartAsync(timeout.Token);
+
+        try
+        {
+            await using var client = new NamedPipeClientStream(
+                ".",
+                pipeName,
+                PipeDirection.InOut,
+                PipeOptions.Asynchronous
+            );
+
+            await client.ConnectAsync(5000, timeout.Token);
+            client.ReadMode = PipeTransmissionMode.Message;
+
+            var requestBytes = Encoding.UTF8.GetBytes(payload);
+            await client.WriteAsync(requestBytes, 0, requestBytes.Length, timeout.Token);
+            await client.FlushAsync(timeout.Token);
+
+            using var ms = new MemoryStream();
+            var buffer = new byte[4096];
+
+            do
+            {
+                var read = await client.ReadAsync(buffer, 0, buffer.Length, timeout.Token);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                ms.Write(buffer, 0, read);
+            } while (!client.IsMessageComplete);
+
+            return Encoding.UTF8.GetString(ms.ToArray());
+        }
+        finally
+        {
+            await worker.StopAsync(CancellationToken.None);
+        }
+    }
+
+    private sealed class DelayedStatusBridgeRepository : IBridgeRepository
+    {
+        private readonly FakeScanStateRepository inner = new();
+        private readonly TaskCompletionSource<bool> snapshotRequested = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        private readonly TaskCompletionSource<ScanStateSnapshot> snapshot = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        public Task SnapshotRequested => snapshotRequested.Task;
+
+        public void ReleaseSnapshot(ScanStateSnapshot? value = null)
+        {
+            snapshot.TrySetResult(value ?? new ScanStateSnapshot(null, null, null));
+        }
+
+        public Task InitializeAsync() => inner.InitializeAsync();
+
+        public Task TouchScanStateAsync(string key, DateTimeOffset value) =>
+            inner.TouchScanStateAsync(key, value);
+
+        public Task<DateTimeOffset?> GetScanStateAsync(string key) => inner.GetScanStateAsync(key);
+
+        public Task UpsertMessageAsync(string entryId, string? storeId, MessageDto message) =>
+            inner.UpsertMessageAsync(entryId, storeId, message);
+
+        public Task<IReadOnlyList<MessageDto>> ListRecentMessagesAsync(
+            DateTimeOffset sinceUtc,
+            int limit
+        ) => inner.ListRecentMessagesAsync(sinceUtc, limit);
+
+        public Task<IReadOnlyList<MessageDto>> ListRecentMeetingRequestsAsync(
+            DateTimeOffset sinceUtc,
+            int limit
+        ) => inner.ListRecentMeetingRequestsAsync(sinceUtc, limit);
+
+        public Task<MessageDto?> GetMessageAsync(string bridgeId) =>
+            inner.GetMessageAsync(bridgeId);
+
+        public Task UpsertEventAsync(
+            string entryId,
+            string? storeId,
+            string? globalAppointmentId,
+            EventDto evt
+        ) => inner.UpsertEventAsync(entryId, storeId, globalAppointmentId, evt);
+
+        public Task<IReadOnlyList<EventDto>> ListCalendarWindowAsync(
+            DateTimeOffset startUtc,
+            DateTimeOffset endUtc,
+            int limit
+        ) => inner.ListCalendarWindowAsync(startUtc, endUtc, limit);
+
+        public Task<EventDto?> GetEventAsync(string bridgeId) => inner.GetEventAsync(bridgeId);
+
+        public Task<ScanStateSnapshot> GetScanStateSnapshotAsync()
+        {
+            snapshotRequested.TrySetResult(true);
+            return snapshot.Task;
+        }
     }
 }

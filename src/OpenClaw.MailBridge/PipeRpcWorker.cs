@@ -26,9 +26,31 @@ internal sealed class PipeRpcWorker(
     {
         while (!stoppingToken.IsCancellationRequested)
         {
-            await using var server = CreateServer();
-            await server.WaitForConnectionAsync(stoppingToken);
-            _ = HandleClientAsync(server, stoppingToken);
+            var server = CreateServer();
+
+            try
+            {
+                await server.WaitForConnectionAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                await server.DisposeAsync();
+                break;
+            }
+
+            _ = RunClientSessionAsync(server, stoppingToken);
+        }
+    }
+
+    [ExcludeFromCodeCoverage]
+    private async Task RunClientSessionAsync(
+        NamedPipeServerStream server,
+        CancellationToken stoppingToken
+    )
+    {
+        await using (server)
+        {
+            await HandleClientAsync(server, stoppingToken);
         }
     }
 
@@ -121,23 +143,24 @@ internal sealed class PipeRpcWorker(
         catch (Exception ex)
         {
             logger.LogError("Pipe request failed: {Message}", ex.Message);
-        }
-        finally
-        {
             try
             {
                 if (server.IsConnected)
                 {
-                    server.Disconnect();
+                    await WriteResponse(
+                        server,
+                        RpcResponse.Failure(
+                            "unknown",
+                            BridgeErrorCodes.InternalError,
+                            "Internal error"
+                        ),
+                        ct
+                    );
                 }
             }
-            catch (IOException)
+            catch
             {
-                // The client may have already disconnected before cleanup.
-            }
-            catch (ObjectDisposedException)
-            {
-                // The server lifetime is controlled by the caller.
+                // Best-effort error response; the client guards against empty/malformed payloads.
             }
         }
     }
@@ -215,6 +238,14 @@ internal sealed class PipeRpcWorker(
         var bytes = JsonSerializer.SerializeToUtf8Bytes(response, _json);
         await stream.WriteAsync(bytes, ct);
         await stream.FlushAsync(ct);
+
+        // Drain ensures the client has read all buffered data before the pipe
+        // is disposed.  Without this, DisconnectNamedPipe / CloseHandle can
+        // discard unread bytes, causing the client to receive an empty response.
+        if (stream is NamedPipeServerStream pipe && pipe.IsConnected)
+        {
+            pipe.WaitForPipeDrain();
+        }
     }
 
     private async Task<RpcResponse> HandleStatusAsync(RpcRequest req)

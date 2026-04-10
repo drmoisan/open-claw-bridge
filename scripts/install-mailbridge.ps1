@@ -133,6 +133,40 @@ function Assert-DotNet10RuntimeConfig {
     }
 }
 
+function Wait-BridgeStatusPreflight {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$ClientPath,
+        [ValidateRange(0, 300)]
+        [int]$ReadyTimeoutSeconds = 15,
+        [ValidateRange(0, 5000)]
+        [int]$PollIntervalMilliseconds = 500
+    )
+
+    $deadline = [System.DateTime]::UtcNow.AddSeconds($ReadyTimeoutSeconds)
+
+    do {
+        # The scheduled-task-hosted bridge can take a short time to bind its pipe after registration.
+        $status = & $ClientPath status 2>$null
+        if (-not [string]::IsNullOrWhiteSpace([string]$status)) {
+            return [string]$status
+        }
+
+        if ([System.DateTime]::UtcNow -ge $deadline) {
+            break
+        }
+
+        if ($PollIntervalMilliseconds -gt 0) {
+            Start-Sleep -Milliseconds $PollIntervalMilliseconds
+        }
+    } while ($true)
+
+    throw 'Bridge status preflight failed after registration.'
+}
+
 $configRoot = Join-Path $env:LOCALAPPDATA 'OpenClaw\MailBridge'
 $configPath = Join-Path $configRoot 'bridge.settings.json'
 $bridgeRuntimeConfigPath = Join-Path $InstallRoot 'OpenClaw.MailBridge.runtimeconfig.json'
@@ -165,10 +199,7 @@ if ($PSCmdlet.ShouldProcess($InstallRoot, 'Install and validate OpenClaw MailBri
         throw "Client executable not found at '$clientPath'. Publish or copy the installed binaries before running install preflight."
     }
 
-    $status = & $clientPath status 2>$null
-    if (-not $status) {
-        throw 'Bridge status preflight failed after registration.'
-    }
+    $status = Wait-BridgeStatusPreflight -ClientPath $clientPath
 
     $logPath = Join-Path $configRoot 'logs\bridge.log'
     if (Test-Path $logPath) {

@@ -13,7 +13,8 @@ Describe 'install-mailbridge.ps1' {
                 'Remove-ComObjectReference',
                 'Test-IsElevated',
                 'Test-OutlookProfilePrerequisite',
-                'Assert-DotNet10RuntimeConfig')) {
+                'Assert-DotNet10RuntimeConfig',
+                'Wait-BridgeStatusPreflight')) {
             Remove-Item -Path ("Function:\{0}" -f $functionName) -ErrorAction SilentlyContinue
         }
     }
@@ -112,6 +113,32 @@ Describe 'install-mailbridge.ps1' {
                 -RuntimeConfigPath 'C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.runtimeconfig.json' `
                 -ComponentName 'Client'
         } | Should -Throw '*requires .NET 10*'
+    }
+
+    It 'tolerates delayed bridge status readiness after registration' {
+        $statusCalls = [System.Collections.Generic.List[string]]::new()
+
+        Set-Item -Path Function:\Global:Invoke-DelayedStatusClient -Value ({
+                [CmdletBinding()]
+                [OutputType([string])]
+                param(
+                    [Parameter(ValueFromRemainingArguments = $true)]
+                    [object[]]$Arguments
+                )
+
+                $statusCalls.Add(($Arguments -join ' '))
+                if ($statusCalls.Count -lt 3) {
+                    return $null
+                }
+
+                return '{"ok":true,"result":{"state":"ready","mode":"safe"}}'
+            }.GetNewClosure())
+        Mock Start-Sleep {}
+
+        $status = Wait-BridgeStatusPreflight -ClientPath 'Invoke-DelayedStatusClient' -ReadyTimeoutSeconds 5 -PollIntervalMilliseconds 1
+
+        $status | Should -Be '{"ok":true,"result":{"state":"ready","mode":"safe"}}'
+        $statusCalls.Count | Should -Be 3
     }
 }
 

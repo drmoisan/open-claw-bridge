@@ -43,20 +43,44 @@ internal sealed record ScanStateSnapshot(
 /// <summary>
 /// Persists cached bridge metadata in a local SQLite database under the user's profile.
 /// </summary>
-internal sealed class CacheRepository : IBridgeRepository
+internal sealed class CacheRepository : IBridgeRepository, IDisposable
 {
-    private readonly string _dbPath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "OpenClaw",
-        "MailBridge",
-        "cache.db"
-    );
+    private readonly string _connectionString;
+    private readonly SqliteConnection? _anchor;
 
-    private SqliteConnection Open()
+    public CacheRepository()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(_dbPath)!);
-        return new SqliteConnection($"Data Source={_dbPath}");
+        var dbPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OpenClaw",
+            "MailBridge",
+            "cache.db"
+        );
+        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+        _connectionString = $"Data Source={dbPath}";
     }
+
+    /// <summary>
+    /// Creates a repository with a custom connection string.
+    /// For in-memory databases, an anchor connection is kept open so the database survives
+    /// across individual Open/Close cycles.
+    /// </summary>
+    internal CacheRepository(string connectionString)
+    {
+        _connectionString = connectionString;
+        if (connectionString.Contains("Mode=Memory", StringComparison.OrdinalIgnoreCase))
+        {
+            _anchor = new SqliteConnection(connectionString);
+            _anchor.Open();
+        }
+    }
+
+    public void Dispose()
+    {
+        _anchor?.Dispose();
+    }
+
+    private SqliteConnection Open() => new SqliteConnection(_connectionString);
 
     public async Task InitializeAsync()
     {

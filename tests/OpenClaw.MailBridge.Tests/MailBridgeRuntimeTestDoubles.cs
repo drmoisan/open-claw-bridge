@@ -9,11 +9,18 @@ internal sealed class FakeComActiveObject : ComActiveObject
     public object? RunningObject { get; set; }
     public object? CreatedObject { get; set; }
     public bool ThrowOnCreate { get; set; }
+    public int TryGetCalls { get; private set; }
+    public int CreateAndLogonCalls { get; private set; }
 
-    public override object? TryGet(string progId) => RunningObject;
+    public override object? TryGet(string progId)
+    {
+        TryGetCalls++;
+        return RunningObject;
+    }
 
     public override object CreateAndLogonOutlook()
     {
+        CreateAndLogonCalls++;
         if (ThrowOnCreate)
         {
             throw new InvalidOperationException("failed");

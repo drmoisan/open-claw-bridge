@@ -67,19 +67,43 @@ internal static class Program
             PipeOptions.Asynchronous
         );
         await client.ConnectAsync(2000);
+        client.ReadMode = PipeTransmissionMode.Message;
         var bytes = JsonSerializer.SerializeToUtf8Bytes(req, Json);
         await client.WriteAsync(bytes);
         await client.FlushAsync();
         using var ms = new MemoryStream();
-        var buffer = new byte[4096];
+        var buffer = new byte[65536];
         do
         {
             var read = await client.ReadAsync(buffer);
+            if (read == 0)
+                break;
             ms.Write(buffer, 0, read);
         } while (!client.IsMessageComplete);
 
-        return JsonSerializer.Deserialize<RpcResponse>(Encoding.UTF8.GetString(ms.ToArray()), Json)
-            ?? RpcResponse.Failure(req.Id, BridgeErrorCodes.InternalError, "Invalid response");
+        var responseJson = Encoding.UTF8.GetString(ms.ToArray());
+        if (string.IsNullOrWhiteSpace(responseJson))
+        {
+            return RpcResponse.Failure(
+                req.Id,
+                BridgeErrorCodes.InternalError,
+                "Empty response returned by bridge"
+            );
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<RpcResponse>(responseJson, Json)
+                ?? RpcResponse.Failure(req.Id, BridgeErrorCodes.InternalError, "Invalid response");
+        }
+        catch (JsonException)
+        {
+            return RpcResponse.Failure(
+                req.Id,
+                BridgeErrorCodes.InternalError,
+                "Malformed response returned by bridge"
+            );
+        }
     }
 
     internal static (string command, Dictionary<string, string> options)? Parse(string[] args)

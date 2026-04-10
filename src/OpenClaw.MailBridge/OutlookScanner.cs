@@ -38,8 +38,7 @@ internal sealed class OutlookScanner : IOutlookScanner
             new ComActiveObject(),
             name => Process.GetProcessesByName(name).Length,
             () => DateTimeOffset.UtcNow
-        )
-    { }
+        ) { }
 
     internal OutlookScanner(
         BridgeSettings settings,
@@ -82,21 +81,34 @@ internal sealed class OutlookScanner : IOutlookScanner
         }
 
         var outlookRunning = _processCount("OUTLOOK") > 0;
-        if (outlookRunning)
-        {
-            _state.MarkOutlookUnavailable("running_instance_unavailable");
-            return;
-        }
-
         if (!_settings.AutostartOutlook)
         {
+            if (outlookRunning)
+            {
+                _state.MarkOutlookUnavailable("running_instance_unavailable");
+                return;
+            }
+
             _state.SetState(BridgeState.waiting_for_outlook);
             _state.OutlookConnected = false;
             return;
         }
 
-        _outlookApp = _com.CreateAndLogonOutlook();
-        _logger.LogInformation("Created and logged on to Outlook because autostart is enabled.");
+        try
+        {
+            _outlookApp = _com.CreateAndLogonOutlook();
+            _logger.LogInformation(
+                "Created and logged on to Outlook because autostart is enabled."
+            );
+        }
+        catch (Exception ex) when (outlookRunning)
+        {
+            _state.MarkOutlookUnavailable("running_instance_unavailable");
+            _logger.LogWarning(
+                "Unable to attach to the running Outlook instance or create a fallback session: {Message}",
+                ex.Message
+            );
+        }
     }
 
     private async Task ExecuteScanAsync(IBridgeRepository repo, bool scanInbox, bool scanCalendar)

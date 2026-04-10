@@ -77,7 +77,9 @@ public partial class MailBridgeRuntimeTests
     [TestMethod]
     public async Task CacheRepository_should_upsert_a_message_row_by_stable_item_identity()
     {
-        var repo = new CacheRepository();
+        using var repo = new CacheRepository(
+            $"Data Source=upsert-msg-{Guid.NewGuid():N};Mode=Memory;Cache=Shared"
+        );
         await repo.InitializeAsync();
         var bridgeId = BridgeIdCodec.MessageId("entry-1", false);
 
@@ -141,7 +143,9 @@ public partial class MailBridgeRuntimeTests
     [TestMethod]
     public async Task CacheRepository_should_return_calendar_window_rows_in_deterministic_order_with_limit_enforcement()
     {
-        var repo = new CacheRepository();
+        using var repo = new CacheRepository(
+            $"Data Source=cal-window-{Guid.NewGuid():N};Mode=Memory;Cache=Shared"
+        );
         await repo.InitializeAsync();
         var baseStart = DateTimeOffset.Parse("2026-04-07T08:00:00Z");
 
@@ -193,6 +197,53 @@ public partial class MailBridgeRuntimeTests
 
         response.Ok.Should().BeFalse();
         response.Error!.Code.Should().Be(BridgeErrorCodes.InvalidRequest);
+    }
+
+    [TestMethod]
+    public async Task PipeRpcWorker_ExecuteAsync_should_keep_an_accepted_client_alive_through_response_write()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            Assert.Inconclusive("This test requires Windows named pipes.");
+        }
+
+        var previousResolver = PipeRpcWorker.AccountSidResolver;
+
+        try
+        {
+            PipeRpcWorker.AccountSidResolver = _ =>
+                WindowsIdentity.GetCurrent().User
+                ?? throw new InvalidOperationException("Current user SID is unavailable.");
+
+            var settings = BridgeSettings.Default with
+            {
+                PipeName = $"mailbridge-runtime-{Guid.NewGuid():N}",
+            };
+            var repo = new DelayedStatusBridgeRepository();
+            var worker = new PipeRpcWorker(
+                settings,
+                new BridgeStateStore(settings),
+                repo,
+                NullLogger<PipeRpcWorker>.Instance
+            );
+            var requestTask = InvokeHandlePayloadThroughBackgroundWorkerAsync(
+                worker,
+                settings.PipeName,
+                $"{{\"id\":\"1\",\"method\":\"{BridgeMethods.GetStatus}\",\"params\":null}}"
+            );
+
+            await repo.SnapshotRequested.WaitAsync(TimeSpan.FromSeconds(5));
+            repo.ReleaseSnapshot();
+
+            var response = await requestTask;
+
+            response.Should().Contain("\"ok\":true");
+            response.Should().Contain("\"state\"");
+        }
+        finally
+        {
+            PipeRpcWorker.AccountSidResolver = previousResolver;
+        }
     }
 
     [TestMethod]

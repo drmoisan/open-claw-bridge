@@ -76,6 +76,8 @@ internal class ComActiveObject
             app,
             ["MAPI"]
         );
+        // ShowDialog must be false so headless/scheduled-task execution never
+        // blocks on the "Choose Profile" dialog.
         ns!
             .GetType()
             .InvokeMember(
@@ -83,7 +85,7 @@ internal class ComActiveObject
                 System.Reflection.BindingFlags.InvokeMethod,
                 null,
                 ns,
-                ["", "", Type.Missing, Type.Missing]
+                ["", "", false, false]
             );
         return app;
     }
