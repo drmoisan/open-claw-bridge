@@ -64,9 +64,9 @@ function Find-WindowsSdkTool {
     $sdkBinRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
     if (Test-Path $sdkBinRoot) {
         $found = Get-ChildItem $sdkBinRoot -Recurse -Filter $ToolName -ErrorAction SilentlyContinue |
-            Where-Object { $_.FullName -like '*\x64\*' } |
-                Sort-Object FullName -Descending |
-                    Select-Object -First 1
+        Where-Object { $_.FullName -like '*\x64\*' } |
+        Sort-Object FullName -Descending |
+        Select-Object -First 1
         if ($found) {
             return $found.FullName
         }
@@ -202,7 +202,8 @@ function Invoke-MakeAppx {
     $msixPath = Join-Path $OutputDir "OpenClaw.MailBridge_${Version}_x64.msix"
 
     # Pack the staging directory into the MSIX file; /nv skips manifest validation
-    & $makeAppx pack /d $StagingDir /p $msixPath /nv /o
+    # Redirect to Out-Host so stdout doesn't pollute the function's return value
+    & $makeAppx pack /d $StagingDir /p $msixPath /nv /o | Out-Host
     if ($LASTEXITCODE -ne 0) {
         Write-Error "makeappx pack failed with exit code $LASTEXITCODE"
     }
