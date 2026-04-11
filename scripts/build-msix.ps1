@@ -1,4 +1,4 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     Builds and optionally signs an MSIX installer package for OpenClaw MailBridge.
@@ -64,9 +64,9 @@ function Find-WindowsSdkTool {
     $sdkBinRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
     if (Test-Path $sdkBinRoot) {
         $found = Get-ChildItem $sdkBinRoot -Recurse -Filter $ToolName -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -like '*\x64\*' } |
-        Sort-Object FullName -Descending |
-        Select-Object -First 1
+            Where-Object { $_.FullName -like '*\x64\*' } |
+                Sort-Object FullName -Descending |
+                    Select-Object -First 1
         if ($found) {
             return $found.FullName
         }
@@ -262,4 +262,5 @@ if ($MyInvocation.InvocationName -ne '.') {
     Write-Information "=== Build complete: $msixPath ===" -InformationAction Continue
     return $msixPath
 }
+
 
