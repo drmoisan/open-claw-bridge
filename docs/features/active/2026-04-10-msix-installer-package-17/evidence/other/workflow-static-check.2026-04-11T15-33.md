@@ -1,0 +1,9 @@
+Timestamp: 2026-04-11T15:33:00-04:00
+Command: workflow-static-check
+EXIT_CODE: 0
+Output Summary:
+- HasWorkflowDispatch=True
+- HasTagTrigger=True
+- HasPublishProfileMsix=True
+- HasBuildScriptStep=True
+- HasArtifactUpload=True

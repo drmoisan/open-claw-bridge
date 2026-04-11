@@ -89,58 +89,58 @@ This remediation plan is driven by `docs/features/active/2026-04-10-msix-install
 
 ### Phase 0 — Context, Policy, Baseline, and Initial Plan Sync
 
-- [ ] [P0-T1] Search for `.github/copilot-instructions.md` and save either the file path or an auditable negative-evidence claim in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/copilot-instructions-check.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T1] Search for `.github/copilot-instructions.md` and save either the file path or an auditable negative-evidence claim in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/copilot-instructions-check.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `SearchScope: c:\Users\DanMoisan\repos\open-claw-bridge`, `SearchPatterns: .github/copilot-instructions.md`, and `SearchResult:` with either the resolved path or `none`.
 
-- [ ] [P0-T2] Read the required policy files in order and save `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/phase0-instructions-read.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T2] Read the required policy files in order and save `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/phase0-instructions-read.yyyy-MM-ddTHH-mm.md`.
 	- Required order: `.github/instructions/general-code-change.instructions.md`, `.github/instructions/general-unit-test.instructions.md`, `.github/instructions/csharp-code-change.instructions.md`, `.github/instructions/csharp-unit-test.instructions.md`, `.github/instructions/powershell-code-change.instructions.md`, `.github/instructions/powershell-unit-test.instructions.md`, `.github/instructions/github-actions.instructions.md`, `AGENTS.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Policy Order:`, and the exact file list above in the same order.
 
-- [ ] [P0-T3] Reconcile `docs/features/active/2026-04-10-msix-installer-package-17/plan.2026-04-10T19-59.md` against the current on-disk evidence before any code or documentation remediation begins. [REQ-008]
+- [x] [P0-T3] Reconcile `docs/features/active/2026-04-10-msix-installer-package-17/plan.2026-04-10T19-59.md` against the current on-disk evidence before any code or documentation remediation begins. [REQ-008]
 	- Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/plan.2026-04-10T19-59.md` leaves every workflow-related task unchecked unless `.github/workflows/build-msix.yml` and matching workflow-validation evidence already exist, and leaves every lifecycle acceptance checkbox unchecked unless a matching artifact already exists under the feature `evidence/` folders.
 
-- [ ] [P0-T4] Run `csharpier check .` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/csharpier-check.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T4] Run `csharpier check .` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/csharpier-check.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: csharpier check .`, `EXIT_CODE: 0`, and `Output Summary:` with the checked-file count.
 
-- [ ] [P0-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/msbuild-analyzers.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/msbuild-analyzers.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` showing the analyzer-enabled build passed.
 
-- [ ] [P0-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/msbuild-nullable.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/msbuild-nullable.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` showing the nullable/type-safety build passed.
 
-- [ ] [P0-T7] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the baseline test-plus-coverage result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/dotnet-test-coverage.yyyy-MM-ddTHH-mm.md`. [REQ-007]
+- [x] [P0-T7] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the baseline test-plus-coverage result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/dotnet-test-coverage.yyyy-MM-ddTHH-mm.md`. [REQ-007]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings`, `EXIT_CODE: 0`, and `Output Summary:` with numeric `BaselineOverallLineCoverage:` and test pass counts parsed from the run output and its generated coverage file.
 
-- [ ] [P0-T8] Parse the newest baseline `coverage.cobertura.xml` plus `git diff --unified=0 development...HEAD` into `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/coverage-summary.yyyy-MM-ddTHH-mm.md`. [REQ-007]
+- [x] [P0-T8] Parse the newest baseline `coverage.cobertura.xml` plus `git diff --unified=0 development...HEAD` into `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/coverage-summary.yyyy-MM-ddTHH-mm.md`. [REQ-007]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: baseline-coverage-parse`, `EXIT_CODE: 0`, `Output Summary:`, and numeric lines for `BaselineOverallLineCoverage:`, `BaselineChangedOrNewLineCoverage:`, and `CoverageSource:` pointing to the parsed Cobertura file.
 
-- [ ] [P0-T9] Run `mcp_drmcopilotext_run_poshqc_format` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/poshqc-format.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T9] Run `mcp_drmcopilotext_run_poshqc_format` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/poshqc-format.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: mcp_drmcopilotext_run_poshqc_format`, `EXIT_CODE: 0`, and `Output Summary:` identifying the four targeted files.
 
-- [ ] [P0-T10] Run `mcp_drmcopilotext_run_poshqc_analyze` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/poshqc-analyze.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T10] Run `mcp_drmcopilotext_run_poshqc_analyze` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/poshqc-analyze.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: mcp_drmcopilotext_run_poshqc_analyze`, `EXIT_CODE:`, and `Output Summary:` that lists every finding for the four targeted files exactly as reported.
 
-- [ ] [P0-T11] Run `mcp_drmcopilotext_run_poshqc_test` for `tests/scripts/build-msix.Tests.ps1` and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/poshqc-test.yyyy-MM-ddTHH-mm.md`.
+- [x] [P0-T11] Run `mcp_drmcopilotext_run_poshqc_test` for `tests/scripts/build-msix.Tests.ps1` and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/poshqc-test.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: mcp_drmcopilotext_run_poshqc_test`, `EXIT_CODE:`, and `Output Summary:` with the baseline pass/fail counts for the two targeted test files.
 
-- [ ] [P0-T12] Record the missing workflow baseline in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/workflow-missing.yyyy-MM-ddTHH-mm.md`. [REQ-001]
+- [x] [P0-T12] Record the missing workflow baseline in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/workflow-missing.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: Test-Path .github/workflows/build-msix.yml`, `EXIT_CODE: 0`, and `Output Summary: WorkflowMissing=True`.
 
-- [ ] [P0-T13] Record the tracked staging-artifact baseline in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/staging-artifact-tracked.yyyy-MM-ddTHH-mm.md`. [REQ-002]
+- [x] [P0-T13] Record the tracked staging-artifact baseline in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/staging-artifact-tracked.yyyy-MM-ddTHH-mm.md`. [REQ-002]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: git diff --name-status development...HEAD`, `EXIT_CODE: 0`, and `Output Summary:` listing `installer/staging/AppxManifest.xml` as tracked in the branch baseline.
 
-- [ ] [P0-T14] Run `scripts/dev-tools/run-actionlint.ps1` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/actionlint.yyyy-MM-ddTHH-mm.md`. [REQ-001]
+- [x] [P0-T14] Run `scripts/dev-tools/run-actionlint.ps1` and save the baseline result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/actionlint.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: scripts/dev-tools/run-actionlint.ps1`, `EXIT_CODE: 0`, and `Output Summary:` describing the pre-change GitHub Actions lint baseline before `.github/workflows/build-msix.yml` is added.
 
 ### Phase 1 — Workflow Creation and Repository Hygiene
 
-- [ ] [P1-T1] Create `.github/workflows/build-msix.yml` with a single `build-msix` job on `windows-latest`, triggers `push.tags: ['v*']` and `workflow_dispatch.inputs.version`, two `dotnet publish` steps that pass `/p:PublishProfile=msix`, one `pwsh` step that runs `scripts/New-MsixDevCert.ps1` and `scripts/build-msix.ps1`, and one `actions/upload-artifact@v4` step that uploads `artifacts/msix/*.msix` as `msix-package`. [REQ-001]
+- [x] [P1-T1] Create `.github/workflows/build-msix.yml` with a single `build-msix` job on `windows-latest`, triggers `push.tags: ['v*']` and `workflow_dispatch.inputs.version`, two `dotnet publish` steps that pass `/p:PublishProfile=msix`, one `pwsh` step that runs `scripts/New-MsixDevCert.ps1` and `scripts/build-msix.ps1`, and one `actions/upload-artifact@v4` step that uploads `artifacts/msix/*.msix` as `msix-package`. [REQ-001]
 	- Acceptance: `Select-String` checks on `.github/workflows/build-msix.yml` find `workflow_dispatch`, `tags: ['v*']`, at least two `dotnet publish` lines, `scripts/build-msix.ps1`, and `actions/upload-artifact@v4` with `name: msix-package`.
 
-- [ ] [P1-T2] Run `scripts/dev-tools/run-actionlint.ps1` and save the workflow validation result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/actionlint-build-msix.yyyy-MM-ddTHH-mm.md`. [REQ-001]
+- [x] [P1-T2] Run `scripts/dev-tools/run-actionlint.ps1` and save the workflow validation result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/actionlint-build-msix.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: scripts/dev-tools/run-actionlint.ps1`, `EXIT_CODE: 0`, and `Output Summary:` mentioning `.github/workflows/build-msix.yml`.
 
-- [ ] [P1-T3] Save a static workflow-content verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/workflow-static-check.yyyy-MM-ddTHH-mm.md`. [REQ-001]
+- [x] [P1-T3] Save a static workflow-content verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/workflow-static-check.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: workflow-static-check`, `EXIT_CODE: 0`, and `Output Summary:` with exact booleans for `HasWorkflowDispatch=True`, `HasTagTrigger=True`, `HasPublishProfileMsix=True`, `HasBuildScriptStep=True`, and `HasArtifactUpload=True`.
 
 - [ ] [P1-T4] Remove `installer/staging/AppxManifest.xml` from version control without deleting the `installer/staging/` ignore rule. [REQ-002]
@@ -151,16 +151,16 @@ This remediation plan is driven by `docs/features/active/2026-04-10-msix-install
 
 ### Phase 2 — `issue.md` Architecture Alignment
 
-- [ ] [P2-T1] Update the `## Proposed Behavior` section in `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` so it describes startup-task registration on user logon instead of Windows Service registration. [REQ-003]
+- [x] [P2-T1] Update the `## Proposed Behavior` section in `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` so it describes startup-task registration on user logon instead of Windows Service registration. [REQ-003]
 	- Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` contains the phrase `startup task` in `## Proposed Behavior`, and that section contains no `Windows Service` text.
 
-- [ ] [P2-T2] Update the `## Acceptance Criteria (early draft)` section in `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` so criteria 2, 3, and 5 match the startup-task, reboot-logon, and uninstall behavior already defined in `user-story.md`. [REQ-003]
+- [x] [P2-T2] Update the `## Acceptance Criteria (early draft)` section in `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` so criteria 2, 3, and 5 match the startup-task, reboot-logon, and uninstall behavior already defined in `user-story.md`. [REQ-003]
 	- Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` contains `startup task named OpenClaw MailBridge`, contains `restarts automatically on user login`, contains `removes the startup task`, and contains no acceptance-criteria bullet mentioning `Windows Service`.
 
-- [ ] [P2-T3] Update the `## Constraints & Risks` section in `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` so it explains the Session 0 / Outlook COM incompatibility and states that `windows.startupTask` is required. [REQ-003]
+- [x] [P2-T3] Update the `## Constraints & Risks` section in `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` so it explains the Session 0 / Outlook COM incompatibility and states that `windows.startupTask` is required. [REQ-003]
 	- Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/issue.md` contains `Session 0`, contains `Outlook COM`, contains `windows.startupTask`, and contains no statement that the bridge `must run as the logged-in user or use a session-aware launch model` via a Windows Service.
 
-- [ ] [P2-T4] Save a terminology-alignment verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/issue-terminology-alignment.yyyy-MM-ddTHH-mm.md`. [REQ-003]
+- [x] [P2-T4] Save a terminology-alignment verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/issue-terminology-alignment.yyyy-MM-ddTHH-mm.md`. [REQ-003]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: terminology-alignment-check`, `EXIT_CODE: 0`, and `Output Summary:` with exact booleans for `IssueUsesStartupTask=True`, `SpecUsesStartupTask=True`, `UserStoryUsesStartupTask=True`, and `IssueUsesWindowsService=False`.
 
 ### Phase 3 — PowerShell Safety Gating and Temporary-File Test Removal
