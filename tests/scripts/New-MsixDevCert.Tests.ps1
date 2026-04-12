@@ -5,8 +5,7 @@
 
 .DESCRIPTION
     Tests the helper functions defined in New-MsixDevCert.ps1 using global function shims
-    for New-SelfSignedCertificate, Export-PfxCertificate, Export-Certificate, and
-    Import-Certificate so that no actual certificate operations are performed during testing.
+    so that no actual certificate operations or temporary files are required during testing.
 #>
 
 Describe 'New-MsixDevCert.ps1' {
@@ -39,7 +38,7 @@ Describe 'New-MsixDevCert.ps1' {
             return $script:FakeCert
         }
 
-        # Shim Export-PfxCertificate: capture parameters and create the output file
+        # Shim Export-PfxCertificate: capture parameters
         function global:Export-PfxCertificate {
             [CmdletBinding()]
             param(
@@ -50,18 +49,16 @@ Describe 'New-MsixDevCert.ps1' {
             $script:ExportPfxArgs = $PSBoundParameters
             # Use $Cert to satisfy PSReviewUnusedParameter (shim pattern: param declared for signature compatibility)
             $null = $Cert
-            # Create the file so that path-based assertions in calling code succeed
-            New-Item -ItemType File -Force -Path $FilePath | Out-Null
         }
 
-        # Shim Export-Certificate: create output file
+        # Shim Export-Certificate: capture parameters
         function global:Export-Certificate {
             [CmdletBinding()]
             param($Cert, [string]$FilePath, [string]$Type)
             # Use parameters to satisfy PSReviewUnusedParameter in shim context
             $null = $Cert
+            $script:ExportCerArgs = $PSBoundParameters
             $null = $Type
-            New-Item -ItemType File -Force -Path $FilePath | Out-Null
         }
 
         # Shim Import-Certificate: no-op (avoids LocalMachine\Root write)
@@ -82,6 +79,7 @@ Describe 'New-MsixDevCert.ps1' {
         # Reset captured arguments before each test
         $script:SelfSignedCertArgs = @{}
         $script:ExportPfxArgs = @{}
+        $script:ExportCerArgs = @{}
     }
 
     It 'passes -Subject CN to New-SelfSignedCertificate' {
@@ -96,17 +94,18 @@ Describe 'New-MsixDevCert.ps1' {
     }
 
     It 'exports PFX to the specified OutputDir' {
-        # Arrange: an isolated output directory for the export
-        $testOutputDir = Join-Path $TestDrive 'cert-export-test'
-        New-Item -ItemType Directory -Force -Path $testOutputDir | Out-Null
+        # Arrange
+        $testOutputDir = 'artifacts/cert-export-test'
         $pfxPwd = New-Object System.Security.SecureString
 
         # Act: call the certificate export helper
-        Export-SigningCertificate -Cert $script:FakeCert -OutputDir $testOutputDir -PfxPassword $pfxPwd
+        $exported = Export-SigningCertificate -Cert $script:FakeCert -OutputDir $testOutputDir -PfxPassword $pfxPwd
 
-        # Assert: the captured FilePath for the PFX must be inside testOutputDir
+        # Assert
         $pfxFilePath = $script:ExportPfxArgs['FilePath']
         $pfxFilePath | Should -Not -BeNullOrEmpty
-        [System.IO.Path]::GetDirectoryName($pfxFilePath) | Should -Be $testOutputDir
+        [System.IO.Path]::GetDirectoryName($pfxFilePath) | Should -Be ([System.IO.Path]::GetDirectoryName((Join-Path $testOutputDir 'OpenClaw.MailBridge.pfx')))
+        $exported.PfxPath | Should -Be (Join-Path $testOutputDir 'OpenClaw.MailBridge.pfx')
+        $exported.CerPath | Should -Be (Join-Path $testOutputDir 'OpenClaw.MailBridge.cer')
     }
 }

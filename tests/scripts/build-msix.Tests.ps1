@@ -4,9 +4,9 @@
     Pester unit tests for scripts/build-msix.ps1.
 
 .DESCRIPTION
-    Tests the helper functions defined in build-msix.ps1 using global function shims
-    for all external executables (makeappx, signtool, makepri) so that no real
-    Windows SDK tools or publish outputs are required.
+    Tests the helper functions defined in build-msix.ps1 using mocks and global
+    function shims for external executables so that no real SDK tools, publish
+    outputs, or temporary files are required.
 #>
 
 Describe 'build-msix.ps1' {
@@ -16,6 +16,7 @@ Describe 'build-msix.ps1' {
         # These are called via '& $toolPath args...' inside the helper functions
         $script:MakeAppxArgs = @()
         $script:MakeAppxCallCount = 0
+        $script:MakePriCallCount = 0
         $script:SigntoolCallCount = 0
 
         function global:makeappx {
@@ -29,7 +30,7 @@ Describe 'build-msix.ps1' {
         }
 
         function global:makepri {
-            # no-op shim: allows Invoke-MakePri to run without real SDK
+            $script:MakePriCallCount++
         }
 
         # Dot-source the script under test to load all helper functions
@@ -51,66 +52,50 @@ Describe 'build-msix.ps1' {
             }
         }
 
-        # Create a temporary working directory for test isolation
-        $script:TestRoot = Join-Path $TestDrive 'build-msix-tests'
-        New-Item -ItemType Directory -Force -Path $script:TestRoot | Out-Null
-
-        $script:StagingDir = Join-Path $script:TestRoot 'installer\staging'
-        $script:OutputDir = Join-Path $script:TestRoot 'artifacts\msix'
-        $script:ManifestSource = Join-Path $script:TestRoot 'installer\Package.appxmanifest'
-        $script:AssetsSource = Join-Path $script:TestRoot 'installer\Assets'
-        $script:BridgePublishDir = Join-Path $script:TestRoot 'artifacts\publish\bridge'
-        $script:ClientPublishDir = Join-Path $script:TestRoot 'artifacts\publish\client'
-
-        foreach ($dir in @($script:StagingDir, $script:OutputDir, $script:AssetsSource, $script:BridgePublishDir, $script:ClientPublishDir)) {
-            New-Item -ItemType Directory -Force -Path $dir | Out-Null
-        }
-
-        # Minimal valid MSIX manifest for stamping tests
-        @'
+        $script:ManifestXml = @'
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">
   <Identity Name="OpenClaw.MailBridge" Publisher="CN=OpenClaw, O=OpenClaw, C=US" Version="0.0.0.0" ProcessorArchitecture="x64" />
 </Package>
-'@ | Set-Content -Path $script:ManifestSource -Encoding UTF8
+'@
 
-        # Minimal files in publish directories so layout assembly has something to copy
-        'bridge-exe' | Set-Content (Join-Path $script:BridgePublishDir 'OpenClaw.MailBridge.exe')
-        'client-exe' | Set-Content (Join-Path $script:ClientPublishDir 'OpenClaw.MailBridge.Client.exe')
-    }
-
-    AfterAll {
-        Remove-Item -Recurse -Force $script:TestRoot -ErrorAction SilentlyContinue
-        Remove-Item -Recurse -Force (Join-Path $TestDrive 'stamp-test') -ErrorAction SilentlyContinue
-        Remove-Item -Recurse -Force (Join-Path $TestDrive 'layout-test') -ErrorAction SilentlyContinue
-        Remove-Item -Recurse -Force (Join-Path $TestDrive 'pack-test') -ErrorAction SilentlyContinue
+        $script:ManifestSource = 'manifest-source.xml'
+        $script:StagingDir = 'installer/staging'
+        $script:OutputDir = 'artifacts/msix'
+        $script:AssetsSource = 'installer/Assets'
+        $script:BridgePublishDir = 'artifacts/publish/bridge'
+        $script:ClientPublishDir = 'artifacts/publish/client'
     }
 
     BeforeEach {
         $script:MakeAppxArgs = @()
         $script:MakeAppxCallCount = 0
+        $script:MakePriCallCount = 0
         $script:SigntoolCallCount = 0
+        Mock Get-Content { return $script:ManifestXml } -ParameterFilter { $Raw -and $Path -eq $script:ManifestSource }
+        Mock New-Item { return $null }
+        Mock Set-Content { }
+        Mock Copy-Item { }
+        Mock Test-Path {
+            return $Path -ne 'missing/bridge'
+        }
     }
 
     It 'stamps the 4-part version into AppxManifest.xml' {
         # Arrange
         $expectedVersion = '2.3.4.5'
-        $stagingForTest = Join-Path $TestDrive 'stamp-test\staging'
-        New-Item -ItemType Directory -Force -Path $stagingForTest | Out-Null
 
-        # Act: invoke the version-stamping helper directly
-        Invoke-VersionStamp -ManifestSource $script:ManifestSource -StagingDir $stagingForTest -Version $expectedVersion
+        # Act
+        $stampedXml = Get-StampedAppxManifestXml -ManifestXml $script:ManifestXml -Version $expectedVersion
 
-        # Assert: the AppxManifest.xml in staging should carry the new version
-        $stagedManifest = Join-Path $stagingForTest 'AppxManifest.xml'
-        $stagedManifest | Should -Exist
-        [xml]$xml = Get-Content -Raw $stagedManifest
+        # Assert
+        [xml]$xml = $stampedXml
         $xml.Package.Identity.Version | Should -Be $expectedVersion
     }
 
     It 'throws a terminating error when bridge publish directory is absent' {
         # Arrange: a directory that does not exist on disk
-        $missingBridgeDir = Join-Path $TestDrive 'nonexistent\bridge'
+        $missingBridgeDir = 'missing/bridge'
 
         # Act / Assert: the layout helper must throw with a clear error
         {
@@ -123,35 +108,23 @@ Describe 'build-msix.ps1' {
     }
 
     It 'copies bridge binaries to installer/staging/bridge/' {
-        # Arrange: isolated staging directory so we can inspect the copy result
-        $stagingForLayout = Join-Path $TestDrive 'layout-test\staging'
-        New-Item -ItemType Directory -Force -Path $stagingForLayout | Out-Null
-
         # Act
         Invoke-LayoutAssembly `
             -BridgePublishDir $script:BridgePublishDir `
             -ClientPublishDir $script:ClientPublishDir `
             -AssetsSource $script:AssetsSource `
-            -StagingDir $stagingForLayout
+            -StagingDir $script:StagingDir
 
-        # Assert: the bridge exe should have been copied to the staging/bridge sub-folder
-        $bridgeDest = Join-Path $stagingForLayout 'bridge\OpenClaw.MailBridge.exe'
-        $bridgeDest | Should -Exist
+        # Assert
+        Assert-MockCalled Copy-Item -Times 1 -Exactly -ParameterFilter { $Destination -eq (Join-Path $script:StagingDir 'bridge') }
     }
 
     It 'passes pack /d /p /nv arguments to makeappx' {
-        # Arrange: staging directory containing a minimal AppxManifest.xml
-        $stagingForPack = Join-Path $TestDrive 'pack-test\staging'
-        New-Item -ItemType Directory -Force -Path $stagingForPack | Out-Null
-        Copy-Item $script:ManifestSource (Join-Path $stagingForPack 'AppxManifest.xml')
-        $outputForPack = Join-Path $TestDrive 'pack-test\output'
-        New-Item -ItemType Directory -Force -Path $outputForPack | Out-Null
+        # Act
         $global:LASTEXITCODE = 0
+        Invoke-MakeAppx -StagingDir $script:StagingDir -OutputDir $script:OutputDir -Version '1.0.0.0'
 
-        # Act: Invoke-MakeAppx calls Find-WindowsSdkTool (shimmed) -- calls global:makeappx
-        Invoke-MakeAppx -StagingDir $stagingForPack -OutputDir $outputForPack -Version '1.0.0.0'
-
-        # Assert: the global:makeappx shim must have received the required CLI arguments
+        # Assert
         $script:MakeAppxArgs | Should -Contain 'pack'
         $script:MakeAppxArgs | Should -Contain '/d'
         $script:MakeAppxArgs | Should -Contain '/p'
@@ -170,6 +143,31 @@ Describe 'build-msix.ps1' {
         }
 
         # Assert: with SkipSign=true, signtool should never be called
+        $script:SigntoolCallCount | Should -Be 0
+    }
+
+    It 'WhatIf leaves installer/staging/AppxManifest.xml absent' {
+        # Arrange
+        $whatIfStagingDir = 'installer/staging'
+        $stagedManifest = Join-Path $whatIfStagingDir 'AppxManifest.xml'
+
+        # Act
+        Invoke-VersionStamp -ManifestSource $script:ManifestSource -StagingDir $whatIfStagingDir -Version '3.4.5.6' -WhatIf
+
+        # Assert
+        Assert-MockCalled Set-Content -Times 0 -ParameterFilter { $Path -eq $stagedManifest }
+    }
+
+    It 'WhatIf does not invoke MakePri, makeappx, or signtool' {
+        # Act
+        $global:LASTEXITCODE = 0
+        Invoke-MakePri -StagingDir $script:StagingDir -WhatIf
+        Invoke-MakeAppx -StagingDir $script:StagingDir -OutputDir $script:OutputDir -Version '1.0.0.0' -WhatIf
+        Invoke-SignTool -MsixPath (Join-Path $script:OutputDir 'fake.msix') -CertThumbprint 'FAKE' -WhatIf
+
+        # Assert
+        $script:MakePriCallCount | Should -Be 0
+        $script:MakeAppxCallCount | Should -Be 0
         $script:SigntoolCallCount | Should -Be 0
     }
 }

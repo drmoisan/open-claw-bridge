@@ -81,11 +81,30 @@ function Find-WindowsSdkTool {
     Write-Error "Cannot locate $ToolName. Install the Windows 10 SDK and ensure its bin path is accessible."
 }
 
+function Get-StampedAppxManifestXml {
+    <#
+    .SYNOPSIS Returns AppxManifest.xml content with the requested Identity Version value stamped in-memory.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ManifestXml,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Version
+    )
+
+    [xml]$xml = $ManifestXml
+    $identityNode = $xml.Package.Identity
+    $identityNode.SetAttribute('Version', $Version)
+    return $xml.OuterXml
+}
+
 function Invoke-VersionStamp {
     <#
     .SYNOPSIS Stamps the 4-part version into the staging AppxManifest.xml.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$ManifestSource,
@@ -97,14 +116,14 @@ function Invoke-VersionStamp {
         [string]$Version
     )
     $destManifest = Join-Path $StagingDir 'AppxManifest.xml'
-    $null = New-Item -ItemType Directory -Force -Path $StagingDir
+    $stampedManifestXml = Get-StampedAppxManifestXml -ManifestXml (Get-Content -Raw $ManifestSource) -Version $Version
 
-    # Read the manifest, replace the Identity Version attribute, write to staging
-    [xml]$xml = Get-Content -Raw $ManifestSource
-    $identityNode = $xml.Package.Identity
-    $identityNode.SetAttribute('Version', $Version)
-    $xml.Save($destManifest)
-    Write-Verbose "Stamped version $Version into $destManifest"
+    if ($PSCmdlet.ShouldProcess($destManifest, "Write AppxManifest.xml with version $Version")) {
+        $null = New-Item -ItemType Directory -Force -Path $StagingDir
+        Set-Content -Path $destManifest -Value $stampedManifestXml -Encoding utf8
+        Write-Verbose "Stamped version $Version into $destManifest"
+    }
+
     return $destManifest
 }
 
@@ -112,7 +131,7 @@ function Invoke-LayoutAssembly {
     <#
     .SYNOPSIS Assembles the MSIX staging directory from publish outputs and installer assets.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$BridgePublishDir,
@@ -138,28 +157,30 @@ function Invoke-LayoutAssembly {
     $clientDest = Join-Path $StagingDir 'client'
     $assetsDest = Join-Path $StagingDir 'Assets'
 
-    # Create destination subdirectories before copying
-    $null = New-Item -ItemType Directory -Force -Path $bridgeDest
-    $null = New-Item -ItemType Directory -Force -Path $clientDest
+    if ($PSCmdlet.ShouldProcess($StagingDir, 'Assemble staging layout')) {
+        # Create destination subdirectories before copying
+        $null = New-Item -ItemType Directory -Force -Path $bridgeDest
+        $null = New-Item -ItemType Directory -Force -Path $clientDest
 
-    # Copy published binaries into installer/staging/bridge/ and installer/staging/client/
-    Copy-Item -Recurse -Force -Path "$BridgePublishDir\*" -Destination $bridgeDest
-    Write-Verbose "Copied bridge binaries to $bridgeDest"
+        # Copy published binaries into installer/staging/bridge/ and installer/staging/client/
+        Copy-Item -Recurse -Force -Path "$BridgePublishDir\*" -Destination $bridgeDest
+        Write-Verbose "Copied bridge binaries to $bridgeDest"
 
-    Copy-Item -Recurse -Force -Path "$ClientPublishDir\*" -Destination $clientDest
-    Write-Verbose "Copied client binaries to $clientDest"
+        Copy-Item -Recurse -Force -Path "$ClientPublishDir\*" -Destination $clientDest
+        Write-Verbose "Copied client binaries to $clientDest"
 
-    # Copy installer Assets (icons) into staging
-    $null = New-Item -ItemType Directory -Force -Path $assetsDest
-    Copy-Item -Recurse -Force -Path "$AssetsSource\*" -Destination $assetsDest
-    Write-Verbose "Copied assets to $assetsDest"
+        # Copy installer Assets (icons) into staging
+        $null = New-Item -ItemType Directory -Force -Path $assetsDest
+        Copy-Item -Recurse -Force -Path "$AssetsSource\*" -Destination $assetsDest
+        Write-Verbose "Copied assets to $assetsDest"
+    }
 }
 
 function Invoke-MakePri {
     <#
     .SYNOPSIS Generates the PRI resource index for the MSIX package using MakePri.exe.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$StagingDir
@@ -168,25 +189,27 @@ function Invoke-MakePri {
     $configFile = Join-Path $StagingDir 'priconfig.xml'
     $priFile = Join-Path $StagingDir 'resources.pri'
 
-    # Generate a default PRI configuration file
-    & $makePri createconfig /cf $configFile /dq en-US /pv 10.0 /o
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "MakePri createconfig failed with exit code $LASTEXITCODE"
-    }
+    if ($PSCmdlet.ShouldProcess($priFile, 'Generate PRI resource index')) {
+        # Generate a default PRI configuration file
+        & $makePri createconfig /cf $configFile /dq en-US /pv 10.0 /o
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "MakePri createconfig failed with exit code $LASTEXITCODE"
+        }
 
-    # Build the PRI resource index from the staging directory
-    & $makePri new /pr $StagingDir /cf $configFile /mn (Join-Path $StagingDir 'AppxManifest.xml') /of $priFile /o
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "MakePri new failed with exit code $LASTEXITCODE"
+        # Build the PRI resource index from the staging directory
+        & $makePri new /pr $StagingDir /cf $configFile /mn (Join-Path $StagingDir 'AppxManifest.xml') /of $priFile /o
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "MakePri new failed with exit code $LASTEXITCODE"
+        }
+        Write-Verbose "Generated $priFile"
     }
-    Write-Verbose "Generated $priFile"
 }
 
 function Invoke-MakeAppx {
     <#
     .SYNOPSIS Packs the staging directory into an MSIX file using makeappx.exe.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$StagingDir,
@@ -198,16 +221,20 @@ function Invoke-MakeAppx {
         [string]$Version
     )
     $makeAppx = Find-WindowsSdkTool -ToolName 'makeappx.exe'
-    $null = New-Item -ItemType Directory -Force -Path $OutputDir
     $msixPath = Join-Path $OutputDir "OpenClaw.MailBridge_${Version}_x64.msix"
 
-    # Pack the staging directory into the MSIX file; /nv skips manifest validation
-    # Redirect to Out-Host so stdout doesn't pollute the function's return value
-    & $makeAppx pack /d $StagingDir /p $msixPath /nv /o | Out-Host
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "makeappx pack failed with exit code $LASTEXITCODE"
+    if ($PSCmdlet.ShouldProcess($msixPath, 'Pack MSIX package')) {
+        $null = New-Item -ItemType Directory -Force -Path $OutputDir
+
+        # Pack the staging directory into the MSIX file; /nv skips manifest validation
+        # Redirect to Out-Host so stdout doesn't pollute the function's return value
+        & $makeAppx pack /d $StagingDir /p $msixPath /nv /o | Out-Host
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "makeappx pack failed with exit code $LASTEXITCODE"
+        }
+        Write-Verbose "Packed MSIX to $msixPath"
     }
-    Write-Verbose "Packed MSIX to $msixPath"
+
     return $msixPath
 }
 
@@ -215,7 +242,7 @@ function Invoke-SignTool {
     <#
     .SYNOPSIS Signs the MSIX file with a code-signing certificate using signtool.exe.
     #>
-    [CmdletBinding()]
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory = $true)]
         [string]$MsixPath,
@@ -223,15 +250,16 @@ function Invoke-SignTool {
         [Parameter(Mandatory = $true)]
         [string]$CertThumbprint
     )
-    # Only sign when -SkipSign is not set (caller is responsible for the SkipSign guard)
     $signtool = Find-WindowsSdkTool -ToolName 'signtool.exe'
 
-    # Sign with SHA256 digest and a RFC 3161 timestamp server
-    & $signtool sign /sha1 $CertThumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $MsixPath
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "signtool sign failed with exit code $LASTEXITCODE"
+    if ($PSCmdlet.ShouldProcess($MsixPath, 'Sign MSIX package')) {
+        # Sign with SHA256 digest and a RFC 3161 timestamp server
+        & $signtool sign /sha1 $CertThumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $MsixPath
+        if ($LASTEXITCODE -ne 0) {
+            Write-Error "signtool sign failed with exit code $LASTEXITCODE"
+        }
+        Write-Verbose "Signed $MsixPath"
     }
-    Write-Verbose "Signed $MsixPath"
 }
 
 # --- Main (only runs when executed directly, not when dot-sourced for testing) ---

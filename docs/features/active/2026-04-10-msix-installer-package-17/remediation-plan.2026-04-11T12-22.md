@@ -143,10 +143,10 @@ This remediation plan is driven by `docs/features/active/2026-04-10-msix-install
 - [x] [P1-T3] Save a static workflow-content verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/workflow-static-check.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: workflow-static-check`, `EXIT_CODE: 0`, and `Output Summary:` with exact booleans for `HasWorkflowDispatch=True`, `HasTagTrigger=True`, `HasPublishProfileMsix=True`, `HasBuildScriptStep=True`, and `HasArtifactUpload=True`.
 
-- [ ] [P1-T4] Remove `installer/staging/AppxManifest.xml` from version control without deleting the `installer/staging/` ignore rule. [REQ-002]
+- [x] [P1-T4] Remove `installer/staging/AppxManifest.xml` from version control without deleting the `installer/staging/` ignore rule. [REQ-002]
 	- Acceptance: Running `git diff --name-status development...HEAD` no longer lists `installer/staging/AppxManifest.xml`.
 
-- [ ] [P1-T5] Save a repository-hygiene verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/staging-ignore-check.yyyy-MM-ddTHH-mm.md`. [REQ-002]
+- [x] [P1-T5] Save a repository-hygiene verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/staging-ignore-check.yyyy-MM-ddTHH-mm.md`. [REQ-002]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: git check-ignore -v installer/staging/`, `EXIT_CODE: 0`, and `Output Summary:` showing the `.gitignore` rule that excludes `installer/staging/`.
 
 ### Phase 2 — `issue.md` Architecture Alignment
@@ -165,76 +165,66 @@ This remediation plan is driven by `docs/features/active/2026-04-10-msix-install
 
 ### Phase 3 — PowerShell Safety Gating and Temporary-File Test Removal
 
-- [ ] [P3-T1] Save a `build-msix.ps1` state-change inventory to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-state-changes.yyyy-MM-ddTHH-mm.md`. [REQ-004]
+- [x] [P3-T1] Save a `build-msix.ps1` state-change inventory to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-state-changes.yyyy-MM-ddTHH-mm.md`. [REQ-004]
 	- Acceptance: The artifact exists and identifies the current staging-manifest write, staging-layout copy, PRI generation, MSIX pack, and signing operations as separate state-changing actions.
 
-- [ ] [P3-T2] Save a Pester temp-file inventory to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/pester-temp-file-usage.yyyy-MM-ddTHH-mm.md`. [REQ-005]
+- [x] [P3-T2] Save a Pester temp-file inventory to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/pester-temp-file-usage.yyyy-MM-ddTHH-mm.md`. [REQ-005]
 	- Acceptance: The artifact exists and lists every `$TestDrive` occurrence in `tests/scripts/build-msix.Tests.ps1` and `tests/scripts/New-MsixDevCert.Tests.ps1` with file path and line number.
 
-- [ ] [P3-T3] [expect-fail] Add the Pester scenario `WhatIf leaves installer/staging/AppxManifest.xml absent` to `tests/scripts/build-msix.Tests.ps1`. [REQ-004]
+- [x] [P3-T3] [expect-fail] Add the Pester scenario `WhatIf leaves installer/staging/AppxManifest.xml absent` to `tests/scripts/build-msix.Tests.ps1`. [REQ-004]
 	- Acceptance: Running `Invoke-Pester -Path 'tests/scripts/build-msix.Tests.ps1' -FullNameFilter 'WhatIf leaves installer/staging/AppxManifest.xml absent' -PassThru` fails, and `docs/features/active/2026-04-10-msix-installer-package-17/evidence/regression-testing/build-msix-whatif-staging.yyyy-MM-ddTHH-mm.md` exists with `Timestamp:`, the exact `Command:`, and a non-zero `EXIT_CODE:`.
 
-- [ ] [P3-T4] [expect-fail] Add the Pester scenario `WhatIf does not invoke MakePri, makeappx, or signtool` to `tests/scripts/build-msix.Tests.ps1`. [REQ-004]
+- [x] [P3-T4] [expect-fail] Add the Pester scenario `WhatIf does not invoke MakePri, makeappx, or signtool` to `tests/scripts/build-msix.Tests.ps1`. [REQ-004]
 	- Acceptance: Running `Invoke-Pester -Path 'tests/scripts/build-msix.Tests.ps1' -FullNameFilter 'WhatIf does not invoke MakePri, makeappx, or signtool' -PassThru` fails, and `docs/features/active/2026-04-10-msix-installer-package-17/evidence/regression-testing/build-msix-whatif-tools.yyyy-MM-ddTHH-mm.md` exists with `Timestamp:`, the exact `Command:`, and a non-zero `EXIT_CODE:`.
 
-- [ ] [P3-T5] Add the pure helper function `Get-StampedAppxManifestXml` to `scripts/build-msix.ps1` so version stamping can be tested without filesystem writes. [REQ-004] [REQ-005]
+- [x] [P3-T5] Add the pure helper function `Get-StampedAppxManifestXml` to `scripts/build-msix.ps1` so version stamping can be tested without filesystem writes. [REQ-004] [REQ-005]
 	- Acceptance: `scripts/build-msix.ps1` contains `function Get-StampedAppxManifestXml`, and `Invoke-VersionStamp` uses the helper before any file write occurs.
 
-- [ ] [P3-T6] Gate the staging-manifest write plus staging-layout copy in `scripts/build-msix.ps1` behind `$PSCmdlet.ShouldProcess(...)`. [REQ-004]
+- [x] [P3-T6] Gate the staging-manifest write plus staging-layout copy in `scripts/build-msix.ps1` behind `$PSCmdlet.ShouldProcess(...)`. [REQ-004]
 	- Acceptance: `scripts/build-msix.ps1` contains a `ShouldProcess` call for the staged `AppxManifest.xml` write target and a separate `ShouldProcess` call for the staging-layout assembly target.
 
-- [ ] [P3-T7] Gate PRI generation, MSIX pack, and signing in `scripts/build-msix.ps1` behind `$PSCmdlet.ShouldProcess(...)` while preserving `-SkipSign` semantics. [REQ-004]
+- [x] [P3-T7] Gate PRI generation, MSIX pack, and signing in `scripts/build-msix.ps1` behind `$PSCmdlet.ShouldProcess(...)` while preserving `-SkipSign` semantics. [REQ-004]
 	- Acceptance: `scripts/build-msix.ps1` contains three additional `ShouldProcess` calls whose targets are `resources.pri`, the output `.msix`, and the signing step, and `-SkipSign` still bypasses the signing path.
 
-- [ ] [P3-T8] Replace the `$TestDrive`-based version-stamp and layout assertions in `tests/scripts/build-msix.Tests.ps1` with in-memory XML strings, command mocks, and shim call-count assertions. [REQ-005]
+- [x] [P3-T8] Replace the `$TestDrive`-based version-stamp and layout assertions in `tests/scripts/build-msix.Tests.ps1` with in-memory XML strings, command mocks, and shim call-count assertions. [REQ-005]
 	- Acceptance: `tests/scripts/build-msix.Tests.ps1` contains no `$TestDrive` reference and still contains named scenarios for version stamping, missing publish directory handling, layout assembly, `makeappx` arguments, and `-SkipSign` behavior.
 
-- [ ] [P3-T9] Add the pure helper function `Get-CertificateExportPaths` to `scripts/New-MsixDevCert.ps1` so export-path behavior can be tested without creating temporary files. [REQ-005]
+- [x] [P3-T9] Add the pure helper function `Get-CertificateExportPaths` to `scripts/New-MsixDevCert.ps1` so export-path behavior can be tested without creating temporary files. [REQ-005]
 	- Acceptance: `scripts/New-MsixDevCert.ps1` contains `function Get-CertificateExportPaths`, and the export logic uses the helper to compute `.pfx` and `.cer` paths.
 
-- [ ] [P3-T10] Replace the `$TestDrive`-based output-path assertion in `tests/scripts/New-MsixDevCert.Tests.ps1` with in-memory path assertions and command mocks. [REQ-005]
+- [x] [P3-T10] Replace the `$TestDrive`-based output-path assertion in `tests/scripts/New-MsixDevCert.Tests.ps1` with in-memory path assertions and command mocks. [REQ-005]
 	- Acceptance: `tests/scripts/New-MsixDevCert.Tests.ps1` contains no `$TestDrive` reference and still contains named scenarios for subject forwarding and output-path export behavior.
 
-- [ ] [P3-T11] Make the two new `build-msix.Tests.ps1` `WhatIf` scenarios pass and save the targeted result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-targeted-pester.yyyy-MM-ddTHH-mm.md`. [REQ-004]
+- [x] [P3-T11] Make the two new `build-msix.Tests.ps1` `WhatIf` scenarios pass and save the targeted result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-targeted-pester.yyyy-MM-ddTHH-mm.md`. [REQ-004]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: Invoke-Pester -Path 'tests/scripts/build-msix.Tests.ps1' -PassThru`, `EXIT_CODE: 0`, and `Output Summary:` showing both `WhatIf` scenarios passed.
 
-- [ ] [P3-T12] Save a temp-file policy verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/pester-temp-file-check.yyyy-MM-ddTHH-mm.md`. [REQ-005]
+- [x] [P3-T12] Save a temp-file policy verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/pester-temp-file-check.yyyy-MM-ddTHH-mm.md`. [REQ-005]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: Select-String -Path 'tests/scripts/build-msix.Tests.ps1','tests/scripts/New-MsixDevCert.Tests.ps1' -Pattern '\$TestDrive'`, `EXIT_CODE: 1`, and `Output Summary: No $TestDrive usage remains in the targeted Pester files`.
 
 ### Phase 4 — End-to-End Build, Install, Upgrade, Reboot, and Uninstall Evidence
 
-- [ ] [P4-T1] Run `scripts/New-MsixDevCert.ps1` end-to-end in an elevated PowerShell session and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/dev-cert-create.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` with the generated certificate thumbprint plus the `.pfx` and `.cer` output paths.
+Autonomous execution boundary: After Phase 3 completes, atomic execution pauses before the manual lifecycle steps in this phase. Resume Phase 4 only after the externally produced lifecycle evidence artifacts required by `[P4-T7]` exist on disk.
 
-- [ ] [P4-T2] Publish `src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj` with `/p:PublishProfile=msix` and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/publish-bridge.yyyy-MM-ddTHH-mm.md`. [REQ-006]
+- [x] [P4-T1] Save a manual-bootstrap checkpoint artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/manual-bootstrap-checkpoint.yyyy-MM-ddTHH-mm.md` that records the required elevated PowerShell prerequisites for `scripts/New-MsixDevCert.ps1` and marks the plan as awaiting manual lifecycle execution. [REQ-006]
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: manual-bootstrap-checkpoint`, `EXIT_CODE: 0`, and `Output Summary:` with `RequiresElevatedPowerShell=True`, `RequiresWindowsSdk=True`, `RequiresTrustedCertificateImport=True`, and `ExecutionStatus=PAUSE_FOR_MANUAL_RESUME`.
+
+- [x] [P4-T2] Publish `src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj` with `/p:PublishProfile=msix` and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/publish-bridge.yyyy-MM-ddTHH-mm.md`. [REQ-006]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: dotnet publish src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj /p:PublishProfile=msix`, `EXIT_CODE: 0`, and `Output Summary:` confirming `artifacts/publish/bridge/OpenClaw.MailBridge.exe` exists.
 
-- [ ] [P4-T3] Publish `src/OpenClaw.MailBridge.Client/OpenClaw.MailBridge.Client.csproj` with `/p:PublishProfile=msix` and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/publish-client.yyyy-MM-ddTHH-mm.md`. [REQ-006]
+- [x] [P4-T3] Publish `src/OpenClaw.MailBridge.Client/OpenClaw.MailBridge.Client.csproj` with `/p:PublishProfile=msix` and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/publish-client.yyyy-MM-ddTHH-mm.md`. [REQ-006]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: dotnet publish src/OpenClaw.MailBridge.Client/OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix`, `EXIT_CODE: 0`, and `Output Summary:` confirming `artifacts/publish/client/OpenClaw.MailBridge.Client.exe` exists.
 
-- [ ] [P4-T4] Run `scripts/build-msix.ps1` to create a signed `1.0.0.0` package and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-v1.yyyy-MM-ddTHH-mm.md`. [REQ-006]
+- [x] [P4-T4] Run `scripts/build-msix.ps1` to create a signed `1.0.0.0` package and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-v1.yyyy-MM-ddTHH-mm.md`. [REQ-006]
 	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` with the signed package path `artifacts/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix`.
 
-- [ ] [P4-T5] Install the signed `1.0.0.0` package on a clean Windows 10 or Windows 11 machine by running `Add-AppxPackage -Path 'artifacts/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix'`, then save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/install-v1.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` with `InstalledPackageFullName:` plus confirmation that both executables are present in the installed package footprint.
+- [x] [P4-T5] Save a manual lifecycle host-prerequisites artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/manual-lifecycle-host-prereqs.yyyy-MM-ddTHH-mm.md` that records the exact external host requirements for install, next-logon, reboot, upgrade, and uninstall validation. [REQ-006]
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: manual-lifecycle-host-prereqs`, `EXIT_CODE: 0`, and `Output Summary:` with `RequiresCleanWindowsMachine=True`, `RequiresSignOutSignIn=True`, `RequiresRebootSignIn=True`, and `RequiredArtifacts=dev-cert-create,install-v1,logon-startup,reboot-logon,pre-upgrade-settings,build-msix-v2,upgrade-v2,uninstall`.
 
-- [ ] [P4-T6] Capture next-logon startup evidence after signing out and signing back in, then save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/logon-startup.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: logon-startup-check`, `EXIT_CODE: 0`, and `Output Summary:` with `StartupRegistrationVisible=True`, `BridgeProcessRunning=True`, and `ClientStatusReturnedJson=True`.
+- [x] [P4-T6] Record the manual-execution pause in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/manual-lifecycle-execution-boundary.yyyy-MM-ddTHH-mm.md` and stop autonomous execution until the required external lifecycle artifacts exist on disk. [REQ-006]
+	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: manual-lifecycle-execution-boundary`, `EXIT_CODE: 0`, and `Output Summary:` with `AutonomousExecutionPaused=True`, `ResumeCondition=AllRequiredLifecycleArtifactsPresent`, and the exact list of required artifact basenames from `[P4-T5]`.
 
-- [ ] [P4-T7] Capture reboot evidence after restarting the test machine and signing back in, then save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/reboot-logon.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: reboot-logon-check`, `EXIT_CODE: 0`, and `Output Summary:` with `BridgeProcessRunningAfterReboot=True` and `ClientStatusReturnedJson=True`.
-
-- [ ] [P4-T8] Seed `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` with a sentinel value and save the pre-upgrade state in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/pre-upgrade-settings.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: pre-upgrade-settings-seed`, `EXIT_CODE: 0`, and `Output Summary:` with the exact sentinel key/value stored in `bridge.settings.json`.
-
-- [ ] [P4-T9] Run `scripts/build-msix.ps1` again to create a signed `1.0.1.0` package and save the result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/build-msix-v2.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` with the signed package path `artifacts/msix/OpenClaw.MailBridge_1.0.1.0_x64.msix`.
-
-- [ ] [P4-T10] Install the signed `1.0.1.0` package over the `1.0.0.0` installation and save the upgrade result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/upgrade-v2.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command: Add-AppxPackage -Path 'artifacts/msix/OpenClaw.MailBridge_1.0.1.0_x64.msix'`, `EXIT_CODE: 0`, and `Output Summary:` with `InstalledVersion=1.0.1.0` and `SentinelSettingPreserved=True`.
-
-- [ ] [P4-T11] Remove the installed package by running `Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage` and save the uninstall result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/uninstall.yyyy-MM-ddTHH-mm.md`. [REQ-006]
-	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command: Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage`, `EXIT_CODE: 0`, and `Output Summary:` with `PackagePresentAfterUninstall=False`, `StartupRegistrationVisible=False`, and `SettingsFileStillPresent=True`.
+- [ ] [P4-T7] On resume, verify that externally produced lifecycle evidence exists on disk for development certificate creation, install, next-logon, reboot, pre-upgrade settings seed, version `1.0.1.0` package build, upgrade, and uninstall. [REQ-006]
+	- Acceptance: The newest matching artifacts exist under `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/` for `dev-cert-create.yyyy-MM-ddTHH-mm.md`, `install-v1.yyyy-MM-ddTHH-mm.md`, `logon-startup.yyyy-MM-ddTHH-mm.md`, `reboot-logon.yyyy-MM-ddTHH-mm.md`, `pre-upgrade-settings.yyyy-MM-ddTHH-mm.md`, `build-msix-v2.yyyy-MM-ddTHH-mm.md`, `upgrade-v2.yyyy-MM-ddTHH-mm.md`, and `uninstall.yyyy-MM-ddTHH-mm.md`, and each verified artifact contains `Timestamp:`, `Command:`, `EXIT_CODE: 0`, and an `Output Summary:` line.
 
 ### Phase 5 — Final QA Loop, Coverage Closure, Acceptance Sync, and Final Plan Sync
 
@@ -300,11 +290,14 @@ This remediation plan is driven by `docs/features/active/2026-04-10-msix-install
 	- Subject forwarding to `New-SelfSignedCertificate`
 	- Export-path computation without temporary filesystem use
 - Lifecycle evidence requirements:
-	- Install evidence must record package installation on a clean Windows machine.
-	- Logon evidence must record startup registration visibility, bridge-process presence, and client JSON status.
-	- Reboot evidence must record the same signals after a restart.
-	- Upgrade evidence must record version advancement plus preserved sentinel config.
-	- Uninstall evidence must record package removal, startup-registration disappearance, and preserved config.
+	- `dev-cert-create` evidence must record elevated certificate creation with the generated thumbprint and export paths.
+	- `install-v1` evidence must record package installation on a clean Windows machine.
+	- `logon-startup` evidence must record startup registration visibility, bridge-process presence, and client JSON status.
+	- `reboot-logon` evidence must record the same signals after a restart.
+	- `pre-upgrade-settings` evidence must record the sentinel configuration value before the upgrade.
+	- `build-msix-v2` evidence must record creation of the signed `1.0.1.0` package.
+	- `upgrade-v2` evidence must record version advancement plus preserved sentinel config.
+	- `uninstall` evidence must record package removal, startup-registration disappearance, and preserved config.
 - Coverage evidence requirements:
 	- Phase 0 must record baseline overall coverage and baseline changed/new-code coverage.
 	- Phase 5 must record post-change overall coverage and post-change changed/new-code coverage.

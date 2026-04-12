@@ -40,6 +40,22 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function Get-CertificateExportPaths {
+    <#
+    .SYNOPSIS Returns the PFX and CER export paths for the MSIX development certificate.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$OutputDir
+    )
+
+    return [pscustomobject]@{
+        PfxPath = Join-Path $OutputDir 'OpenClaw.MailBridge.pfx'
+        CerPath = Join-Path $OutputDir 'OpenClaw.MailBridge.cer'
+    }
+}
+
 function New-SigningCertificate {
     <#
     .SYNOPSIS Creates a self-signed code-signing certificate in the CurrentUser store.
@@ -82,18 +98,17 @@ function Export-SigningCertificate {
         [Parameter(Mandatory = $true)]
         [System.Security.SecureString]$PfxPassword
     )
-    $pfxPath = Join-Path $OutputDir 'OpenClaw.MailBridge.pfx'
-    $cerPath = Join-Path $OutputDir 'OpenClaw.MailBridge.cer'
+    $exportPaths = Get-CertificateExportPaths -OutputDir $OutputDir
 
     # Export the certificate with its private key as a PFX file
-    Export-PfxCertificate -Cert $Cert -FilePath $pfxPath -Password $PfxPassword | Out-Null
-    Write-Verbose "Exported PFX to $pfxPath"
+    Export-PfxCertificate -Cert $Cert -FilePath $exportPaths.PfxPath -Password $PfxPassword | Out-Null
+    Write-Verbose "Exported PFX to $($exportPaths.PfxPath)"
 
     # Export the public certificate as CER for trusted-root installation
-    Export-Certificate -Cert $Cert -FilePath $cerPath -Type CERT | Out-Null
-    Write-Verbose "Exported CER to $cerPath"
+    Export-Certificate -Cert $Cert -FilePath $exportPaths.CerPath -Type CERT | Out-Null
+    Write-Verbose "Exported CER to $($exportPaths.CerPath)"
 
-    return [pscustomobject]@{ PfxPath = $pfxPath; CerPath = $cerPath }
+    return $exportPaths
 }
 
 function Install-TrustedRootCertificate {
