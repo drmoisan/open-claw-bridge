@@ -45,7 +45,7 @@ Execution behavior:
 Verification discipline:
 - Prefer repo-defined commands and the canonical toolchain loop.
 - Never claim success without verification.
-- Use `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>` as an additional fail-closed validation signal during preflight.
+- Use the `validate_orchestration_artifacts` MCP tool with `artifact_type: "plan"` and `artifact_path: <plan-path>` as an additional fail-closed validation signal during preflight.
 - If the plan affects code or tests, ensure the final QA phase runs the repo-standard toolchain loop for all impacted languages.
 - Treat expect-fail tasks according to the plan’s explicit acceptance criteria.
 

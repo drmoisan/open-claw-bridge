@@ -28,6 +28,7 @@ Canonical extension command invocations:
 Fallback rule:
 - Use the direct script/CLI commands below only when the agent host cannot invoke VS Code extension commands directly.
 - When falling back, preserve the same variable model, flags, and work-mode semantics.
+- Do not partially execute the lifecycle. If promotion cannot complete, stop instead of continuing with branch or folder creation.
 
 ## Canonical Variables
 
@@ -41,6 +42,14 @@ Fallback rule:
 - `${work-mode}`: `minor-audit`, `full-feature`, or `full-bug` (legacy `full` is accepted only as an alias for `full-feature`)
 - `${short-path-flag}`: `--work-mode minor-audit` (mandatory for short-path promotion/folder creation)
 
+## Hard Lifecycle Preconditions
+
+- `${relativeFile}` MUST resolve to a real potential markdown path and MUST NOT be `NONE`, `TBD`, or empty.
+- `${issue-num}` MUST be numeric after promotion and before branch or folder creation.
+- `new_active_feature_folder` MUST NOT run before `potential_to_issue` succeeds.
+- Active feature docs (`issue.md`, `spec.md`, `user-story.md`, `plan*.md`) MUST NOT be created or edited before promotion and folder creation both succeed.
+- If any lifecycle precondition fails, stop and report the exact missing precondition. Do not infer or synthesize the missing value.
+
 ## Canonical Fallback Command Sequence
 
 1) Create potential entry by type:
@@ -49,6 +58,12 @@ Fallback rule:
 
 2) Promote potential doc:
 - `poetry run python -m scripts.dev_tools.potential_to_issue --potential-path ${relativeFile} --promotion-type ${promotion-type} --work-mode ${work-mode}`
+
+2a) Verify promotion output before continuing:
+- promoted markdown exists under `docs/features/potential/promoted/`
+- promoted markdown contains `Issue: #${issue-num}`
+- `${issue-num}` is numeric
+- if any verification fails, stop; do not create the branch or active feature folder
 
 3) Create branch:
 - `${promotion-type}/${short-name}-${issue-num}`
@@ -62,6 +77,12 @@ When orchestrator routing selects short path, promotion/folder initialization st
 
 1) Promote potential doc with short-path flag:
 - `poetry run python -m scripts.dev_tools.potential_to_issue --potential-path ${relativeFile} --promotion-type ${promotion-type} --work-mode minor-audit`
+
+1a) Verify promotion output before continuing:
+- promoted markdown exists under `docs/features/potential/promoted/`
+- promoted markdown contains `Issue: #${issue-num}`
+- `${issue-num}` is numeric
+- if any verification fails, stop; do not create the branch or active feature folder
 
 2) Create branch:
 - `${promotion-type}/${short-name}-${issue-num}`
@@ -102,6 +123,12 @@ Before delegating research/spec/planning, provide:
 - `${feature-folder}/user-story.md` (or explicit `NONE`)
 - latest research artifact path(s)
 - constraints/APIs/invariants to preserve
+
+Before any active-folder authoring begins, also verify:
+- `${relativeFile}` is the actual created potential-entry path
+- `${issue-num}` came from promotion output and is numeric
+- `${feature-folder}` came from `new_active_feature_folder` after promotion, not from manual scaffolding
+- the current branch is `${promotion-type}/${short-name}-${issue-num}` or a documented checkout of that existing branch
 
 Mode-aware expectations:
 - For `minor-audit`, the explicit `## Acceptance Criteria` section in `issue.md` is the primary acceptance-criteria source and `spec.md`/`user-story.md` may be intentionally absent by design.

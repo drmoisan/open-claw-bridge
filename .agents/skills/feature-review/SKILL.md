@@ -38,9 +38,9 @@ Write timestamped artifacts into the active feature folder:
 - `remediation-plan.<timestamp>.md` when remediation is required
 
 Each required review artifact MUST pass the matching validator command before review can be reported as complete:
-- `python -m scripts.dev_tools.validate_orchestration_artifacts policy-audit <path>`
-- `python -m scripts.dev_tools.validate_orchestration_artifacts code-review <path>`
-- `python -m scripts.dev_tools.validate_orchestration_artifacts feature-audit <path>`
+- the `validate_orchestration_artifacts` MCP tool with `artifact_type: "policy-audit"` and `artifact_path: <path>`
+- the `validate_orchestration_artifacts` MCP tool with `artifact_type: "code-review"` and `artifact_path: <path>`
+- the `validate_orchestration_artifacts` MCP tool with `artifact_type: "feature-audit"` and `artifact_path: <path>`
 
 ## Review Flow
 
