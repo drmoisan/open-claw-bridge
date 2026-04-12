@@ -265,19 +265,19 @@ Autonomous execution boundary: After Phase 3 completes, atomic execution pauses 
 - [x] [P5-T10] Run `scripts/dev-tools/run-actionlint.ps1` again and save the final workflow-lint result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/actionlint-build-msix.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: scripts/dev-tools/run-actionlint.ps1`, `EXIT_CODE: 0`, and `Output Summary:` mentioning `.github/workflows/build-msix.yml`.
 
-- [ ] [P5-T11] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-10-msix-installer-package-17/spec.md` against the verified evidence from Phases 1 through 5. [REQ-010]
+- [x] [P5-T11] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-10-msix-installer-package-17/spec.md` against the verified evidence from Phases 1 through 5. [REQ-010]
 	- Acceptance: Every checkbox changed to `[x]` in `spec.md` is backed by at least one artifact under `evidence/other/` or `evidence/qa-gates/`, and every unmet acceptance item remains unchecked.
 
-- [ ] [P5-T12] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-10-msix-installer-package-17/user-story.md` against the verified evidence from Phases 1 through 5. [REQ-010]
+- [x] [P5-T12] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-10-msix-installer-package-17/user-story.md` against the verified evidence from Phases 1 through 5. [REQ-010]
 	- Acceptance: Every checkbox changed to `[x]` in `user-story.md` is backed by at least one artifact under `evidence/other/` or `evidence/qa-gates/`, and every unmet acceptance item remains unchecked.
 
-- [ ] [P5-T13] Save an acceptance-criteria status summary to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/acceptance-status.yyyy-MM-ddTHH-mm.md`. [REQ-006] [REQ-010]
+- [x] [P5-T13] Save an acceptance-criteria status summary to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/acceptance-status.yyyy-MM-ddTHH-mm.md`. [REQ-006] [REQ-010]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: acceptance-status-summary`, `EXIT_CODE: 0`, `Output Summary:`, `TotalAcceptanceCriteria:`, `CheckedOffAcceptanceCriteria:`, and `RemainingAcceptanceCriteria:`.
 
-- [ ] [P5-T14] Reconcile `docs/features/active/2026-04-10-msix-installer-package-17/plan.2026-04-10T19-59.md` against the final evidence set after all QA tasks pass. [REQ-009]
+- [x] [P5-T14] Reconcile `docs/features/active/2026-04-10-msix-installer-package-17/plan.2026-04-10T19-59.md` against the final evidence set after all QA tasks pass. [REQ-009]
 	- Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/plan.2026-04-10T19-59.md` contains only evidence-backed completed tasks, leaves any unverified workflow or lifecycle item unchecked, and matches the artifacts present under `evidence/remediation-baseline/`, `evidence/regression-testing/`, `evidence/other/`, and `evidence/qa-gates/`.
 
-- [ ] [P5-T15] Save a final branch-state verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/branch-state.yyyy-MM-ddTHH-mm.md`. [REQ-001] [REQ-002] [REQ-009]
+- [x] [P5-T15] Save a final branch-state verification artifact to `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/branch-state.yyyy-MM-ddTHH-mm.md`. [REQ-001] [REQ-002] [REQ-009]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: git diff --name-status development...HEAD`, `EXIT_CODE: 0`, and `Output Summary:` showing `.github/workflows/build-msix.yml` is present in the branch diff while `installer/staging/AppxManifest.xml` is absent.
 
 ## Verification Strategy
