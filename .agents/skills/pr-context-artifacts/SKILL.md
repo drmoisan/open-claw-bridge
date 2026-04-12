@@ -22,3 +22,8 @@ Use this skill when:
 ## Refresh Rule
 
 If the artifacts are missing or stale relative to the current branch state, re-generate them using the repo’s PR context collector.
+
+- When `PRBaseBranch` is supplied explicitly, use that exact branch for refresh.
+- When `PRBaseBranch` is missing or ambiguous, resolve it first with `pr-base-branch-merge-base` before running the collector.
+- Do not infer the refresh base from the repository default branch unless merge-base resolution fails for all candidates.
+- Treat an already-fresh artifact pair as authoritative; do not refresh solely because no explicit `PRBaseBranch` input was provided.
