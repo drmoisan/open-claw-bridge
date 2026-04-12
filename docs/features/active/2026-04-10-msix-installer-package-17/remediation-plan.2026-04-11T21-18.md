@@ -89,71 +89,71 @@ This plan is driven by `docs/features/active/2026-04-10-msix-installer-package-1
 - [x] [P0-T3] Run `pwsh -File scripts/dev-tools/run-actionlint.ps1` and save the workflow-lint baseline artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/workflow-lint.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/workflow-lint.md` exists and contains `Timestamp:`, `Command: pwsh -File scripts/dev-tools/run-actionlint.ps1`, `EXIT_CODE:`, and `Output Summary:` summarizing the pre-change workflow lint status for `.github/workflows/build-msix.yml`.
 
-- [ ] [P0-T4] Run `csharpier .` and save the baseline C# formatting artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/csharp-format.md`.
+- [x] [P0-T4] Run `csharpier .` and save the baseline C# formatting artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/csharp-format.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/csharp-format.md` exists and contains `Timestamp:`, `Command: csharpier .`, `EXIT_CODE:`, and `Output Summary:` stating whether formatting changes were required before remediation work starts.
 
-- [ ] [P0-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the analyzer-build baseline artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/analyzer-build.md`.
+- [x] [P0-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the analyzer-build baseline artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/analyzer-build.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/analyzer-build.md` exists and contains `Timestamp:`, `Command: msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true`, `EXIT_CODE:`, and `Output Summary:` summarizing analyzer warnings or the clean-pass baseline.
 
-- [ ] [P0-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the nullable/type-safety baseline artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/nullable-build.md`.
+- [x] [P0-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the nullable/type-safety baseline artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/nullable-build.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/nullable-build.md` exists and contains `Timestamp:`, `Command: msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true`, `EXIT_CODE:`, and `Output Summary:` summarizing the nullable/type-safety baseline.
 
-- [ ] [P0-T7] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the baseline coverage artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/csharp-test-coverage.md`.
+- [x] [P0-T7] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the baseline coverage artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/csharp-test-coverage.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/baseline/csharp-test-coverage.md` exists and contains `Timestamp:`, `Command: dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings`, `EXIT_CODE:`, and `Output Summary:` with numeric `BaselineOverallLineCoverage:`, `BaselineCoveredLines:`, and `BaselineTotalLines:` values parsed from the generated coverage output.
 
 ### Phase 1 — CI Path Closure and Evidence Alignment
 
-- [ ] [P1-T1] Update `.github/workflows/build-msix.yml` so the authoritative CI path no longer relies on `New-MsixDevCert.ps1 -WhatIf` and `build-msix.ps1 -SkipSign` if the requirement continues to promise a signed MSIX artifact.
+- [x] [P1-T1] Update `.github/workflows/build-msix.yml` so the authoritative CI path no longer relies on `New-MsixDevCert.ps1 -WhatIf` and `build-msix.ps1 -SkipSign` if the requirement continues to promise a signed MSIX artifact.
   - Acceptance: The workflow text aligns with the signed-package requirement, and the resulting YAML still passes `actionlint`.
 
-- [ ] [P1-T2] Add a deterministic verification step that exercises the `MSIX_PUBLISH_DIR` publish-output assertions after the publish outputs are created.
+- [x] [P1-T2] Add a deterministic verification step that exercises the `MSIX_PUBLISH_DIR` publish-output assertions after the publish outputs are created.
   - Acceptance: The verification path runs without `Assert.Inconclusive`, and evidence is captured for the executed assertion branch.
 
-- [ ] [P1-T3] Resolve the remaining upgrade-version gap by choosing one deterministic path: executed `1.1.0.0` proof or `spec.md` wording reconciliation to the exact version proven by the executed scenario.
+- [x] [P1-T3] Resolve the remaining upgrade-version gap by choosing one deterministic path: executed `1.1.0.0` proof or `spec.md` wording reconciliation to the exact version proven by the executed scenario.
   - Acceptance: The upgrade scenario in `spec.md` and the verification path refer to one exact version target with no conflicting version strings remaining.
 
-- [ ] [P1-T4] Update the uninstall verification path so it emits explicit success signals for both `bridge/` and `client/` directory removal.
+- [x] [P1-T4] Update the uninstall verification path so it emits explicit success signals for both `bridge/` and `client/` directory removal.
   - Acceptance: The uninstall verification command or assertion text contains distinct checks for `bridge/` removal and `client/` removal before the final evidence artifact is captured.
 
-- [ ] [P1-T5] Save the canonical CI-path success artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/ci-path-success.md`.
+- [x] [P1-T5] Save the canonical CI-path success artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/ci-path-success.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/ci-path-success.md` exists and contains `Timestamp:`, `Command:` naming the executed CI-path proof command, `EXIT_CODE: 0`, and `Output Summary:` confirming the successful `windows-latest` CI path that satisfies the signed-package requirement or its reconciled wording.
 
-- [ ] [P1-T6] Save the canonical `MSIX_PUBLISH_DIR` assertion-path artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/msix-publish-dir-assertion.md`.
+- [x] [P1-T6] Save the canonical `MSIX_PUBLISH_DIR` assertion-path artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/msix-publish-dir-assertion.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/msix-publish-dir-assertion.md` exists and contains `Timestamp:`, `Command:` naming the executed `MSIX_PUBLISH_DIR` assertion command, `EXIT_CODE: 0`, and `Output Summary:` confirming that the `MSIX_PUBLISH_DIR` assertion path executed successfully without `Assert.Inconclusive`.
 
-- [ ] [P1-T7] Save the canonical upgrade-version proof or spec-reconciliation artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/upgrade-version-reconciliation.md`.
+- [x] [P1-T7] Save the canonical upgrade-version proof or spec-reconciliation artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/upgrade-version-reconciliation.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/upgrade-version-reconciliation.md` exists and contains `Timestamp:`, `Command:` naming the executed upgrade-proof or spec-reconciliation command, `EXIT_CODE: 0`, and `Output Summary:` stating either that `1.1.0.0` was proven by executed evidence or that `spec.md` was reconciled to the exact version proven by the executed scenario.
 
-- [ ] [P1-T8] Save the canonical uninstall directory-removal artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/uninstall-directory-removal.md`.
+- [x] [P1-T8] Save the canonical uninstall directory-removal artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/uninstall-directory-removal.md`.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/uninstall-directory-removal.md` exists and contains `Timestamp:`, `Command:` naming the executed uninstall verification command, `EXIT_CODE: 0`, and `Output Summary:` explicitly stating that `bridge/` was removed, `client/` was removed, and `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` remained in place.
 
 ### Phase 2 — Final QA Loop and Acceptance Reconciliation
 
-- [ ] [P2-T1] Run `csharpier .` and save the final C# formatting artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharp-format.md`; if formatting changes files, restart Phase 2 from [P2-T1].
+- [x] [P2-T1] Run `csharpier .` and save the final C# formatting artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharp-format.md`; if formatting changes files, restart Phase 2 from [P2-T1].
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharp-format.md` exists and contains `Timestamp:`, `Command: csharpier .`, `EXIT_CODE: 0`, and `Output Summary:` confirming that no formatting changes remain at the end of the clean pass.
 
-- [ ] [P2-T2] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the final analyzer-build artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/analyzer-build.md`; if the build fails, restart Phase 2 from [P2-T1].
+- [x] [P2-T2] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the final analyzer-build artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/analyzer-build.md`; if the build fails, restart Phase 2 from [P2-T1].
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/analyzer-build.md` exists and contains `Timestamp:`, `Command: msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true`, `EXIT_CODE: 0`, and `Output Summary:` confirming a clean analyzer pass.
 
-- [ ] [P2-T3] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the final nullable/type-safety artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/nullable-build.md`; if the build fails, restart Phase 2 from [P2-T1].
+- [x] [P2-T3] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the final nullable/type-safety artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/nullable-build.md`; if the build fails, restart Phase 2 from [P2-T1].
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/nullable-build.md` exists and contains `Timestamp:`, `Command: msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true`, `EXIT_CODE: 0`, and `Output Summary:` confirming a clean nullable/type-safety pass.
 
-- [ ] [P2-T4] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the final coverage-enabled C# test artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharp-test-coverage.md`; if the test run fails, restart Phase 2 from [P2-T1].
+- [x] [P2-T4] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the final coverage-enabled C# test artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharp-test-coverage.md`; if the test run fails, restart Phase 2 from [P2-T1].
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharp-test-coverage.md` exists and contains `Timestamp:`, `Command: dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings`, `EXIT_CODE: 0`, and `Output Summary:` with numeric `PostChangeOverallLineCoverage:`, `PostChangeCoveredLines:`, and `PostChangeTotalLines:` values parsed from the generated coverage output.
 
-- [ ] [P2-T5] Save the coverage-reconciliation artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-reconciliation.md` by comparing the baseline coverage from [P0-T7] with the post-change coverage from [P2-T4] and the changed/new-code coverage for the touched implementation.
+- [x] [P2-T5] Save the coverage-reconciliation artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-reconciliation.md` by comparing the baseline coverage from [P0-T7] with the post-change coverage from [P2-T4] and the changed/new-code coverage for the touched implementation.
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-reconciliation.md` exists and contains `BaselineOverallLineCoverage:`, `PostChangeOverallLineCoverage:`, `ChangedOrNewCodeCoverage:`, and `RepositoryCoverageExpectation: PASS` or `RepositoryCoverageExpectation: FAIL`, with the expectation result aligned to repository coverage rules.
 
-- [ ] [P2-T6] Run `pwsh -File scripts/dev-tools/run-actionlint.ps1` and save the final workflow-lint artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/workflow-lint.md`; if the lint run fails, restart Phase 2 from [P2-T1].
+- [x] [P2-T6] Run `pwsh -File scripts/dev-tools/run-actionlint.ps1` and save the final workflow-lint artifact in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/workflow-lint.md`; if the lint run fails, restart Phase 2 from [P2-T1].
   - Acceptance: `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/workflow-lint.md` exists and contains `Timestamp:`, `Command: pwsh -File scripts/dev-tools/run-actionlint.ps1`, `EXIT_CODE: 0`, and `Output Summary:` confirming the final workflow lint pass for `.github/workflows/build-msix.yml`.
 
-- [ ] [P2-T7] Reconcile `user-story.md` and `spec.md` acceptance checkboxes against the new evidence, checking off only the items that are fully proven.
+- [x] [P2-T7] Reconcile `user-story.md` and `spec.md` acceptance checkboxes against the new evidence, checking off only the items that are fully proven.
   - Acceptance: `user-story.md` line `64` and the remaining `spec.md` items are checked only if their evidence exists; otherwise they remain unchecked.
 
-- [ ] [P2-T8] Update the acceptance-status summary artifact so it matches the final checkbox state exactly.
+- [x] [P2-T8] Update the acceptance-status summary artifact so it matches the final checkbox state exactly.
   - Acceptance: The summary records updated totals, checked counts, remaining counts, and the exact remaining items list.
 
-- [ ] [P2-T9] Run the repository orchestration artifact validator equivalent to `validate_orchestration_artifacts` for artifact type `plan` on `c:\Users\DanMoisan\repos\open-claw-bridge\docs\features\active\2026-04-10-msix-installer-package-17\remediation-plan.2026-04-11T21-18.md` and keep this file at the same path.
+- [x] [P2-T9] Run the repository orchestration artifact validator equivalent to `validate_orchestration_artifacts` for artifact type `plan` on `c:\Users\DanMoisan\repos\open-claw-bridge\docs\features\active\2026-04-10-msix-installer-package-17\remediation-plan.2026-04-11T21-18.md` and keep this file at the same path.
   - Acceptance: The repository orchestration artifact validator exits `0` for artifact type `plan` on this exact plan file path.
 
 ## Verification Strategy

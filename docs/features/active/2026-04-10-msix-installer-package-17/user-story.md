@@ -46,9 +46,9 @@ Operators who need to deploy the bridge on a fresh machine must know which scrip
   - **Expected outcome**: Bridge is running; startup task is listed as enabled in Task Manager > Startup apps; config file is present. No manual script execution required.
 
 - **Scenario: In-place upgrade**
-  - **Trigger**: A new MSIX version (`1.1.0.0`) is available.
+  - **Trigger**: A new MSIX version (`1.0.1.0`) is available.
   - **Steps**:
-    1. Operator runs `Add-AppxPackage -Path OpenClaw.MailBridge_1.1.0.0_x64.msix`.
+    1. Operator runs `Add-AppxPackage -Path OpenClaw.MailBridge_1.0.1.0_x64.msix`.
     2. Windows stages the new version and atomically swaps binaries. The startup task is preserved.
     3. On next logon, the updated `OpenClaw.MailBridge.exe` starts. `bridge.settings.json` is untouched.
   - **Expected outcome**: New binaries running; existing config preserved; no re-registration of startup task required.
@@ -61,7 +61,7 @@ Operators who need to deploy the bridge on a fresh machine must know which scrip
 - [x] On host reboot, the bridge restarts automatically on user login (startup task fires on each logon).
 - [x] Upgrading the package in-place replaces binaries and preserves existing `bridge.settings.json` in `%LOCALAPPDATA%\OpenClaw\MailBridge\`.
 - [x] Uninstalling via Settings > Apps removes the startup task and binaries (leaves user config in place).
-- [ ] Package can be built from CI using `dotnet publish` + `makeappx.exe` (no Visual Studio required).
+- [x] Package can be built from CI using `dotnet publish` + `makeappx.exe` (no Visual Studio required).
 - [x] Existing PowerShell install/uninstall scripts remain functional as a side-by-side alternative for non-MSIX deployment.
 - [x] New Pester unit tests cover `build-msix.ps1` and `New-MsixDevCert.ps1` helper functions.
 - [x] New MSTest tests validate MSIX publish output layout and manifest content.
