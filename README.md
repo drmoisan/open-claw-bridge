@@ -253,6 +253,63 @@ Current test coverage includes:
 - Operator runbook: [`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md) for install steps, `safe` versus `enhanced` guidance, scripted acceptance suites, and operator-only validation steps.
 - Active feature and remediation docs: [`docs/features/active/`](./docs/features/active/)
 
+## MSIX Installation
+
+The MSIX package bundles the bridge host, client CLI, and all runtime dependencies into a single signed Windows
+installer that auto-starts the bridge at user logon via a `windows.startupTask` extension.
+
+### One-time dev certificate setup (elevated PowerShell required)
+
+Run this once per developer machine to create a self-signed code-signing cert and install it in the trusted-root store:
+
+```powershell
+# Run as Administrator
+$pwd = ConvertTo-SecureString 'your-password' -AsPlainText -Force
+.\scripts\New-MsixDevCert.ps1 -PfxPassword $pwd -OutputDir artifacts
+```
+
+This writes `artifacts/OpenClaw.MailBridge.pfx` and `artifacts/OpenClaw.MailBridge.cer` and installs the CER into
+`Cert:\LocalMachine\Root` so Windows accepts the signed package.
+
+### Build the MSIX package
+
+First publish both projects, then pack:
+
+```powershell
+dotnet publish src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj /p:PublishProfile=msix
+dotnet publish src/OpenClaw.MailBridge.Client/OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix
+
+# Sign and pack (replace THUMBPRINT with the value from New-MsixDevCert.ps1)
+.\scripts\build-msix.ps1 -Version '1.0.0.0' -CertThumbprint 'THUMBPRINT'
+```
+
+The `.msix` file is written to `artifacts/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix`.
+
+### Install
+
+```powershell
+Add-AppxPackage -Path artifacts/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix
+```
+
+The bridge is registered as a startup task (`TaskId = OpenClawMailBridge`) and will start automatically at the next
+user logon.
+
+### Upgrade
+
+Build a newer version and run `Add-AppxPackage` again:
+
+```powershell
+Add-AppxPackage -Path artifacts/msix/OpenClaw.MailBridge_1.1.0.0_x64.msix
+```
+
+Windows replaces the installed version in place.
+
+### Uninstall
+
+```powershell
+Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage
+```
+
 ## Known Gaps And Follow-Ups
 
 - Real Outlook/operator acceptance still requires a Windows machine with classic Outlook, an interactive user session, and a provisioned `openclaw-svc` identity.

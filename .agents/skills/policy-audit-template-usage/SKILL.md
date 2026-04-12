@@ -39,7 +39,7 @@ Use this skill when:
    - `## 10. Compliance Verdict`
    - `## Appendix A: Test Inventory`
    - `## Appendix B: Toolchain Commands Reference`
-6) Run `python -m scripts.dev_tools.validate_orchestration_artifacts policy-audit <path>` and fail closed on any non-zero result.
+6) Run the `validate_orchestration_artifacts` MCP tool with `artifact_type: "policy-audit"` and `artifact_path: <path>` and fail closed on any non-zero result.
 
 ## Invalid Outputs
 

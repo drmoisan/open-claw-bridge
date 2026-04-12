@@ -108,8 +108,17 @@ For any host-specific workflow step:
   - `potential_to_issue`
   - `new_active_feature_folder`
 - Current rule: use the MCP tools as the canonical path.
+- Execute these lifecycle operations as one ordered chain:
+  - create potential entry
+  - promote with `potential_to_issue`
+  - capture numeric issue number from promotion output
+  - create or check out `${promotion-type}/${short-name}-${issue-num}`
+  - create active feature folder with `new_active_feature_folder`
+- `new_active_feature_folder` is not an allowed bootstrap substitute for missing promotion state.
+- If `${issue-num}` is missing, non-numeric, or placeholder text, stop instead of continuing.
 - If the MCP server is unavailable, surface a precise dependency gap unless the caller explicitly requests a best-effort local-only fallback.
-- Do not synthesize GitHub issue state or feature-folder scaffolding unless the user explicitly requests a best-effort local-only fallback.
+- Do not synthesize GitHub issue state, active-folder scaffolding, or placeholder lifecycle variables unless the user explicitly requests a best-effort local-only fallback.
+- When a local-only fallback is explicitly approved, preserve the same ordered lifecycle and verification gates; do not skip directly to folder creation.
 
 ### Customization publishing and hard-lock resolution
 

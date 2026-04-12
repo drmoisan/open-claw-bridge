@@ -1,0 +1,14 @@
+Timestamp: 2026-04-11T20:44:00-04:00
+Command: coverage-threshold-compare
+EXIT_CODE: 0
+Output Summary:
+- BaselineCoverageArtifact=docs/features/active/2026-04-10-msix-installer-package-17/evidence/remediation-baseline/coverage-summary.2026-04-11T15-06.md
+- FinalCoverageArtifact=docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-summary.2026-04-11T20-44.md
+- BaselineOverallLineCoverage=85.95
+- FinalOverallLineCoverage=85.95
+- OverallCoverageDelta=0.00
+- BaselineChangedOrNewLineCoverage=100.00
+- FinalChangedOrNewLineCoverage=100.00
+- ChangedCoverageDelta=0.00
+- MeetsRepositoryMinimum80=True
+- ChangedCoverageNoRegression=True

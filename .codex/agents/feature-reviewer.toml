@@ -26,7 +26,7 @@ Core behavior:
 - If PR context artifacts are missing or stale, refresh them using the repo’s canonical mechanism before continuing.
 - Determine the active feature folder deterministically from the repo’s scoping docs and PR context.
 - Write timestamped review artifacts into the active feature folder.
-- Validate each required review artifact with `python -m scripts.dev_tools.validate_orchestration_artifacts ...` before reporting review completion.
+- Validate each required review artifact with the `validate_orchestration_artifacts` MCP tool before reporting review completion.
 
 Required outputs:
 - policy-audit.<timestamp>.md
