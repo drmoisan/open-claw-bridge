@@ -133,19 +133,19 @@ Produce a signed MSIX installer package for OpenClaw MailBridge that installs bo
 
 ### Phase 4 — CI GitHub Actions Workflow
 
-- [ ] [P4-T1] Create `.github/workflows/build-msix.yml` with `name: Build MSIX Package`, triggers on `push: tags: ['v*']` and `workflow_dispatch` with a required `version` string input (default `'1.0.0.0'`), and a job named `build-msix` running on `windows-latest`
+- [x] [P4-T1] Create `.github/workflows/build-msix.yml` with `name: Build MSIX Package`, triggers on `push: tags: ['v*']` and `workflow_dispatch` with a required `version` string input (default `'1.0.0.0'`), and a job named `build-msix` running on `windows-latest`
   - Acceptance: `Test-Path .github/workflows/build-msix.yml` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern "v\*" -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'workflow_dispatch' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'windows-latest' -Quiet` returns `True`
 
-- [ ] [P4-T2] Add `actions/checkout@v4` and `actions/setup-dotnet@v4` steps with `dotnet-version: '10.0.x'` to the `build-msix` job
+- [x] [P4-T2] Add `actions/checkout@v4` and `actions/setup-dotnet@v4` steps with `dotnet-version: '10.0.x'` to the `build-msix` job
   - Acceptance: `Select-String -Path .github/workflows/build-msix.yml -Pattern 'actions/checkout@v4' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'actions/setup-dotnet@v4' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern '10\.0\.x' -Quiet` returns `True`
 
-- [ ] [P4-T3] Add `dotnet publish` steps to the workflow for `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client`, each specifying `/p:PublishProfile=msix`
+- [x] [P4-T3] Add `dotnet publish` steps to the workflow for `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client`, each specifying `/p:PublishProfile=msix`
   - Acceptance: `(Select-String -Path .github/workflows/build-msix.yml -Pattern 'dotnet publish').Count -ge 2` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'PublishProfile=msix' -Quiet` returns `True`
 
-- [ ] [P4-T4] Add a PowerShell step to the workflow that runs `scripts/New-MsixDevCert.ps1` (CI dev cert creation) followed by `scripts/build-msix.ps1` with `-Version` sourced from `github.ref_name` on tag push or `github.event.inputs.version` on dispatch, and `-CertThumbprint` from the cert step output
+- [x] [P4-T4] Add a PowerShell step to the workflow that runs `scripts/New-MsixDevCert.ps1` (CI dev cert creation) followed by `scripts/build-msix.ps1` with `-Version` sourced from `github.ref_name` on tag push or `github.event.inputs.version` on dispatch, and `-CertThumbprint` from the cert step output
   - Acceptance: `Select-String -Path .github/workflows/build-msix.yml -Pattern 'New-MsixDevCert\.ps1' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'build-msix\.ps1' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'github\.ref_name' -Quiet` returns `True`
 
-- [ ] [P4-T5] Add `actions/upload-artifact@v4` step to the workflow that uploads `artifacts/msix/*.msix` as the artifact named `msix-package`
+- [x] [P4-T5] Add `actions/upload-artifact@v4` step to the workflow that uploads `artifacts/msix/*.msix` as the artifact named `msix-package`
   - Acceptance: `Select-String -Path .github/workflows/build-msix.yml -Pattern 'upload-artifact' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'msix-package' -Quiet` returns `True`; `Select-String -Path .github/workflows/build-msix.yml -Pattern 'artifacts/msix' -Quiet` returns `True`
 
 ### Phase 5 — Tests & Documentation

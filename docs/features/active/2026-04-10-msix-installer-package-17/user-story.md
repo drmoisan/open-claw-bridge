@@ -56,11 +56,11 @@ Operators who need to deploy the bridge on a fresh machine must know which scrip
 
 ## Acceptance Criteria
 
-- [ ] MSIX package installs both executables without error on a clean Windows 10/11 machine.
-- [ ] After install, a startup task named `OpenClaw MailBridge` is registered and active; the bridge process starts on next user logon.
-- [ ] On host reboot, the bridge restarts automatically on user login (startup task fires on each logon).
-- [ ] Upgrading the package in-place replaces binaries and preserves existing `bridge.settings.json` in `%LOCALAPPDATA%\OpenClaw\MailBridge\`.
-- [ ] Uninstalling via Settings > Apps removes the startup task and binaries (leaves user config in place).
+- [x] MSIX package installs both executables without error on a clean Windows 10/11 machine.
+- [x] After install, a startup task named `OpenClaw MailBridge` is registered and active; the bridge process starts on next user logon.
+- [x] On host reboot, the bridge restarts automatically on user login (startup task fires on each logon).
+- [x] Upgrading the package in-place replaces binaries and preserves existing `bridge.settings.json` in `%LOCALAPPDATA%\OpenClaw\MailBridge\`.
+- [x] Uninstalling via Settings > Apps removes the startup task and binaries (leaves user config in place).
 - [ ] Package can be built from CI using `dotnet publish` + `makeappx.exe` (no Visual Studio required).
 - [x] Existing PowerShell install/uninstall scripts remain functional as a side-by-side alternative for non-MSIX deployment.
 - [x] New Pester unit tests cover `build-msix.ps1` and `New-MsixDevCert.ps1` helper functions.

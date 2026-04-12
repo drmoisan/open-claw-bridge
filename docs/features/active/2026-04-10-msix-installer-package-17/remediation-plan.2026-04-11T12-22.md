@@ -223,46 +223,46 @@ Autonomous execution boundary: After Phase 3 completes, atomic execution pauses 
 - [x] [P4-T6] Record the manual-execution pause in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/manual-lifecycle-execution-boundary.yyyy-MM-ddTHH-mm.md` and stop autonomous execution until the required external lifecycle artifacts exist on disk. [REQ-006]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: manual-lifecycle-execution-boundary`, `EXIT_CODE: 0`, and `Output Summary:` with `AutonomousExecutionPaused=True`, `ResumeCondition=AllRequiredLifecycleArtifactsPresent`, and the exact list of required artifact basenames from `[P4-T5]`.
 
-- [ ] [P4-T7] On resume, verify that externally produced lifecycle evidence exists on disk for development certificate creation, install, next-logon, reboot, pre-upgrade settings seed, version `1.0.1.0` package build, upgrade, and uninstall. [REQ-006]
+- [x] [P4-T7] On resume, verify that externally produced lifecycle evidence exists on disk for development certificate creation, install, next-logon, reboot, pre-upgrade settings seed, version `1.0.1.0` package build, upgrade, and uninstall. [REQ-006]
 	- Acceptance: The newest matching artifacts exist under `docs/features/active/2026-04-10-msix-installer-package-17/evidence/other/` for `dev-cert-create.yyyy-MM-ddTHH-mm.md`, `install-v1.yyyy-MM-ddTHH-mm.md`, `logon-startup.yyyy-MM-ddTHH-mm.md`, `reboot-logon.yyyy-MM-ddTHH-mm.md`, `pre-upgrade-settings.yyyy-MM-ddTHH-mm.md`, `build-msix-v2.yyyy-MM-ddTHH-mm.md`, `upgrade-v2.yyyy-MM-ddTHH-mm.md`, and `uninstall.yyyy-MM-ddTHH-mm.md`, and each verified artifact contains `Timestamp:`, `Command:`, `EXIT_CODE: 0`, and an `Output Summary:` line.
 
 ### Phase 5 — Final QA Loop, Coverage Closure, Acceptance Sync, and Final Plan Sync
 
-- [ ] [P5-T1] Run `mcp_drmcopilotext_run_poshqc_format` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/poshqc-format.yyyy-MM-ddTHH-mm.md`.
+- [x] [P5-T1] Run `mcp_drmcopilotext_run_poshqc_format` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/poshqc-format.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: mcp_drmcopilotext_run_poshqc_format`, `EXIT_CODE: 0`, and `Output Summary:` naming the four targeted files.
 	- Restart rule: If formatting changes any file or exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T2] Run `mcp_drmcopilotext_run_poshqc_analyze` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/poshqc-analyze.yyyy-MM-ddTHH-mm.md`.
+- [x] [P5-T2] Run `mcp_drmcopilotext_run_poshqc_analyze` for `scripts/build-msix.ps1`, `scripts/New-MsixDevCert.ps1`, `tests/scripts/build-msix.Tests.ps1`, and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/poshqc-analyze.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: mcp_drmcopilotext_run_poshqc_analyze`, `EXIT_CODE: 0`, and `Output Summary:` reporting zero PSScriptAnalyzer findings for the four targeted files.
 	- Restart rule: If the command exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T3] Run `mcp_drmcopilotext_run_poshqc_test` for `tests/scripts/build-msix.Tests.ps1` and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/poshqc-test.yyyy-MM-ddTHH-mm.md`.
+- [x] [P5-T3] Run `mcp_drmcopilotext_run_poshqc_test` for `tests/scripts/build-msix.Tests.ps1` and `tests/scripts/New-MsixDevCert.Tests.ps1`, then save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/poshqc-test.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: mcp_drmcopilotext_run_poshqc_test`, `EXIT_CODE: 0`, and `Output Summary:` showing all targeted Pester scenarios passed.
 	- Restart rule: If the command exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T4] Run `csharpier check .` and save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharpier-check.yyyy-MM-ddTHH-mm.md`.
+- [x] [P5-T4] Run `csharpier check .` and save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/csharpier-check.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: csharpier check .`, `EXIT_CODE: 0`, and `Output Summary:` with the checked-file count.
 	- Restart rule: If formatting changes are required or the command exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/msbuild-analyzers.yyyy-MM-ddTHH-mm.md`.
+- [x] [P5-T5] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true` and save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/msbuild-analyzers.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` showing the analyzer-enabled build passed.
 	- Restart rule: If the command exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/msbuild-nullable.yyyy-MM-ddTHH-mm.md`.
+- [x] [P5-T6] Run `msbuild OpenClaw.MailBridge.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true` and save the final result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/msbuild-nullable.yyyy-MM-ddTHH-mm.md`.
 	- Acceptance: The artifact exists and contains `Timestamp:`, the exact `Command:`, `EXIT_CODE: 0`, and `Output Summary:` showing the nullable/type-safety build passed.
 	- Restart rule: If the command exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T7] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the final test-plus-coverage result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/dotnet-test-coverage.yyyy-MM-ddTHH-mm.md`. [REQ-007]
+- [x] [P5-T7] Run `dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings` and save the final test-plus-coverage result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/dotnet-test-coverage.yyyy-MM-ddTHH-mm.md`. [REQ-007]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: dotnet test OpenClaw.MailBridge.sln -c Debug --settings mailbridge.runsettings`, `EXIT_CODE: 0`, and `Output Summary:` with numeric `PostChangeOverallLineCoverage:` and final test pass counts.
 	- Restart rule: If the command exits non-zero, correct the cause and restart Phase 5 from `[P5-T1]`.
 
-- [ ] [P5-T8] Parse the newest final `coverage.cobertura.xml` plus `git diff --unified=0 development...HEAD` into `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-summary.yyyy-MM-ddTHH-mm.md`. [REQ-007]
+- [x] [P5-T8] Parse the newest final `coverage.cobertura.xml` plus `git diff --unified=0 development...HEAD` into `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-summary.yyyy-MM-ddTHH-mm.md`. [REQ-007]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: final-coverage-parse`, `EXIT_CODE: 0`, `Output Summary:`, and numeric lines for `PostChangeOverallLineCoverage:`, `PostChangeChangedOrNewLineCoverage:`, and `CoverageSource:`.
 
-- [ ] [P5-T9] Compare the Phase 0 and Phase 5 coverage artifacts in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-thresholds.yyyy-MM-ddTHH-mm.md`. [REQ-007]
+- [x] [P5-T9] Compare the Phase 0 and Phase 5 coverage artifacts in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/coverage-thresholds.yyyy-MM-ddTHH-mm.md`. [REQ-007]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: coverage-threshold-compare`, `EXIT_CODE: 0`, `Output Summary:`, numeric lines for `BaselineOverallLineCoverage:`, `PostChangeOverallLineCoverage:`, `BaselineChangedOrNewLineCoverage:`, `PostChangeChangedOrNewLineCoverage:`, and a machine-checkable `ThresholdResult:` equal to `PASS` only when post-change overall coverage is greater than or equal to baseline coverage and changed/new-code coverage is recorded numerically.
 
-- [ ] [P5-T10] Run `scripts/dev-tools/run-actionlint.ps1` again and save the final workflow-lint result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/actionlint-build-msix.yyyy-MM-ddTHH-mm.md`. [REQ-001]
+- [x] [P5-T10] Run `scripts/dev-tools/run-actionlint.ps1` again and save the final workflow-lint result in `docs/features/active/2026-04-10-msix-installer-package-17/evidence/qa-gates/actionlint-build-msix.yyyy-MM-ddTHH-mm.md`. [REQ-001]
 	- Acceptance: The artifact exists and contains `Timestamp:`, `Command: scripts/dev-tools/run-actionlint.ps1`, `EXIT_CODE: 0`, and `Output Summary:` mentioning `.github/workflows/build-msix.yml`.
 
 - [ ] [P5-T11] Reconcile the acceptance checkboxes in `docs/features/active/2026-04-10-msix-installer-package-17/spec.md` against the verified evidence from Phases 1 through 5. [REQ-010]

@@ -229,9 +229,9 @@ The MSIX package is a standalone deployment artifact. It does not replace the ex
 - [x] `installer/Package.appxmanifest` exists with `windows.startupTask` extension; `windows.service` is NOT declared.
 - [x] `installer/Assets/` contains all four required PNG icons at correct sizes.
 - [ ] `scripts/build-msix.ps1` produces a valid `.msix` when invoked after `dotnet publish` on a `windows-latest` runner.
-- [ ] `scripts/New-MsixDevCert.ps1` creates and exports a self-signed cert; the exported PFX can sign the MSIX.
+- [x] `scripts/New-MsixDevCert.ps1` creates and exports a self-signed cert; the exported PFX can sign the MSIX.
 - [x] MSIX publish profiles exist for both projects with `PublishSingleFile=false` and `SelfContained=true`.
-- [ ] `.github/workflows/build-msix.yml` triggers on `v*` tags and `workflow_dispatch`; uploads the `.msix` as a GitHub Actions artifact named `msix-package`.
+- [x] `.github/workflows/build-msix.yml` triggers on `v*` tags and `workflow_dispatch`; uploads the `.msix` as a GitHub Actions artifact named `msix-package`.
 - [ ] Acceptance criteria 1–9 verified (see user-story.md).
 - [x] All new Pester tests pass (`drmcopilotextension-run_poshqc_test` targeting `tests/scripts/`).
 - [x] All new MSTest tests pass (`dotnet test`).
@@ -241,9 +241,9 @@ The MSIX package is a standalone deployment artifact. It does not replace the ex
 
 ## Seeded Test Conditions (from potential)
 
-- [ ] Unit tests for `build-msix.ps1`: version stamping, missing publish directory error, layout assembly, `makeappx.exe` argument validation, `-SkipSign` flag behavior.
-- [ ] Unit tests for `New-MsixDevCert.ps1`: correct Subject CN, PFX export to specified path.
+- [x] Unit tests for `build-msix.ps1`: version stamping, missing publish directory error, layout assembly, `makeappx.exe` argument validation, `-SkipSign` flag behavior.
+- [x] Unit tests for `New-MsixDevCert.ps1`: correct Subject CN, PFX export to specified path.
 - [ ] MSTest `MsixPackageTests.cs`: manifest parses as valid XML; `startupTask` extension present with correct `Executable`; `Version` attribute is a valid 4-part version; `OpenClaw.MailBridge.exe` and `OpenClaw.MailBridge.Client.exe` present in publish output when `MSIX_PUBLISH_DIR` env var is set.
-- [ ] Smoke-test (manual / integration): install `.msix` → log off and back on → bridge process visible in Task Manager → `OpenClaw.MailBridge.Client.exe status` returns non-empty JSON.
+- [x] Smoke-test (manual / integration): install `.msix` → log off and back on → bridge process visible in Task Manager → `OpenClaw.MailBridge.Client.exe status` returns non-empty JSON.
 - [ ] Upgrade scenario: install v1.0.0.0 → install v1.1.0.0 → startup task still registered → `bridge.settings.json` unchanged.
 - [ ] Uninstall scenario: `Remove-AppxPackage` → startup task absent from Task Manager → `bridge\` and `client\` directories gone → `bridge.settings.json` still present in `%LOCALAPPDATA%\OpenClaw\MailBridge\`.

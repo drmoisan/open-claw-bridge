@@ -44,6 +44,11 @@ function Get-CertificateExportPaths {
     <#
     .SYNOPSIS Returns the PFX and CER export paths for the MSIX development certificate.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseSingularNouns',
+        '',
+        Justification = 'Task [P3-T9] requires the helper name Get-CertificateExportPaths.'
+    )]
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
