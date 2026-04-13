@@ -46,15 +46,15 @@ The bundle is useful because it already contains a coherent architectural split,
 
 ## Acceptance Criteria
 
-- [ ] The feature is implemented as an additive architecture extension: `OpenClaw.MailBridge`, `OpenClaw.MailBridge.Client`, `OpenClaw.MailBridge.Contracts`, existing scripts, and the existing named-pipe contract continue to work without breaking changes.
-- [ ] A Windows-side `OpenClaw.HostAdapter` is introduced as the only network seam for the container, and it maps exactly to the current six read-only bridge/client operations (`status`, recent messages, message by ID, recent meeting requests, calendar window, event by ID) using the existing CLI client before any direct pipe integration is considered.
-- [ ] A containerized `OpenClaw.Core` is introduced for the pre-MVP, with local-only published ports, non-root execution, read-only root filesystem, SQLite persistence, health endpoints, and UI/API behavior that surfaces bridge freshness and redaction state.
-- [ ] The implementation preserves current privacy and safety behavior: safe mode remains the default, redacted fields stay redacted when required, and no token values, message bodies, or attendee details are logged.
-- [ ] Prototype assets from `artifacts\gpt-web-dev\openclaw-pre-mvp-docker-bundle` are normalized to current repo reality before use, including project names, solution/workspace references, framework targets, docs, scripts, and C# test framework conventions.
-- [ ] Docker, devcontainer, and deployment assets are merged carefully with existing repository files rather than overwriting them, and they remain consistent with the current solution structure and operational guidance.
-- [ ] New automated tests cover HostAdapter contract/error behavior and Core polling/cache behavior, while existing bridge tests and current repository quality gates continue to pass without regression.
-- [ ] Invalid and boundary inputs are handled deterministically: missing or invalid bearer tokens return `401`, malformed or non-UTC timestamps return `400`, `end <= start` returns `400`, missing items return `404`, and `limit` never exceeds `250` at the adapter boundary.
-- [ ] Degraded bridge reads remain explicit rather than hidden: when the bridge serves cached data in a degraded state, HostAdapter responses still return `200` with freshness metadata, and Core surfaces stale-cache warnings through health/status APIs and the UI.
+- [x] The feature is implemented as an additive architecture extension: `OpenClaw.MailBridge`, `OpenClaw.MailBridge.Client`, `OpenClaw.MailBridge.Contracts`, existing scripts, and the existing named-pipe contract continue to work without breaking changes.
+- [x] A Windows-side `OpenClaw.HostAdapter` is introduced as the only network seam for the container, and it maps exactly to the current six read-only bridge/client operations (`status`, recent messages, message by ID, recent meeting requests, calendar window, event by ID) using the existing CLI client before any direct pipe integration is considered.
+- [x] A containerized `OpenClaw.Core` is introduced for the pre-MVP, with local-only published ports, non-root execution, read-only root filesystem, SQLite persistence, health endpoints, and UI/API behavior that surfaces bridge freshness and redaction state.
+- [x] The implementation preserves current privacy and safety behavior: safe mode remains the default, redacted fields stay redacted when required, and no token values, message bodies, or attendee details are logged.
+- [x] Prototype assets from `artifacts\gpt-web-dev\openclaw-pre-mvp-docker-bundle` are normalized to current repo reality before use, including project names, solution/workspace references, framework targets, docs, scripts, and C# test framework conventions.
+- [x] Docker, devcontainer, and deployment assets are merged carefully with existing repository files rather than overwriting them, and they remain consistent with the current solution structure and operational guidance.
+- [x] New automated tests cover HostAdapter contract/error behavior and Core polling/cache behavior, while existing bridge tests and current repository quality gates continue to pass without regression.
+- [x] Invalid and boundary inputs are handled deterministically: missing or invalid bearer tokens return `401`, malformed or non-UTC timestamps return `400`, `end <= start` returns `400`, missing items return `404`, and `limit` never exceeds `250` at the adapter boundary.
+- [x] Degraded bridge reads remain explicit rather than hidden: when the bridge serves cached data in a degraded state, HostAdapter responses still return `200` with freshness metadata, and Core surfaces stale-cache warnings through health/status APIs and the UI.
 
 
 ## Non-Goals

@@ -169,16 +169,16 @@ The data path stays intentionally narrow and sequential:
 ## Definition of Done
 
 - [ ] Acceptance criteria in `issue.md`, `spec.md`, and `user-story.md` are traceable to named automated tests and/or explicit manual demo commands.
-- [ ] Windows host plus Docker Desktop validation demonstrates that the current bridge/client stack still works and that HostAdapter/Core behavior matches this spec in safe and degraded bridge states.
-- [ ] MSTest coverage exists for HostAdapter auth, UTC and range validation, `limit` handling, CLI exit-code mapping, response-envelope consistency, Core polling, and SQLite persistence/readback behavior.
-- [ ] Negative and boundary scenarios are covered by tests or demos, including missing token, invalid UTC input, `end <= start`, `limit > 250`, `NOT_FOUND`, `OUTLOOK_UNAVAILABLE`, and stale-cache serving behavior.
-- [ ] `README.md`, `docs/api-reference.md`, `docs/architecture-diagrams.md`, `docs/mailbridge-runbook.md`, and the feature-doc folder describe the host/container split, local-only exposure, and fallback path.
-- [ ] Structured logging and health/status endpoints are updated so operators can diagnose readiness, stale cache, and bridge unavailability without exposing sensitive content.
-- [ ] Final repo-standard toolchain pass succeeds for the touched C# assets: `csharpier .`, analyzer build, nullable/treat-warnings-as-errors build, and the relevant MSTest assemblies or solution test pass.
+- [x] Windows host plus Docker Desktop validation demonstrates that the current bridge/client stack still works and that HostAdapter/Core behavior matches this spec in safe and degraded bridge states.
+- [x] MSTest coverage exists for HostAdapter auth, UTC and range validation, `limit` handling, CLI exit-code mapping, response-envelope consistency, Core polling, and SQLite persistence/readback behavior.
+- [x] Negative and boundary scenarios are covered by tests or demos, including missing token, invalid UTC input, `end <= start`, `limit > 250`, `NOT_FOUND`, `OUTLOOK_UNAVAILABLE`, and stale-cache serving behavior.
+- [x] `README.md`, `docs/api-reference.md`, `docs/architecture-diagrams.md`, `docs/mailbridge-runbook.md`, and the feature-doc folder describe the host/container split, local-only exposure, and fallback path.
+- [x] Structured logging and health/status endpoints are updated so operators can diagnose readiness, stale cache, and bridge unavailability without exposing sensitive content.
+- [x] Final repo-standard toolchain pass succeeds for the touched C# assets: `csharpier .`, analyzer build, nullable/treat-warnings-as-errors build, and the relevant MSTest assemblies or solution test pass.
 
 ## Seeded Test Conditions (from potential)
-- [ ] Unit coverage for HostAdapter token validation, UTC-only timestamp parsing, `bridgeId` pass-through handling, `limit` clamp/default behavior, status-cache TTL behavior, CLI exit-code/error-code mapping, and response-envelope consistency.
-- [ ] Unit coverage for Core polling cursors, SQLite upsert behavior for `messages` and `events`, stale-cache flag propagation, readiness-status computation, and cached read APIs filtering by `kind`, `start`, `end`, and `limit`.
-- [ ] Integration scenarios covering Windows HostAdapter to current CLI client wiring, container-to-host HTTP access through `host.docker.internal`, SQLite-backed stale-cache serving during HostAdapter outages, local-only port exposure on `127.0.0.1`, and preservation of sequential bridge access patterns.
-- [ ] Manual and automated contract checks for `GET /v1/status`, `GET /v1/messages`, `GET /v1/messages/{bridgeId}`, `GET /v1/meeting-requests`, `GET /v1/calendar`, `GET /v1/events/{bridgeId}`, `/health/live`, `/health/ready`, `/api/status`, `/api/messages/recent`, and `/api/events/window`.
+- [x] Unit coverage for HostAdapter token validation, UTC-only timestamp parsing, `bridgeId` pass-through handling, `limit` clamp/default behavior, status-cache TTL behavior, CLI exit-code/error-code mapping, and response-envelope consistency.
+- [x] Unit coverage for Core polling cursors, SQLite upsert behavior for `messages` and `events`, stale-cache flag propagation, readiness-status computation, and cached read APIs filtering by `kind`, `start`, `end`, and `limit`.
+- [x] Integration scenarios covering Windows HostAdapter to current CLI client wiring, container-to-host HTTP access through `host.docker.internal`, SQLite-backed stale-cache serving during HostAdapter outages, local-only port exposure on `127.0.0.1`, and preservation of sequential bridge access patterns.
+- [x] Manual and automated contract checks for `GET /v1/status`, `GET /v1/messages`, `GET /v1/messages/{bridgeId}`, `GET /v1/meeting-requests`, `GET /v1/calendar`, `GET /v1/events/{bridgeId}`, `/health/live`, `/health/ready`, `/api/status`, `/api/messages/recent`, and `/api/events/window`.
 - [ ] Operator troubleshooting coverage for missing token files, invalid bearer tokens, unavailable Outlook, bridge `waiting_for_outlook` or `starting` states, empty calendar-window results outside cache range, stale bridge cache, and degraded readiness.
