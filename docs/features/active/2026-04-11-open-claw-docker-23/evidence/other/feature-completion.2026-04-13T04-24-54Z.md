@@ -60,3 +60,4 @@ Items remaining:
 
 - Add issue-level traceability evidence if the remaining Definition of Done item is intended to be closed.
 - Add explicit evidence for the empty calendar-window path outside the cached range if full troubleshooting coverage is required.
+- **HTTP 500 → 503 for missing server-side token file (post-merge):** `src/OpenClaw.HostAdapter/BearerTokenMiddleware.cs` (line ~22) calls `HostAdapterResponses.ConfigurationError<object>()`, which returns HTTP 500 when the server-side token file is missing or empty. The semantically correct status code for this condition is HTTP 503 Service Unavailable. The change is a single-line edit in `src/OpenClaw.HostAdapter/HostAdapterResponses.cs` (line 105). See `code-review.2026-04-13T14-00.md` Minor finding row 1 and `evidence/other/500-503-assessment.2026-04-13T14-00.md` for full analysis. **Action:** Open a new GitHub issue post-merge to track this improvement.

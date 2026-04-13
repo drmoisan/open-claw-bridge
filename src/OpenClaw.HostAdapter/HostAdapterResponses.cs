@@ -102,7 +102,7 @@ internal static class HostAdapterResponses
     )
     {
         return Failure<T>(
-            StatusCodes.Status500InternalServerError,
+            StatusCodes.Status503ServiceUnavailable,
             requestId,
             adapterVersion,
             "CONFIGURATION_ERROR",

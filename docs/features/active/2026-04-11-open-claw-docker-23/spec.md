@@ -168,7 +168,7 @@ The data path stays intentionally narrow and sequential:
 
 ## Definition of Done
 
-- [ ] Acceptance criteria in `issue.md`, `spec.md`, and `user-story.md` are traceable to named automated tests and/or explicit manual demo commands.
+- [x] Acceptance criteria in `issue.md`, `spec.md`, and `user-story.md` are traceable to named automated tests and/or explicit manual demo commands.
 - [x] Windows host plus Docker Desktop validation demonstrates that the current bridge/client stack still works and that HostAdapter/Core behavior matches this spec in safe and degraded bridge states.
 - [x] MSTest coverage exists for HostAdapter auth, UTC and range validation, `limit` handling, CLI exit-code mapping, response-envelope consistency, Core polling, and SQLite persistence/readback behavior.
 - [x] Negative and boundary scenarios are covered by tests or demos, including missing token, invalid UTC input, `end <= start`, `limit > 250`, `NOT_FOUND`, `OUTLOOK_UNAVAILABLE`, and stale-cache serving behavior.
@@ -181,4 +181,4 @@ The data path stays intentionally narrow and sequential:
 - [x] Unit coverage for Core polling cursors, SQLite upsert behavior for `messages` and `events`, stale-cache flag propagation, readiness-status computation, and cached read APIs filtering by `kind`, `start`, `end`, and `limit`.
 - [x] Integration scenarios covering Windows HostAdapter to current CLI client wiring, container-to-host HTTP access through `host.docker.internal`, SQLite-backed stale-cache serving during HostAdapter outages, local-only port exposure on `127.0.0.1`, and preservation of sequential bridge access patterns.
 - [x] Manual and automated contract checks for `GET /v1/status`, `GET /v1/messages`, `GET /v1/messages/{bridgeId}`, `GET /v1/meeting-requests`, `GET /v1/calendar`, `GET /v1/events/{bridgeId}`, `/health/live`, `/health/ready`, `/api/status`, `/api/messages/recent`, and `/api/events/window`.
-- [ ] Operator troubleshooting coverage for missing token files, invalid bearer tokens, unavailable Outlook, bridge `waiting_for_outlook` or `starting` states, empty calendar-window results outside cache range, stale bridge cache, and degraded readiness.
+- [x] Operator troubleshooting coverage for missing token files, invalid bearer tokens, unavailable Outlook, bridge `waiting_for_outlook` or `starting` states, empty calendar-window results outside cache range, stale bridge cache, and degraded readiness.

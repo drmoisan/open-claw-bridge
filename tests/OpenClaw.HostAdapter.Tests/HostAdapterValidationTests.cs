@@ -48,6 +48,12 @@ public class HostAdapterValidationTests
             .Should()
             .Contain("since")
             .And.Contain("UTC");
+        document
+            .RootElement.GetProperty("meta")
+            .GetProperty("requestId")
+            .GetString()
+            .Should()
+            .NotBeNullOrWhiteSpace();
         factory.ProcessRunner.InvocationCount.Should().Be(1);
         factory
             .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
@@ -95,6 +101,12 @@ public class HostAdapterValidationTests
             .Should()
             .Contain("end")
             .And.Contain("start");
+        document
+            .RootElement.GetProperty("meta")
+            .GetProperty("requestId")
+            .GetString()
+            .Should()
+            .NotBeNullOrWhiteSpace();
         factory.ProcessRunner.InvocationCount.Should().Be(1);
         factory
             .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
@@ -162,6 +174,12 @@ public class HostAdapterValidationTests
             .GetString()
             .Should()
             .Be(BridgeErrorCodes.InvalidRequest);
+        overMaxDocument
+            .RootElement.GetProperty("meta")
+            .GetProperty("requestId")
+            .GetString()
+            .Should()
+            .NotBeNullOrWhiteSpace();
 
         factory
             .ProcessRunner.Invocations.Select(invocation => invocation.Verb)

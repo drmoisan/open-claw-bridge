@@ -64,6 +64,12 @@ public class HostAdapterAuthTests
             .GetString()
             .Should()
             .Be(BridgeErrorCodes.Unauthorized);
+        document
+            .RootElement.GetProperty("meta")
+            .GetProperty("requestId")
+            .GetString()
+            .Should()
+            .NotBeNullOrWhiteSpace();
         payload.Should().NotContain(factory.ExpectedToken);
         factory
             .ProcessRunner.InvocationCount.Should()
