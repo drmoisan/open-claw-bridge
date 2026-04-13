@@ -44,12 +44,14 @@ Local Docker:
 2. Run `Dev Containers: Reopen in Container`.
 3. Use the standard root config, or explicitly select `.devcontainer/local/devcontainer.json`.
 4. After the build finishes, run `bash .devcontainer/verify-container.sh`.
+5. For the compose-backed `OpenClaw.Core` workflow, copy `.env.example` to `.env`, then run `docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up openclaw-dev` from the repo root. This local-only path uses `host.docker.internal` so the Linux container can call the Windows HostAdapter without exposing the UI beyond loopback.
 
 GitHub Codespaces:
 
 1. Create a Codespace from the repository.
 2. Let Codespaces use `.devcontainer/devcontainer.json`, or explicitly choose `.devcontainer/codespaces/devcontainer.json`.
 3. After the environment finishes provisioning, run `bash .devcontainer/verify-container.sh`.
+4. The compose-backed `OpenClaw.Core` workflow remains local-only. Codespaces can edit and build the repo, but it does not replace the Docker Desktop plus `host.docker.internal` path used to reach the Windows HostAdapter.
 
 ## Common Commands
 

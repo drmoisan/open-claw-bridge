@@ -36,6 +36,12 @@
         "dotnet.formatting.organizeImportsOnFormat": true,
         "dotnet.test.runTestsInContext": true,
         "dotnet.test.debugTestsInContext": true,
+        "openclaw.composeFiles": [
+          "docker-compose.yml",
+          "docker-compose.dev.yml"
+        ],
+        "openclaw.composeService": "openclaw-dev",
+        "openclaw.composeWorkflow": "The compose-backed OpenClaw.Core path is local-only and uses host.docker.internal from Docker Desktop on the Windows host.",
         "files.associations": {
           "*.ps1": "powershell"
         },
@@ -93,5 +99,6 @@
     "cpus": 2,
     "memory": "4gb"
   },
-  "postCreateCommand": "bash .devcontainer/post-create.sh"
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postAttachCommand": "printf 'Codespaces note: the compose-backed OpenClaw.Core workflow is local-only and expects host.docker.internal on Docker Desktop.\n'"
 }

@@ -15,6 +15,14 @@
 bash .devcontainer/verify-container.sh
 ```
 
+7. For the compose-backed `OpenClaw.Core` workflow, copy `.env.example` to `.env` and run:
+
+```bash
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up openclaw-dev
+```
+
+This local-only path expects `host.docker.internal` so the container can reach the Windows HostAdapter.
+
 ### GitHub Codespaces
 
 1. Create a Codespace for the repository.
@@ -45,6 +53,8 @@ The container can restore and build the Windows-targeted projects, but it is sti
 - running `OpenClaw.MailBridge.Client`
 
 Use a Windows host for those flows.
+
+The compose-backed `OpenClaw.Core` path is also local-only. It is intended for Docker Desktop on the Windows host, not for Codespaces-only execution.
 
 ## Rebuild
 

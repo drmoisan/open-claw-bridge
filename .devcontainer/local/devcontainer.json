@@ -39,6 +39,12 @@
         "dotnet.formatting.organizeImportsOnFormat": true,
         "dotnet.test.runTestsInContext": true,
         "dotnet.test.debugTestsInContext": true,
+        "openclaw.composeFiles": [
+          "docker-compose.yml",
+          "docker-compose.dev.yml"
+        ],
+        "openclaw.composeService": "openclaw-dev",
+        "openclaw.composeWorkflow": "Use the compose-backed OpenClaw.Core local-only workflow with host.docker.internal for HostAdapter access.",
         "files.associations": {
           "*.ps1": "powershell"
         },
@@ -96,5 +102,6 @@
     "cpus": 2,
     "memory": "4gb"
   },
-  "postCreateCommand": "bash .devcontainer/post-create.sh"
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+  "postAttachCommand": "printf 'Compose-backed OpenClaw.Core workflow: docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml up openclaw-dev\n'"
 }
