@@ -4,6 +4,8 @@
 
 OpenClaw MailBridge is a local-only, read-only Windows Outlook bridge for classic Outlook. The bridge runs inside the primary interactive user session, scans the default Inbox and Calendar on one dedicated STA thread, caches normalized metadata in SQLite, and serves that cached data over a named pipe to `OpenClaw.MailBridge.Client.exe`.
 
+The repository also includes an additive pre-MVP deployment path for `OpenClaw.HostAdapter` and `OpenClaw.Core`. In that model, the Windows host continues to own Outlook access and the named pipe, `OpenClaw.HostAdapter` exposes authenticated HTTP read routes, and `OpenClaw.Core` runs locally in Docker Desktop with loopback-only publishing on `127.0.0.1`.
+
 The supported host, client, contracts, and test projects target `net10.0-windows`, and the installed runtime evidence must confirm `Microsoft.NETCore.App 10.0.0` for both the bridge host and the client before Windows acceptance is reported as complete.
 
 ## Install
@@ -50,6 +52,16 @@ Default settings:
 - `enhanced` is opt-in.
 - Enhanced mode returns sanitized and truncated preview data and may expose additional protected metadata already defined by the contracts.
 - Enable enhanced mode only after operator validation because Outlook protected-property prompts may appear in some environments.
+
+## Additive HostAdapter And Core Deployment
+
+1. Provision the HostAdapter `token file` on Windows, for example at `C:\ProgramData\OpenClaw\HostAdapter\adapter.token`, and keep its ACL restricted to the intended local operator path.
+2. Start `OpenClaw.HostAdapter` on the Windows host so it can shell out to `OpenClaw.MailBridge.Client`.
+3. Copy `.env.example` to `.env` and point `HOSTADAPTER_TOKEN_FILE` at the Windows token file.
+4. Run `docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up --build openclaw-core`.
+5. Open the local-only UI on `http://127.0.0.1:8080` and confirm `/health/ready` reports ready before treating the container path as healthy.
+
+If the additive path is unavailable, use the fallback to `OpenClaw.MailBridge.Client` on the Windows host while the HostAdapter or container issue is being diagnosed.
 
 ## Task registration
 
@@ -117,3 +129,6 @@ The following checks remain operator validation work and should be recorded sepa
 - `requires .NET 10`: the installed runtimeconfig files do not require the expected framework; republish and rerun `scripts/install-mailbridge.ps1`.
 - Pipe access failures: validate ACL grants for `SYSTEM`, Administrators, the primary user SID, and `openclaw-svc`, with `NETWORK` denied.
 - Missing cached message or calendar data: run the scripted acceptance suites again after Outlook has had time to populate the cache.
+- HostAdapter token errors: confirm the `token file` exists, that the Docker bind mount points to the correct Windows path, and that the container receives it at `/run/openclaw/hostadapter.token`.
+- Container readiness failures: check `/health/ready`, verify `OpenClaw__HostAdapter__BaseUrl` still targets `host.docker.internal`, and confirm the loopback publish remains `127.0.0.1:${OPENCLAW_HTTP_PORT:-8080}:8080`.
+- Cached-data warnings in a `degraded` state are expected when the bridge is stale. Keep serving cached reads with the warning visible, then fall back to `OpenClaw.MailBridge.Client` for direct Windows-host troubleshooting if the degraded condition persists.

@@ -1,0 +1,31 @@
+services:
+  openclaw-dev:
+    build:
+      context: .
+      dockerfile: .devcontainer/Dockerfile
+    container_name: openclaw-dev
+    init: true
+    user: "10001:10001"
+    working_dir: /workspace
+    command: sleep infinity
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      OpenClaw__Storage__DbPath: /data/openclaw.db
+      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319/v1}
+      OpenClaw__HostAdapter__TokenFile: /run/openclaw/hostadapter.token
+    volumes:
+      - .:/workspace
+      - nuget_cache:/home/vscode/.nuget/packages
+      - openclaw_dev_data:/data
+      - type: bind
+        source: ${HOSTADAPTER_TOKEN_FILE}
+        target: /run/openclaw/hostadapter.token
+        read_only: true
+    ports:
+      - "127.0.0.1:${OPENCLAW_HTTP_PORT:-8080}:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  nuget_cache:
+  openclaw_dev_data:

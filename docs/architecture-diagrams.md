@@ -1,5 +1,33 @@
 # OpenClaw MailBridge — Architecture Diagrams
 
+## 0. Additive Host/Container Boundary
+
+```mermaid
+graph LR
+    subgraph WindowsHost["Windows host"]
+        Outlook["Outlook COM"]
+        Bridge["OpenClaw.MailBridge"]
+        Client["OpenClaw.MailBridge.Client"]
+        HostAdapter["OpenClaw.HostAdapter\nGET /v1/status + read-only routes"]
+        TokenFile["token file\nC:\\ProgramData\\OpenClaw\\HostAdapter\\adapter.token"]
+    end
+
+    subgraph DockerDesktop["Docker Desktop local-only container path"]
+        Core["OpenClaw.Core"]
+        CoreDb["/data/openclaw.db"]
+    end
+
+    Outlook --> Bridge
+    Client --> Bridge
+    HostAdapter --> Client
+    TokenFile --> HostAdapter
+    Core -->|"host.docker.internal"| HostAdapter
+    Core --> CoreDb
+    Core -->|"127.0.0.1:8080"| User["Local browser / operator"]
+```
+
+This additive path keeps Outlook and the named pipe on the Windows host. The container remains local-only, reaches the HostAdapter through `host.docker.internal`, mounts the HostAdapter token file read-only, and persists its own SQLite state under `/data`.
+
 ## 1. High-Level System Overview
 
 ```mermaid

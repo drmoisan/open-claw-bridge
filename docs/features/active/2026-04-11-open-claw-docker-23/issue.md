@@ -7,6 +7,8 @@
 - Issue: #23
 - Issue URL: https://github.com/drmoisan/open-claw-bridge/issues/23
 - Last Updated: 2026-04-12
+- Work Mode: full-feature
+
 ## Problem / Why
 
 OpenClaw.MailBridge is now a working Windows-local Outlook bridge with a CLI client, shared contracts, SQLite-backed cached reads, safe versus enhanced response shaping, and operator/install automation. What the repository does not yet have is a safe way to run the rest of an OpenClaw experience outside the Windows/Outlook boundary. The prototype bundle under `artifacts\gpt-web-dev\openclaw-pre-mvp-docker-bundle` defines that missing pre-MVP path: keep Outlook, `OpenClaw.MailBridge`, and `OpenClaw.MailBridge.Client` on Windows, then add a narrow Windows-side HTTP HostAdapter plus a Linux-containerized `OpenClaw.Core` app for local UI, polling, and cached read-only views.

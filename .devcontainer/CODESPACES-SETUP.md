@@ -32,3 +32,5 @@ You should have:
 ## Codespaces Limitation
 
 Codespaces is still Linux. It can restore, build, and run the cross-platform tests, but it cannot validate Outlook COM or run the Windows-targeted bridge like a native Windows machine.
+
+The compose-backed `OpenClaw.Core` workflow is local-only and expects `host.docker.internal` on Docker Desktop so the container can call the Windows HostAdapter. Keep that path documented here, but run it from a local Windows workstation rather than inside Codespaces.

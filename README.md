@@ -8,6 +8,7 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 
 - The bridge host, client, contracts library, PowerShell scripts, and MSTest/Pester suite are all present in this repository.
 - All production and test projects target `net10.0-windows`.
+- `OpenClaw.HostAdapter` and `OpenClaw.Core` provide an additive pre-MVP deployment path that keeps Outlook and the named pipe on Windows while surfacing a local-only containerized UI and cache-backed API.
 - The bridge scans the default Inbox and Calendar on one dedicated STA thread, persists cached message/event metadata in SQLite, and serves cache-backed results for the full supported RPC surface.
 - The client resolves its pipe name from `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` and accepts an optional `--pipe-name` override.
 - Non-status RPC methods are fully cache-backed: recent-message, meeting-request, calendar-window, and single-item lookups all return repository-backed results instead of placeholders.
@@ -21,7 +22,13 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 | `src/OpenClaw.MailBridge/` | Windows bridge host executable and runtime services. |
 | `src/OpenClaw.MailBridge.Client/` | Command-line named-pipe client for querying the bridge. |
 | `src/OpenClaw.MailBridge.Contracts/` | Shared contracts, settings model, validators, ID helpers, and sanitizers. |
+| `src/OpenClaw.HostAdapter/` | Windows-side authenticated HTTP adapter that shells out to `OpenClaw.MailBridge.Client`. |
+| `src/OpenClaw.HostAdapter.Contracts/` | Shared HTTP envelope contracts and typed HostAdapter client abstraction. |
+| `src/OpenClaw.Core/` | Cross-platform ASP.NET Core app with SQLite cache, local UI, and internal API. |
 | `tests/OpenClaw.MailBridge.Tests/` | MSTest + FluentAssertions coverage for runtime, contracts, and bootstrap scripts. |
+| `tests/OpenClaw.HostAdapter.Tests/` | MSTest coverage for HostAdapter auth, validation, mapping, and envelope behavior. |
+| `tests/OpenClaw.Core.Tests/` | MSTest coverage for Core pollers, readiness/status, cached APIs, and UI behavior. |
+| `deploy/docker/` | Runtime Dockerfile plus container entrypoint and healthcheck scripts for `OpenClaw.Core`. |
 | `scripts/` | Build, test, run, install, uninstall, task-registration, and acceptance helpers. |
 | `docs/setup.md` | Workspace and environment setup notes. |
 | `docs/mailbridge-runbook.md` | Operator-facing install/runbook guidance. |
@@ -49,6 +56,17 @@ At runtime, the bridge hosts background workers that talk to classic Outlook ove
 4. `ScanWorker` initializes the SQLite cache and repeatedly invokes `OutlookScanner` on the dedicated STA executor.
 5. `OutlookScanner` attaches to a running Outlook instance first, launches/logs on only when allowed, scans the default Inbox and Calendar, and updates bridge readiness plus stale-cache metadata.
 6. `PipeRpcWorker` listens on a named pipe, applies strict local-only ACLs, validates payloads, and serves repository-backed RPC responses.
+
+## Additive Host And Container Path
+
+The repository now includes an additive pre-MVP deployment model:
+
+- `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client` remain the canonical Windows-local bridge stack.
+- `OpenClaw.HostAdapter` runs on the Windows host and maps the existing six `OpenClaw.MailBridge.Client` commands to authenticated HTTP routes such as `GET /v1/status`.
+- `OpenClaw.Core` runs as a local-only containerized app, calls the HostAdapter through `host.docker.internal`, persists its own SQLite cache, and exposes `/health/live`, `/health/ready`, `/api/status`, `/api/messages/recent`, and `/api/events/window`.
+- `docker-compose.yml`, `docker-compose.dev.yml`, and `.env.example` are additive deployment assets; they do not replace the current bridge install, scripts, or `OpenClaw.MailBridge.Client` workflow.
+
+The container publishes only to loopback via `127.0.0.1:${OPENCLAW_HTTP_PORT:-8080}:8080`, runs as a non-root user, mounts `/data` for SQLite persistence, and binds the HostAdapter token file at `/run/openclaw/hostadapter.token`.
 
 ## Prerequisites
 
@@ -132,6 +150,22 @@ Example success shape:
 }
 ```
 
+## Running The Additive HostAdapter And Core Path
+
+The container path is additive and local-only. Keep `OpenClaw.MailBridge` on Windows, then run `OpenClaw.HostAdapter` on the Windows host and `OpenClaw.Core` through Docker Desktop.
+
+1. Copy `.env.example` to `.env` and update the HostAdapter token file path.
+2. Start `OpenClaw.HostAdapter` on Windows so it can reach `OpenClaw.MailBridge.Client`.
+3. Launch the container assets:
+
+```powershell
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build openclaw-core
+```
+
+4. Open the local UI at `http://localhost:8080`.
+
+The container reaches the Windows HostAdapter through `host.docker.internal`, while the existing `OpenClaw.MailBridge.Client` CLI remains available as the fallback path.
+
 ## Configuration Reference
 
 The bridge settings model lives in [`src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs`](./src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs).
@@ -171,6 +205,8 @@ Default settings:
 ## CLI And RPC Reference
 
 The client command surface is defined in [`src/OpenClaw.MailBridge.Client/Program.cs`](./src/OpenClaw.MailBridge.Client/Program.cs), and the RPC method constants live in [`src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs`](./src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs).
+
+`OpenClaw.HostAdapter` preserves that six-command contract exactly by shelling out to `OpenClaw.MailBridge.Client` for `status`, `list-messages`, `get-message`, `list-meeting-requests`, `list-calendar`, and `get-event` before returning HTTP envelopes.
 
 | Client command | Required options | RPC method | Current server behavior |
 | --- | --- | --- | --- |
