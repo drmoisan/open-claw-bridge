@@ -1,0 +1,82 @@
+@page
+@model OpenClaw.Core.Pages.IndexModel
+@{
+    ViewData["Title"] = "OpenClaw Core";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>OpenClaw Core</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #eee; margin-left: 0.5rem; }
+        .stale { background: #fde68a; }
+        .redacted { background: #fecaca; }
+        .fresh { background: #bbf7d0; }
+        section { margin-bottom: 2rem; }
+        ul { padding-left: 1.25rem; }
+    </style>
+</head>
+<body>
+    <h1>OpenClaw Core</h1>
+    <section>
+        <h2>Status</h2>
+        <p>
+            Database Ready:
+            <strong>@Model.HealthSnapshot.DatabaseReady</strong>
+            <span class="badge @(Model.HealthSnapshot.BridgeStatus?.CacheStale == true ? "stale" : "fresh")">
+                @(Model.HealthSnapshot.BridgeStatus?.CacheStale == true ? "Stale Cache" : "Fresh Cache")
+            </span>
+        </p>
+        <p>HostAdapter Reachable: <strong>@Model.HealthSnapshot.HostAdapterReachable</strong></p>
+        <p>Last Successful Poll: <strong>@Model.HealthSnapshot.LastSuccessfulPollUtc</strong></p>
+        <p>Last Failure: <strong>@Model.HealthSnapshot.LastFailureReason</strong></p>
+    </section>
+
+    <section>
+        <h2>Recent Mail</h2>
+        <ul>
+            @foreach (var message in Model.RecentMessages)
+            {
+                <li>
+                    <strong>@(message.Subject ?? "(no subject)")</strong>
+                    <span class="badge @(message.IsRedacted ? "redacted" : "fresh")">
+                        @(message.IsRedacted ? "Redacted" : "Visible")
+                    </span>
+                </li>
+            }
+        </ul>
+    </section>
+
+    <section>
+        <h2>Meeting Requests</h2>
+        <ul>
+            @foreach (var message in Model.MeetingRequests)
+            {
+                <li>
+                    <strong>@(message.Subject ?? "(no subject)")</strong>
+                    <span class="badge @(message.IsRedacted ? "redacted" : "fresh")">
+                        @(message.IsRedacted ? "Redacted" : "Visible")
+                    </span>
+                </li>
+            }
+        </ul>
+    </section>
+
+    <section>
+        <h2>Events</h2>
+        <ul>
+            @foreach (var evt in Model.Events)
+            {
+                <li>
+                    <strong>@(evt.Subject ?? "(no subject)")</strong>
+                    <span class="badge @(evt.IsRedacted ? "redacted" : "fresh")">
+                        @(evt.IsRedacted ? "Redacted" : "Visible")
+                    </span>
+                </li>
+            }
+        </ul>
+    </section>
+</body>
+</html>

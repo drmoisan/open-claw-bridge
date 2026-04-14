@@ -1,0 +1,54 @@
+name: build-msix
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: MSIX package version
+        required: true
+        type: string
+
+jobs:
+  build-msix:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Publish bridge
+        run: dotnet publish src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj /p:PublishProfile=msix
+
+      - name: Publish client
+        run: dotnet publish src/OpenClaw.MailBridge.Client/OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix
+
+      - name: Verify publish output layout
+        env:
+          MSIX_PUBLISH_DIR: ${{ github.workspace }}/artifacts/publish
+        run: dotnet test tests/OpenClaw.MailBridge.Tests/OpenClaw.MailBridge.Tests.csproj -c Debug --filter "FullyQualifiedName~PublishOutput_"
+
+      - name: Build MSIX package
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = "${{ github.ref_name }}"
+          }
+
+          $version = $version.TrimStart('v')
+          $password = ConvertTo-SecureString 'GitHubActionsDevCert!' -AsPlainText -Force
+
+          $thumbprint = ./scripts/New-MsixDevCert.ps1 -PfxPassword $password
+          ./scripts/build-msix.ps1 -Version $version -CertThumbprint $thumbprint
+
+      - name: Upload MSIX artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msix-package
+          path: artifacts/msix/*.msix

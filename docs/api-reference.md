@@ -7,6 +7,12 @@ The MailBridge exposes a local JSON-RPC API over Windows Named Pipes. An OpenCla
 1. **CLI client** (`OpenClaw.MailBridge.Client.exe`) -- shell out to the client executable
 2. **Named pipe directly** -- connect to the pipe from any language that supports Windows Named Pipes
 
+The repository also includes an additive HTTP-and-container path:
+
+- `OpenClaw.HostAdapter` runs on Windows and translates authenticated HTTP requests such as `GET /v1/status` into the same six `OpenClaw.MailBridge.Client` commands.
+- `OpenClaw.Core` runs locally in Docker, calls the HostAdapter through `host.docker.internal`, and serves cache-backed UI and internal API responses.
+- The six-command `OpenClaw.MailBridge.Client` contract remains unchanged and is still the canonical transport seam.
+
 The bridge must be running before you make any calls. Start it with `OpenClaw.MailBridge.exe` (it runs as a background host process).
 
 ---
@@ -23,6 +29,29 @@ The bridge must be running before you make any calls. Start it with `OpenClaw.Ma
 | Encoding | UTF-8 JSON |
 
 The pipe is ACL-restricted to the current interactive user, BUILTIN\Administrators, LocalSystem, and the `openclaw-svc` account. Network access is denied.
+
+---
+
+## Additive HostAdapter HTTP Surface
+
+`OpenClaw.HostAdapter` is the only approved network seam for the containerized path. It wraps the existing DTOs in `ApiEnvelope<T>` responses and preserves the current CLI contract by shelling out to `OpenClaw.MailBridge.Client` with allowlisted arguments.
+
+| Route | Backing `OpenClaw.MailBridge.Client` command | Response shape |
+|---|---|---|
+| `GET /v1/status` | `status` | `ApiEnvelope<BridgeStatusDto>` |
+| `GET /v1/messages?since=<utc>&limit=<n>` | `list-messages --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
+| `GET /v1/messages/{bridgeId}` | `get-message --id <bridgeId>` | `ApiEnvelope<MessageDto>` |
+| `GET /v1/meeting-requests?since=<utc>&limit=<n>` | `list-meeting-requests --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
+| `GET /v1/calendar?start=<utc>&end=<utc>&limit=<n>` | `list-calendar --start <utc> --end <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<EventDto>>` |
+| `GET /v1/events/{bridgeId}` | `get-event --id <bridgeId>` | `ApiEnvelope<EventDto>` |
+
+Requests use `Authorization: Bearer <token>` and may include `X-Request-Id`. The additive `OpenClaw.Core` container path reaches this HTTP surface through `host.docker.internal`.
+
+---
+
+## Additive Core Internal API
+
+`OpenClaw.Core` is the local-only UI and cache layer used by the Docker deployment. It serves `/health/live`, `/health/ready`, `/api/status`, `/api/messages/recent`, `/api/messages/{bridgeId}`, `/api/events/window`, and `/api/events/{bridgeId}` from its SQLite-backed cache.
 
 ---
 

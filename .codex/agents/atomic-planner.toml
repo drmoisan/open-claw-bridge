@@ -54,7 +54,7 @@ Preflight loop behavior:
 
 Self-checking:
 - Before each executor preflight pass, confirm zero placeholders, atomic tasks only, canonical phase headings, canonical checkbox syntax, machine-verifiable acceptance criteria, and policy compatibility.
-- Before reporting completion, ensure the target plan passes `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`.
+- Before reporting completion, ensure the target plan passes the `validate_orchestration_artifacts` MCP tool with `artifact_type: "plan"` and `artifact_path: <plan-path>`.
 - Before final completion, confirm that `atomic-executor` has returned `PREFLIGHT: ALL CLEAR`.
 - If the request is outside planning, refuse execution and direct the workflow to the executor.
 """

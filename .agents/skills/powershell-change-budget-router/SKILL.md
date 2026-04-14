@@ -24,7 +24,7 @@ Use this skill when:
 ## Orchestrated Small-Path Requirements
 
 When routed through `powershell-orchestrator`, small path still requires lifecycle scaffolding before implementation:
-- invoke promotion/folder lifecycle steps through `vscode/runCommand` + extension access per `feature-promotion-lifecycle` when available; use script/CLI fallback only when direct extension command execution is unavailable,
+- route promotion and active-folder lifecycle steps through `repo-automation-adapter`,
 - promote potential item to GitHub issue with `--work-mode minor-audit`,
 - create active feature folder with `--work-mode minor-audit`,
 - delegate minimal-audit plan creation to `atomic_planner` with `DIRECTIVE: MINIMAL-AUDIT PLAN REQUIRED`,
@@ -38,7 +38,7 @@ Direct invocation of `powershell-typed-engineer` remains implementation-focused 
 
 If `powershell-typed-engineer` is invoked directly and estimated scope is `>2` production files:
 - Stop before implementation.
-- Return explicit routing instruction to invoke `powershell-orchestrator` (or `.github/prompts/orchestrate-powershell-work.prompt.md`).
+- Return explicit routing instruction to invoke `powershell-orchestrator`.
 
 ## Documentation Expectations
 

@@ -55,7 +55,7 @@ Do not finalize a plan before preflight clears it.
 - Continue the validate -> revise -> validate loop until `PREFLIGHT: ALL CLEAR`.
 - Do not treat a partial summary as a valid substitute for the exact preflight signal.
 - If the required `atomic-executor` handoff cannot be started or completed, stop and report blocked state; do not self-approve the plan.
-- Before reporting completion, the target plan MUST pass `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`.
+- Before reporting completion, the target plan MUST pass the `validate_orchestration_artifacts` MCP tool with `artifact_type: "plan"` and `artifact_path: <plan-path>`.
 
 ## Write Scope
 

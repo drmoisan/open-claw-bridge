@@ -53,6 +53,11 @@ packages/
 # .NET generated files
 GeneratedFiles/
 
+# MSIX build artifacts
+installer/staging/
+artifacts/msix/
+artifacts/publish/
+
 # OS files
 .DS_Store
 Thumbs.db

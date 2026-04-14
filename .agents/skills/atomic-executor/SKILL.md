@@ -63,7 +63,7 @@ For each task:
 - Treat the plan file on disk as the only authoritative checklist.
 - Do not claim success without verification.
 - After execution starts, do not stop mid-plan for replanning.
-- Use `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>` as an additional fail-closed validation signal during preflight.
+- Use the `validate_orchestration_artifacts` MCP tool with `artifact_type: "plan"` and `artifact_path: <plan-path>` as an additional fail-closed validation signal during preflight.
 
 ## Resume Rule
 

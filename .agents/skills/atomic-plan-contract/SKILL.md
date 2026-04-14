@@ -19,7 +19,7 @@ Use this skill when:
 - Phase headings must be: `### Phase N — <Title>`
 - Tasks must start with: `- [ ] [P#-T#]` (or `[x]` for completed)
 - Task IDs must match their phase and be sequential per phase.
-- Plans must pass `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>` before they can be reported as approved.
+- Plans must pass the `validate_orchestration_artifacts` MCP tool with `artifact_type: "plan"` and `artifact_path: <plan-path>` before they can be reported as approved.
 
 ## Short-Path Minimal Plan Contract
 
@@ -138,7 +138,7 @@ When validating or handing off plans for execution:
 
 Before a plan can be treated as approved:
 
-- run `python -m scripts.dev_tools.validate_orchestration_artifacts plan <plan-path>`,
+- run the `validate_orchestration_artifacts` MCP tool with `artifact_type: "plan"` and `artifact_path: <plan-path>`,
 - reject the plan if that validator exits non-zero,
 - do not treat human-readable summaries as a substitute for validator success.
 
