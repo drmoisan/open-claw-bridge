@@ -229,7 +229,8 @@ http://127.0.0.1:8080
 Validate the local-only path:
 
 ```powershell
-curl.exe -H "Authorization: Bearer $(Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()" http://127.0.0.1:4319/v1/status
+$token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
+curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/v1/status
 curl.exe http://127.0.0.1:8080/health/ready
 curl.exe http://127.0.0.1:8080/api/status
 ```
