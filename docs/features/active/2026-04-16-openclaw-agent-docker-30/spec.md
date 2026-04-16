@@ -46,9 +46,9 @@ Each request includes an `Authorization: Bearer <token>` header. The HostAdapter
 
 | Variable | Purpose | Default / Example |
 |---|---|---|
-| `OPENCLAW_AGENT_IMAGE` | Docker image for the external OpenClaw assistant runtime | Placeholder; must be set from official docs once verified |
-| `OPENCLAW_AGENT_PORT` | Loopback-only published port for the assistant UI/API | `8181` |
-| `OPENCLAW_AGENT_WORKSPACE` | Host-side path bind-mounted as the assistant workspace | `./deploy/agent-workspace` |
+| `OPENCLAW_AGENT_IMAGE` | Docker image for the external OpenClaw assistant runtime | `ghcr.io/openclaw/openclaw:latest` (verified at docs.openclaw.ai) |
+| `OPENCLAW_AGENT_PORT` | Loopback-only published host port for the assistant UI/API | `18789` |
+| `OPENCLAW_AGENT_WORKSPACE` | Host-side path bind-mounted as the assistant workspace | `./deploy/docker/openclaw-assistant` |
 
 ### Environment variables (reused from existing stack)
 
@@ -76,8 +76,8 @@ Each request includes an `Authorization: Bearer <token>` header. The HostAdapter
 | File | Purpose |
 |---|---|
 | `.env.example` (updated) | Documents the three new environment variables above |
-| `deploy/agent-workspace/TOOLS.md` (new) | Tool definitions translating HostAdapter endpoints to HTTP-based assistant tools |
-| `deploy/agent-workspace/INSTRUCTIONS.md` (new) | System instructions enforcing read-only behavior, no-write claims, and redaction awareness |
+| `deploy/docker/openclaw-assistant/TOOLS.md` (new) | Tool definitions translating HostAdapter endpoints to HTTP-based assistant tools |
+| `deploy/docker/openclaw-assistant/SYSTEM.md` (new) | System instructions enforcing read-only behavior, no-write claims, and redaction awareness |
 
 ### Versioning / backward compatibility
 
@@ -180,8 +180,8 @@ This feature changes only Docker Compose definitions, environment configuration,
 | `docker-compose.yml` | Add `openclaw-agent` service definition |
 | `docker-compose.dev.yml` | Add dev-mode `openclaw-agent` service definition with `extra_hosts` |
 | `.env.example` | Append `OPENCLAW_AGENT_IMAGE`, `OPENCLAW_AGENT_PORT`, `OPENCLAW_AGENT_WORKSPACE` |
-| `deploy/agent-workspace/TOOLS.md` | New file: HTTP-based tool definitions for the six HostAdapter endpoints |
-| `deploy/agent-workspace/INSTRUCTIONS.md` | New file: system instructions enforcing read-only, safe-mode, no-write-claims, redaction awareness |
+| `deploy/docker/openclaw-assistant/TOOLS.md` | New file: HTTP-based tool definitions for the six HostAdapter endpoints |
+| `deploy/docker/openclaw-assistant/SYSTEM.md` | New file: system instructions enforcing read-only, safe-mode, no-write-claims, redaction awareness |
 | `README.md` | Update Docker deployment section to describe both services |
 | `docs/architecture-diagrams.md` | Update topology diagram to show the assistant service |
 | `docs/mailbridge-runbook.md` | Add operational guidance for the assistant service |
@@ -254,8 +254,8 @@ Both Docker services independently consume the HostAdapter HTTP API. They do not
 - [x] `docker-compose.dev.yml` includes dev-mode definition for `openclaw-agent` with `extra_hosts` for `host.docker.internal`
 - [x] `.env.example` documents `OPENCLAW_AGENT_IMAGE`, `OPENCLAW_AGENT_PORT`, and `OPENCLAW_AGENT_WORKSPACE`
 - [x] Token file bind-mounted read-only at `/run/openclaw/hostadapter.token` in the new service
-- [x] `deploy/agent-workspace/TOOLS.md` defines HTTP-based tools for all six HostAdapter endpoints
-- [x] `deploy/agent-workspace/INSTRUCTIONS.md` enforces read-only behavior, no-write claims, and redaction awareness
+- [x] `deploy/docker/openclaw-assistant/TOOLS.md` defines HTTP-based tools for all six HostAdapter endpoints
+- [x] `deploy/docker/openclaw-assistant/SYSTEM.md` enforces read-only behavior, no-write claims, and redaction awareness
 - [x] `docker compose config` validates both compose files without errors
 - [x] Existing `openclaw-core` service definition is byte-identical before and after the change (excluding trailing newlines or comments)
 - [x] `README.md`, `docs/architecture-diagrams.md`, and `docs/mailbridge-runbook.md` updated to reflect the new service

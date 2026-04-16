@@ -247,7 +247,7 @@ The repository also supports an external OpenClaw assistant runtime (`openclaw-a
 
 **Naming distinction:** `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime. They are independent services that both consume the HostAdapter API.
 
-Before starting the assistant, set `OPENCLAW_AGENT_IMAGE` in your `.env` file to the verified image name from the OpenClaw platform documentation at `docs.openclaw.ai`.
+The assistant image is `ghcr.io/openclaw/openclaw:latest` (published at the [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw)). Set `OPENCLAW_AGENT_IMAGE` in your `.env` file if you wish to pin to a specific version tag.
 
 Start the full stack including the assistant:
 
@@ -277,10 +277,10 @@ Validate assistant-to-HostAdapter connectivity:
 
 ```powershell
 $token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
-curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:8181/
+curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:18789/
 ```
 
-Note: `OPENCLAW_AGENT_IMAGE` must be set in `.env` before use. The placeholder value in `.env.example` is not a valid image reference.
+Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments.
 
 ## Bridge Configuration
 

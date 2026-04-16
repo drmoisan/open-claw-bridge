@@ -29,16 +29,6 @@ services:
   openclaw-agent:
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    ports:
-      - "127.0.0.1:${OPENCLAW_AGENT_PORT:-8181}:8181"
-    volumes:
-      - type: bind
-        source: ${HOSTADAPTER_TOKEN_FILE}
-        target: /run/openclaw/hostadapter.token
-        read_only: true
-      - type: bind
-        source: ${OPENCLAW_AGENT_WORKSPACE:-./deploy/docker/openclaw-assistant}
-        target: /workspace
 
 volumes:
   nuget_cache:
