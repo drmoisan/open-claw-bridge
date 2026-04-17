@@ -37,7 +37,8 @@ internal sealed class OutlookScanner : IOutlookScanner
             new ComActiveObject(),
             name => Process.GetProcessesByName(name).Length,
             () => DateTimeOffset.UtcNow
-        ) { }
+        )
+    { }
 
     internal OutlookScanner(
         BridgeSettings settings,
@@ -355,6 +356,14 @@ internal sealed class OutlookScanner : IOutlookScanner
 
             yield return item;
             count++;
+
+            // Yield control back to Outlook's UI thread at batch boundaries
+            // to prevent COM cross-apartment call starvation.
+            if (count > 0 && count % _settings.ComYieldBatchSize == 0)
+            {
+                Thread.Sleep(_settings.ComYieldMilliseconds);
+            }
+
             if (count >= maxItems)
             {
                 yield break;
