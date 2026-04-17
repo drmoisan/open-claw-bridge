@@ -105,7 +105,7 @@ public partial class MailBridgeRuntimeTests
         {
             StoreExists = true,
             StoreContent =
-                """{"PipeName":"x","Mode":"safe","AutostartOutlook":false,"InboxPollSeconds":5,"CalendarPollSeconds":30,"InboxOverlapMinutes":5,"CalendarPastDays":1,"CalendarFutureDays":1,"MaxItemsPerScan":5,"BodyPreviewMaxChars":20,"LogLevel":"Information"}""",
+                """{"PipeName":"x","Mode":"safe","AutostartOutlook":false,"InboxPollSeconds":5,"CalendarPollSeconds":30,"InboxOverlapMinutes":5,"CalendarPastDays":1,"CalendarFutureDays":1,"MaxItemsPerScan":5,"BodyPreviewMaxChars":20,"ComYieldBatchSize":25,"ComYieldMilliseconds":15,"LogLevel":"Information"}""",
         };
 
         var code = await app.RunAsync(["--config", "memory://valid.json"]);
