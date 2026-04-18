@@ -399,6 +399,54 @@ If the HostAdapter or Docker path is unavailable, continue using:
 
 The Windows bridge and client remain the canonical fallback path for troubleshooting.
 
+## Optional OpenClaw Assistant Service
+
+The repository supports an external OpenClaw assistant runtime (`openclaw-agent`) that provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data. This service sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API.
+
+### Prerequisites
+
+- Docker Desktop installed and running.
+- A working HostAdapter with a valid token file (as configured in Install Path C above).
+- `OPENCLAW_AGENT_IMAGE` set in `.env` to the verified image name from the OpenClaw platform documentation at `docs.openclaw.ai`.
+
+### Start and stop
+
+Start the assistant alongside the existing stack:
+
+```powershell
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up -d openclaw-agent
+```
+
+Stop the assistant without affecting `openclaw-core`:
+
+```powershell
+docker compose stop openclaw-agent
+```
+
+Stopping `openclaw-agent` does not affect `openclaw-core`, and vice versa. Both services independently consume the HostAdapter API.
+
+### Connectivity verification
+
+From the host, verify the assistant port is reachable:
+
+```powershell
+curl.exe http://127.0.0.1:8181/
+```
+
+From within the assistant container, verify HostAdapter connectivity:
+
+```powershell
+docker compose exec openclaw-agent sh -c 'curl -H "Authorization: Bearer $(cat /run/openclaw/hostadapter.token)" http://host.docker.internal:4319/v1/status'
+```
+
+### Troubleshooting
+
+| Symptom | Likely cause | Corrective action |
+| --- | --- | --- |
+| `401 Unauthorized` from HostAdapter | Token file missing, empty, or invalid inside the container | Verify `HOSTADAPTER_TOKEN_FILE` in `.env` points to the correct host path and the file is non-empty. Confirm the bind mount at `/run/openclaw/hostadapter.token` is present inside the container. |
+| Container exits immediately on startup | `OPENCLAW_AGENT_IMAGE` is unset or set to the placeholder value | Set `OPENCLAW_AGENT_IMAGE` in `.env` to a valid, verified image reference. |
+| `host.docker.internal` resolution failure | Docker Desktop networking not available or not using dev compose | Ensure you include `-f docker-compose.dev.yml` in the compose command, or verify Docker Desktop is running with host networking support enabled. |
+
 ## Scripted Acceptance Evidence
 
 Run:

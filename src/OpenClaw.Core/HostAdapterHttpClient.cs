@@ -13,6 +13,18 @@ internal sealed class HostAdapterHttpClient(
 {
     private readonly OpenClawOptions options = optionsAccessor.Value;
 
+    // Seam for token acquisition; overridden in unit tests to avoid filesystem I/O.
+    // The func receives the configured TokenFile path and returns the trimmed bearer
+    // token string, or null when the path is invalid or the file is absent.
+    internal Func<string, CancellationToken, Task<string?>> TokenReader { get; init; } =
+        static async (tokenPath, cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(tokenPath) || !File.Exists(tokenPath))
+                return null;
+
+            return (await File.ReadAllTextAsync(tokenPath, cancellationToken)).Trim();
+        };
+
     public Task<ApiEnvelope<BridgeStatusDto>> GetStatusAsync(
         string? requestId = null,
         CancellationToken cancellationToken = default
@@ -102,7 +114,7 @@ internal sealed class HostAdapterHttpClient(
             : requestId;
         request.Headers.Add("X-Request-Id", actualRequestId);
 
-        var token = await ReadTokenAsync(cancellationToken);
+        var token = await TokenReader(options.HostAdapter.TokenFile, cancellationToken);
         if (string.IsNullOrWhiteSpace(token))
         {
             return new ApiEnvelope<T>(
@@ -135,16 +147,5 @@ internal sealed class HostAdapterHttpClient(
                 $"The HostAdapter returned HTTP {(int)response.StatusCode} without a parseable envelope."
             )
         );
-    }
-
-    private async Task<string?> ReadTokenAsync(CancellationToken cancellationToken)
-    {
-        var tokenPath = options.HostAdapter.TokenFile;
-        if (string.IsNullOrWhiteSpace(tokenPath) || !File.Exists(tokenPath))
-        {
-            return null;
-        }
-
-        return (await File.ReadAllTextAsync(tokenPath, cancellationToken)).Trim();
     }
 }

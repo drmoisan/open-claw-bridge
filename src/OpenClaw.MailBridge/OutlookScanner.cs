@@ -37,8 +37,7 @@ internal sealed class OutlookScanner : IOutlookScanner
             new ComActiveObject(),
             name => Process.GetProcessesByName(name).Length,
             () => DateTimeOffset.UtcNow
-        )
-    { }
+        ) { }
 
     internal OutlookScanner(
         BridgeSettings settings,

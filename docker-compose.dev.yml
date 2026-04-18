@@ -26,6 +26,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
+  openclaw-agent:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
 volumes:
   nuget_cache:
   openclaw_dev_data:

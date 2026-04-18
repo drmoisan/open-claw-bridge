@@ -241,6 +241,47 @@ Operational notes:
 - The container keeps its own SQLite database at `/data/openclaw.db`.
 - If the HostAdapter or container path is unavailable, use `OpenClaw.MailBridge.Client` directly on the Windows host as the fallback troubleshooting path.
 
+### 4. Optional: Start the OpenClaw Assistant Service
+
+The repository also supports an external OpenClaw assistant runtime (`openclaw-agent`) that sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API. The assistant provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data.
+
+**Naming distinction:** `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime. They are independent services that both consume the HostAdapter API.
+
+The assistant image is `ghcr.io/openclaw/openclaw:latest` (published at the [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw)). Set `OPENCLAW_AGENT_IMAGE` in your `.env` file if you wish to pin to a specific version tag.
+
+Start the full stack including the assistant:
+
+```powershell
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d
+```
+
+Check assistant service status:
+
+```powershell
+docker compose ps openclaw-agent
+```
+
+View assistant logs:
+
+```powershell
+docker compose logs openclaw-agent
+```
+
+Stop only the assistant without affecting `openclaw-core`:
+
+```powershell
+docker compose stop openclaw-agent
+```
+
+Validate assistant-to-HostAdapter connectivity:
+
+```powershell
+$token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
+curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:18789/
+```
+
+Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments.
+
 ## Bridge Configuration
 
 The bridge settings file lives at `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json`.

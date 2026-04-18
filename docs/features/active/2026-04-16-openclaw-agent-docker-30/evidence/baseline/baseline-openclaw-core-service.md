@@ -1,6 +1,10 @@
-name: openclaw
+# Baseline — openclaw-core service block snapshot
 
-services:
+Timestamp: 2026-04-16T00-17
+
+Source: `docker-compose.yml` lines 3–51
+
+```yaml
   openclaw-core:
     build:
       context: .
@@ -48,41 +52,4 @@ services:
       timeout: 5s
       retries: 5
       start_period: 20s
-
-  openclaw-agent:
-    image: ${OPENCLAW_AGENT_IMAGE}
-    container_name: openclaw-agent
-    init: true
-    restart: unless-stopped
-    env_file: ./secrets/.env.anthropic
-    user: "1654:1654"
-    read_only: true
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:size=64m,noexec,nosuid,nodev
-      - /.openclaw:size=64m,noexec,nosuid,nodev
-    environment:
-      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319/v1}
-      OpenClaw__HostAdapter__TokenFile: /run/openclaw/hostadapter.token
-    ports:
-      - "127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}:18789"
-    volumes:
-      - type: bind
-        source: ${HOSTADAPTER_TOKEN_FILE}
-        target: /run/openclaw/hostadapter.token
-        read_only: true
-      - type: bind
-        source: ${OPENCLAW_AGENT_WORKSPACE:-./deploy/docker/openclaw-assistant}
-        target: /workspace
-    healthcheck:
-      test: [ "CMD", "curl", "-fsS", "http://127.0.0.1:18789/healthz" ]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
-volumes:
-  openclaw_data:
+```
