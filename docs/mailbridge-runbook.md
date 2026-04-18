@@ -10,6 +10,8 @@ This runbook describes how to install, validate, operate, and remove the current
 
 The bridge remains a local-only, read-only Outlook integration. Outlook COM access stays on the Windows host and in the interactive user session.
 
+Release builds now use `scripts/Publish.ps1` as the supported package-build entry point. The retired standalone MSIX build entry point is no longer part of the in-repo release path.
+
 ## Operational Model
 
 - `OpenClaw.MailBridge` scans the default Outlook Inbox and Calendar on a dedicated STA thread.
@@ -33,6 +35,13 @@ The bridge remains a local-only, read-only Outlook integration. Outlook COM acce
 - Docker Desktop
 - A Windows bridge installation that is already working
 - A HostAdapter bearer token file on the Windows host
+
+### Release bundle prerequisites
+
+- PowerShell 7 or later
+- .NET 10 SDK
+- Windows 10 SDK tools available for the MSIX stage (`makeappx.exe`, `makepri.exe`, and `signtool.exe`)
+- A signing certificate in `Cert:\CurrentUser\My` for signed builds, unless you intentionally pass `-SkipSign`
 
 ## Install Path A: Published Binaries Plus Scheduled Task
 
@@ -197,10 +206,9 @@ The certificate script installs the CER into the trusted root store so the local
 ### 3. Publish and build the package
 
 The unified publish entry point `.\scripts\Publish.ps1` produces a single
-versioned bundle under `artifacts/publish/<version>/` containing every
-runnable project's published output, the docker artifact set (compose files,
-`deploy/docker/**`, `.env.example` when present), the MSIX installer, and a
-top-level `manifest.json`.
+versioned bundle under `artifacts/publish/<version>/`. The bundle contains
+every runnable project's published output, the docker artifact set, the MSIX
+installer, and a top-level `manifest.json`.
 
 ```powershell
 Set-Location $repoRoot
@@ -216,6 +224,29 @@ Step 3 notes:
 - The `-Version` parameter is strictly validated against the 4-part pattern
   `^\d+\.\d+\.\d+\.\d+$`; 3-part inputs are rejected at parameter binding
   time rather than silently normalized.
+- `-OutputDir` can override the bundle root. The default is
+  `artifacts/publish`. If you override it, use the matching path in the
+  install command.
+- `-Configuration` accepts `Debug` or `Release`. The default is `Release`.
+- The script removes and recreates `artifacts/publish/<version>/` before
+  writing a new bundle for that version.
+- `OpenClaw.Core` and `OpenClaw.HostAdapter` are published self-contained for
+  `win-x64`. `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client` keep the
+  MSIX publish-profile behavior used by the package installer.
+- The docker stage copies deployment inputs only. It copies compose files,
+  `deploy/docker/**`, and `.env.example` when present; it does not build or
+  export docker images.
+- `secrets/` paths are excluded from the docker bundle. The
+  `deploy/docker/openclaw-assistant/` tree is copied verbatim, so review that
+  content before distributing a bundle.
+- `manifest.json` is written last. It lists each bundled file except itself
+  with a forward-slash relative path, byte size, and SHA-256 hash.
+- Binary hashes can differ between publish runs because the MSIX-bound
+  projects retain ReadyToRun publishing. Treat the manifest as an integrity
+  record for the produced bundle, not as proof that all binary outputs are
+  byte-identical across separate builds.
+- The script emits local artifacts only. It does not upload files, create a
+  GitHub Release, or publish to a release server.
 
 Migration note for operators who previously ran the separate `dotnet publish`
 plus MSIX build recipe:
@@ -230,15 +261,19 @@ plus MSIX build recipe:
 
 Expected bundle layout:
 
-- `artifacts/publish/1.0.0.0/executables/<ProjectName>/` — published binaries per project.
-- `artifacts/publish/1.0.0.0/docker/` — docker artifacts and compose files.
-- `artifacts/publish/1.0.0.0/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix` — MSIX installer.
-- `artifacts/publish/1.0.0.0/manifest.json` — full bundle manifest (path, size, sha256).
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.Core/`
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.HostAdapter/`
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.MailBridge/`
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.MailBridge.Client/`
+- `artifacts/publish/1.0.0.0/docker/` - docker compose files, `.env.example`
+  when present, and `deploy/docker/**`
+- `artifacts/publish/1.0.0.0/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix` - MSIX installer
+- `artifacts/publish/1.0.0.0/manifest.json` - full bundle manifest
 
 ### 4. Install or upgrade
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
+Add-AppxPackage -Path .\artifacts\publish\1.0.0.0\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
 ```
 
 MSIX behavior:
@@ -246,6 +281,14 @@ MSIX behavior:
 - installs both executables under the Windows Apps package location
 - registers the `OpenClawMailBridge` startup task
 - preserves `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` across upgrade and uninstall
+
+Version guidance:
+
+- Use a new four-part package version for each rebuilt package you intend to
+  install over an existing MSIX. Windows blocks installation when the installed
+  package has the same identity and version but different contents.
+- For local rebuild testing with the same version, remove the installed package
+  first, then install the rebuilt `.msix`.
 
 ### 5. Verify package registration and bridge startup
 
@@ -510,6 +553,7 @@ Record these checks separately after the scripted suites pass:
 | `Bridge status preflight failed after registration.` | The task was created but the bridge did not start correctly, often because the task points `--config` at the wrong `%LOCALAPPDATA%` path | In the elevated shell, set `$env:LOCALAPPDATA` to the target user's `AppData\Local`, then rerun `install-mailbridge.ps1`. Afterward, inspect `schtasks /query /tn "OpenClaw MailBridge" /v /fo list`, the bridge log, and the manual client `status` command. |
 | Install helper reports wrong framework | Published output is not targeting `.NET 10` runtimeconfig files | Republish both host and client, then rerun `install-mailbridge.ps1`. |
 | `Bridge executable not found` or `Client executable not found` | Install folder is incomplete | Republish both projects into the same install directory. |
+| `Add-AppxPackage` fails with `0x80073CFB` and says the package has the same identity but different contents | A package with the same identity and version is already installed, and the rebuilt `.msix` is not byte-identical to the installed package | Publish with an incremented four-part version, or remove the installed package with `Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage`, then rerun `Add-AppxPackage`. If the package is installed for other users, remove it for those users from an elevated PowerShell session before reusing the same version. |
 | `Access is denied` when running `client\OpenClaw.MailBridge.Client.exe` from `%ProgramFiles%\WindowsApps\...` after MSIX install | The package is installed, but the current manifest does not expose the packaged client as a terminal-invokable entry point | Treat the MSIX install as successful, sign out and back in so the startup task can launch the bridge, and validate the bridge through process and log checks instead of direct client execution. |
 | PowerShell reports that `C:\Program` is not recognized when running the client executable | The executable path contains a space and was entered without the PowerShell call operator | Run `& "C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.exe" status` instead of entering the path bare. |
 | HostAdapter returns `401` | Bearer token missing or invalid | Read the expected token from the configured token file and retry. |

@@ -14,7 +14,7 @@
       3. Per-project dotnet publish (four runnable src/ projects).
       4. Docker artifact copy (compose files, deploy/docker/**, .env.example),
          with the secrets/ exclusion enforced.
-      5. MSIX assembly (version stamp, layout, PRI, makeappx pack, optional
+      5. MSIX assembly (layout, version stamp, PRI, makeappx pack, optional
          signtool sign).
       6. manifest.json generation (SHA-256 per file, sorted by path).
 
@@ -154,11 +154,11 @@ if ($MyInvocation.InvocationName -ne '.') {
     $MsixDir = Join-Path $BundleRoot 'msix'
     $MsixPath = Join-Path $MsixDir ("OpenClaw.MailBridge_{0}_x64.msix" -f $Version)
 
-    Write-Information '[msix] Stamping AppxManifest.xml' -InformationAction Continue
-    Invoke-VersionStamp -ManifestSourcePath $ManifestSource -StagingDir $StagingDir -Version $Version
-
     Write-Information '[msix] Assembling staging layout' -InformationAction Continue
     Invoke-LayoutAssembly -BridgePublishDir $BridgeDir -ClientPublishDir $ClientDir -AssetsDir $AssetsDir -StagingDir $StagingDir
+
+    Write-Information '[msix] Stamping AppxManifest.xml' -InformationAction Continue
+    Invoke-VersionStamp -ManifestSourcePath $ManifestSource -StagingDir $StagingDir -Version $Version
 
     Write-Information '[msix] Generating PRI resource index' -InformationAction Continue
     Invoke-MakePri -StagingDir $StagingDir

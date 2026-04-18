@@ -114,10 +114,21 @@ Describe 'scripts/Publish.ps1' {
             $expectedPrefix = @(
                 'Invoke-DotnetPublish', 'Invoke-DotnetPublish', 'Invoke-DotnetPublish', 'Invoke-DotnetPublish',
                 'Copy-DockerArtifact',
-                'Invoke-VersionStamp', 'Invoke-LayoutAssembly', 'Invoke-MakePri', 'Invoke-MakeAppx',
+                'Invoke-LayoutAssembly', 'Invoke-VersionStamp', 'Invoke-MakePri', 'Invoke-MakeAppx',
                 'Write-PublishManifest'
             )
             ($names -join ',') | Should -Be ($expectedPrefix -join ',')
+        }
+        It 'stamps AppxManifest.xml after staging layout assembly so the manifest is not deleted before makeappx' {
+            & $script:ScriptPath -Version '1.2.3.0' -SkipSign | Out-Null
+
+            $names = @($global:PublishTestCalls | ForEach-Object { $_.Name })
+            $idxLayout = [array]::IndexOf($names, 'Invoke-LayoutAssembly')
+            $idxVersionStamp = [array]::IndexOf($names, 'Invoke-VersionStamp')
+            $idxMakeAppx = [array]::IndexOf($names, 'Invoke-MakeAppx')
+
+            $idxVersionStamp | Should -BeGreaterThan $idxLayout
+            $idxVersionStamp | Should -BeLessThan $idxMakeAppx
         }
         It 'inserts Invoke-SignTool between Invoke-MakeAppx and Write-PublishManifest when signed' {
             & $script:ScriptPath -Version '1.2.3.0' -CertThumbprint 'ABCDEF0123' | Out-Null
