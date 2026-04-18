@@ -147,18 +147,38 @@ $pwd = ConvertTo-SecureString 'your-password' -AsPlainText -Force
 .\scripts\New-MsixDevCert.ps1 -PfxPassword $pwd -OutputDir artifacts
 ```
 
-Publish both projects using the MSIX publish profiles and build the package:
+Publish a full release bundle with `scripts/Publish.ps1`. The unified entry
+point publishes every runnable `src/` project, copies the docker artifact
+set, builds (and optionally signs) the MSIX, and writes a top-level
+`manifest.json` that enumerates every file in the bundle with its size and
+SHA-256 hash. The output is written to `artifacts/publish/<version>/`.
+
+Signed release build:
 
 ```powershell
-dotnet publish .\src\OpenClaw.MailBridge\OpenClaw.MailBridge.csproj /p:PublishProfile=msix
-dotnet publish .\src\OpenClaw.MailBridge.Client\OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix
-.\scripts\build-msix.ps1 -Version '1.0.0.0' -CertThumbprint 'THUMBPRINT'
+.\scripts\Publish.ps1 -Version '1.0.0.0' -CertThumbprint 'THUMBPRINT'
 ```
+
+Dev (unsigned) build:
+
+```powershell
+.\scripts\Publish.ps1 -Version '1.0.0.0' -SkipSign
+```
+
+Supported parameters:
+
+- `-Version` — mandatory 4-part version string (for example `1.2.3.0`).
+  Strict validation via `ValidatePattern`; 3-part inputs are rejected.
+- `-OutputDir` — root directory for the bundle. Default: `artifacts/publish`.
+- `-Configuration` — `Debug` or `Release`. Default: `Release`.
+- `-CertThumbprint` — SHA-1 thumbprint of the code-signing certificate in
+  `Cert:\CurrentUser\My`. Required unless `-SkipSign` is supplied.
+- `-SkipSign` — switch; when present the MSIX is packed without signing.
 
 Install or upgrade the generated package:
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
+Add-AppxPackage -Path .\artifacts\publish\1.0.0.0\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
 ```
 
 Remove it:

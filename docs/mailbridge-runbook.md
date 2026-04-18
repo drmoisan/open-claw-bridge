@@ -196,11 +196,15 @@ The certificate script installs the CER into the trusted root store so the local
 
 ### 3. Publish and build the package
 
+The unified publish entry point `.\scripts\Publish.ps1` produces a single
+versioned bundle under `artifacts/publish/<version>/` containing every
+runnable project's published output, the docker artifact set (compose files,
+`deploy/docker/**`, `.env.example` when present), the MSIX installer, and a
+top-level `manifest.json`.
+
 ```powershell
 Set-Location $repoRoot
-dotnet publish .\src\OpenClaw.MailBridge\OpenClaw.MailBridge.csproj /p:PublishProfile=msix
-dotnet publish .\src\OpenClaw.MailBridge.Client\OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix
-.\scripts\build-msix.ps1 -Version '1.0.0.0' -CertThumbprint $thumbprint
+.\scripts\Publish.ps1 -Version '1.0.0.0' -CertThumbprint $thumbprint
 Remove-Variable thumbprint -ErrorAction SilentlyContinue
 ```
 
@@ -208,10 +212,28 @@ Step 3 notes:
 
 - Step 3 assumes `$thumbprint` was created in the current PowerShell session by step 2.
 - `Remove-Variable thumbprint` clears the temporary variable after signing if you do not need it again in the session.
+- For an unsigned dev bundle, pass `-SkipSign` instead of `-CertThumbprint`.
+- The `-Version` parameter is strictly validated against the 4-part pattern
+  `^\d+\.\d+\.\d+\.\d+$`; 3-part inputs are rejected at parameter binding
+  time rather than silently normalized.
 
-Expected artifact:
+Migration note for operators who previously ran the separate `dotnet publish`
+plus MSIX build recipe:
 
-- `artifacts/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix`
+- Replace the separate `dotnet publish` calls and the prior MSIX-build script
+  with a single `Publish.ps1` call. The new entry point publishes every
+  runnable `src/` project (not just the MailBridge-side executables), copies
+  the docker artifact set, and writes `manifest.json` enumerating every file
+  in the bundle with size and SHA-256 hash.
+- The MSIX output path changed from `artifacts/msix/` to
+  `artifacts/publish/<version>/msix/`. Update any install scripts accordingly.
+
+Expected bundle layout:
+
+- `artifacts/publish/1.0.0.0/executables/<ProjectName>/` — published binaries per project.
+- `artifacts/publish/1.0.0.0/docker/` — docker artifacts and compose files.
+- `artifacts/publish/1.0.0.0/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix` — MSIX installer.
+- `artifacts/publish/1.0.0.0/manifest.json` — full bundle manifest (path, size, sha256).
 
 ### 4. Install or upgrade
 
