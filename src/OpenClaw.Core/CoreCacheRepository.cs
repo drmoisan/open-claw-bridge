@@ -16,6 +16,12 @@ internal sealed class CoreCacheRepository : IDisposable
     private readonly string connectionString;
     private readonly SqliteConnection? anchor;
 
+    /// <summary>
+    /// Exposes the connection string so that test code can open a second connection to the
+    /// same in-memory database when verifying persisted state directly.
+    /// </summary>
+    internal string ConnectionString => connectionString;
+
     public CoreCacheRepository(OpenClawOptions options)
         : this($"Data Source={options.Storage.DbPath}")
     {
