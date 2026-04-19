@@ -326,6 +326,8 @@ Operational limitation:
 - the startup task launches the bridge on user logon
 - it does not restart the bridge automatically after a crash
 
+For the scripted bundle flow that wraps these steps together with docker compose, see Install Path D below.
+
 ## Configure The Bridge
 
 Settings file:
@@ -464,6 +466,76 @@ If the HostAdapter or Docker path is unavailable, continue using:
 
 The Windows bridge and client remain the canonical fallback path for troubleshooting.
 
+For the scripted bundle flow that automates the compose stage (plus the MSIX install and rollback), see Install Path D below.
+
+## Install Path D: Scripted Bundle Install
+
+This path consumes a release bundle produced by `scripts/Publish.ps1` at `artifacts/publish/<version>/` and installs the MSIX plus the docker stack on the local Windows host in a single command. It does not replace Path A, Path B, or Path C; it layers on top of them.
+
+### Prerequisites
+
+- PowerShell 7 or newer (the scripts declare `#Requires -Version 7.0`).
+- Docker Desktop installed and running (required when the docker stage is enabled).
+- A bundle present at `artifacts/publish/<version>/` produced by `scripts/Publish.ps1`.
+- An administrator PowerShell session when `-AllowUnsigned` is used on a package containing executable content (per Microsoft Learn's unsigned-package guidance). Omit `-AllowUnsigned` on signed bundles to avoid the elevation requirement.
+
+### Command invocations
+
+Install the newest bundle under `artifacts/publish/` with signed MSIX and docker stage enabled:
+
+```powershell
+.\scripts\Install.ps1
+```
+
+Install from an explicit bundle path:
+
+```powershell
+.\scripts\Install.ps1 -SourcePath 'C:\releases\openclaw\1.2.3.0'
+```
+
+Install a specific version from the default publish root:
+
+```powershell
+.\scripts\Install.ps1 -Version '1.2.3.0'
+```
+
+Install an unsigned development bundle produced with `Publish.ps1 -SkipSign`:
+
+```powershell
+.\scripts\Install.ps1 -AllowUnsigned
+```
+
+Install without the docker stage (MSIX only):
+
+```powershell
+.\scripts\Install.ps1 -SkipDocker
+```
+
+Force reinstall over an existing install of the same version (full uninstall-then-install):
+
+```powershell
+.\scripts\Install.ps1 -Force
+```
+
+Uninstall the currently recorded install (compose down, remove MSIX, remove destination, delete install record):
+
+```powershell
+.\scripts\Uninstall.ps1
+```
+
+### Outputs
+
+- Bundle destination: `%LOCALAPPDATA%\OpenClaw\<version>\` with `executables\` and `docker\` subtrees.
+- Install record: `%LOCALAPPDATA%\OpenClaw\install-record.json` (single record, overwritten per successful install; schema in `docs/features/active/2026-04-18-bundle-install-script-36/spec.md`).
+- Compose stack: project `openclaw` with services `openclaw-core` and `openclaw-agent`.
+
+### Operator notes
+
+- The HostAdapter token file and `secrets/.env.anthropic` are still provisioned out-of-band per Path C. `Install.ps1` does not create or modify those files.
+- `Install.ps1` copies `.env.example` to `.env` under `<destination>\docker\` only when `.env` is absent. An existing `.env` is never overwritten.
+- `Uninstall.ps1` leaves `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` in place by design. That file lives under a sibling directory and is never touched.
+- `docker compose down` is invoked without `--volumes`; the `openclaw_data` volume is preserved. Remove it manually if required.
+
 ## Optional OpenClaw Assistant Service
 
 The repository supports an external OpenClaw assistant runtime (`openclaw-agent`) that provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data. This service sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API.
@@ -562,3 +634,6 @@ Record these checks separately after the scripted suites pass:
 | Docker readiness returns `503` | SQLite not initialized or HostAdapter unreachable | Check the container logs, confirm `host.docker.internal` resolves, and verify the HostAdapter is running on `127.0.0.1:4319`. |
 | Empty calendar result set | Request window is outside the cached calendar range | Confirm `calendarPastDays` and `calendarFutureDays`; empty results are expected outside the cached window. |
 | Safe mode seems to hide sender or preview fields | Bridge is operating as designed | Keep `safe` mode if privacy is required, or switch to `enhanced` only after operator approval. |
+| `No prior install recorded` when running `Uninstall.ps1` | `%LOCALAPPDATA%\OpenClaw\install-record.json` is absent | Confirm that an install was performed via `Install.ps1`. If the install was performed via Path A or Path B, use the matching uninstall path instead (`uninstall-mailbridge.ps1` for Path A; `Get-AppxPackage ... | Remove-AppxPackage` for Path B). |
+| `Docker Desktop is not running or not installed. Start Docker Desktop and retry, or pass -SkipDocker to skip the container stage.` when running `Install.ps1` | `docker info` returned a non-zero exit code | Start Docker Desktop and rerun `Install.ps1`. If a docker-free install is acceptable, pass `-SkipDocker`; `Uninstall.ps1` later honors the recorded `skipDocker = true` and skips the compose-down step. |
+| `Manifest integrity check failed for bundle '<path>'. Discrepancies: ...` when running `Install.ps1` | One or more files under the bundle root do not match `manifest.json` by size or SHA-256, or on-disk files are absent from the manifest | Re-publish the bundle with `scripts\Publish.ps1` and retry. No destination folder is created when manifest integrity fails, so the host is left in a clean pre-install state. |
