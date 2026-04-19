@@ -2,7 +2,7 @@
 
 OpenClaw MailBridge is a Windows-first .NET solution that reads Outlook data locally, caches normalized message and calendar metadata in SQLite, and exposes that cached data through a local named-pipe RPC interface.
 
-The repository also contains an additive local-only HTTP and Docker path:
+The repository also contains the local-only HTTP and Docker components required for the complete OpenClaw solution:
 
 - `OpenClaw.MailBridge` remains the Windows process that talks to Outlook over COM.
 - `OpenClaw.MailBridge.Client` remains the canonical six-command client for local reads.
@@ -18,8 +18,8 @@ The repository also contains an additive local-only HTTP and Docker path:
 - Supports two Windows installation paths today:
   - published binaries plus `install-mailbridge.ps1`
   - MSIX package install
-- Supports one optional additive path for local UI and HTTP access:
-  - `OpenClaw.HostAdapter` on Windows plus `OpenClaw.Core` in Docker Desktop
+- Supports a complete local solution path beyond the bridge transport:
+  - `OpenClaw.HostAdapter` on Windows, `OpenClaw.Core` in Docker Desktop, and the `openclaw-agent` assistant service
 
 ## How It Works
 
@@ -28,7 +28,7 @@ The repository also contains an additive local-only HTTP and Docker path:
 3. The bridge caches normalized message and event data in SQLite and records bridge state.
 4. `PipeRpcWorker` listens on a local named pipe and returns cached responses for the supported RPC methods.
 5. `OpenClaw.MailBridge.Client` resolves the configured pipe name, sends a JSON RPC request, and writes the bridge response to stdout.
-6. If you enable the additive deployment path, `OpenClaw.HostAdapter` shells out to `OpenClaw.MailBridge.Client` and `OpenClaw.Core` polls the HostAdapter from Docker.
+6. For the complete OpenClaw solution, `OpenClaw.HostAdapter` shells out to `OpenClaw.MailBridge.Client`, `OpenClaw.Core` polls the HostAdapter from Docker, and the assistant service consumes the same HostAdapter HTTP API.
 
 ## Repository Layout
 
@@ -190,12 +190,15 @@ Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage
 Notes:
 
 - The MSIX package does not replace the PowerShell install path. Both deployment models are supported.
+- The MSIX installs only `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client`.
+- The MSIX does not install or configure `OpenClaw.HostAdapter`, `OpenClaw.Core`, Docker assets, or the `openclaw-agent` assistant service.
+- If you are setting up the complete OpenClaw solution, the remaining components below are additional required steps after the bridge or MSIX install completes.
 - MSIX install, upgrade, and uninstall preserve `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json`.
 - The startup task runs on user logon. It does not provide automatic crash restart.
 
-## Optional HostAdapter And Docker Core Path
+## Complete Solution Setup After Bridge Or MSIX Install
 
-This path is additive. Keep the Windows bridge installed and running, then add the HostAdapter on Windows and `OpenClaw.Core` in Docker Desktop.
+The bridge install is only the first stage. To run the complete OpenClaw solution described in this repository, keep the Windows bridge installed and running, then complete the HostAdapter, `OpenClaw.Core`, and assistant setup below.
 
 ### 1. Provision the HostAdapter token and config
 
@@ -261,9 +264,9 @@ Operational notes:
 - The container keeps its own SQLite database at `/data/openclaw.db`.
 - If the HostAdapter or container path is unavailable, use `OpenClaw.MailBridge.Client` directly on the Windows host as the fallback troubleshooting path.
 
-### 4. Optional: Start the OpenClaw Assistant Service
+### 4. Start the OpenClaw Assistant Service
 
-The repository also supports an external OpenClaw assistant runtime (`openclaw-agent`) that sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API. The assistant provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data.
+The repository also uses an external OpenClaw assistant runtime (`openclaw-agent`) that sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API. The assistant provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data.
 
 **Naming distinction:** `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime. They are independent services that both consume the HostAdapter API.
 
