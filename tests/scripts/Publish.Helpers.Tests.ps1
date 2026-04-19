@@ -79,12 +79,12 @@ Describe 'Publish.Helpers.psm1' {
     }
 
     Context 'Module exports' {
-        It 'exports the expected 11 helper functions' {
+        It 'exports the expected 12 helper functions' {
             $expected = @(
                 'Find-WindowsSdkTool', 'Get-StampedAppxManifestXml', 'Invoke-VersionStamp',
                 'Invoke-LayoutAssembly', 'Invoke-MakePri', 'Invoke-MakeAppx',
                 'Invoke-SignTool', 'Invoke-DotnetPublish', 'Copy-DockerArtifact',
-                'New-ManifestEntry', 'Write-PublishManifest'
+                'Copy-InstallScriptsIntoBundle', 'New-ManifestEntry', 'Write-PublishManifest'
             ) | Sort-Object
             $actual = (Get-Command -Module Publish.Helpers).Name | Sort-Object
             ($actual -join ',') | Should -Be ($expected -join ',')
@@ -385,7 +385,7 @@ Describe 'Publish.Helpers.psm1' {
             $script:WrittenValue = $null
             Mock -ModuleName Publish.Helpers Set-Content { $script:WrittenValue = $Value }
         }
-        It 'writes JSON with version, generatedAt, files and excludes manifest.json' {
+        It 'writes JSON with only { version, files } and excludes manifest.json' {
             $f1 = [pscustomobject]@{ FullName = 'C:\bundle\a.txt' }
             $f2 = [pscustomobject]@{ FullName = 'C:\bundle\b.txt' }
             $mf = [pscustomobject]@{ FullName = 'C:\bundle\manifest.json' }
@@ -395,8 +395,9 @@ Describe 'Publish.Helpers.psm1' {
             }
             $r = Write-PublishManifest -BundleRoot 'C:\bundle' -Version '1.2.3.4'
             $r | Should -Be (Join-Path 'C:\bundle' 'manifest.json')
-            $script:WrittenValue | Should -Match '"generatedAt"\s*:\s*"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"'
             $p = $script:WrittenValue | ConvertFrom-Json
+            $topLevelNames = ($p.PSObject.Properties | ForEach-Object { $_.Name }) | Sort-Object
+            ($topLevelNames -join ',') | Should -Be 'files,version'
             $p.version | Should -Be '1.2.3.4'
             $p.files.Count | Should -Be 2
             ($p.files.path -contains 'manifest.json') | Should -BeFalse
@@ -437,6 +438,39 @@ Describe 'Publish.Helpers.psm1' {
             $p.files[0].path | Should -Not -BeNullOrEmpty
             $p.files[0].size | Should -BeGreaterOrEqual 0
             $p.files[0].sha256 | Should -Match '^[0-9a-f]{64}$'
+        }
+    }
+
+    Context 'Copy-InstallScriptsIntoBundle' {
+        BeforeEach {
+            $script:CopyCalls = New-Object System.Collections.Generic.List[object]
+            Mock -ModuleName Publish.Helpers Copy-Item {
+                $script:CopyCalls.Add([pscustomobject]@{ Src = $LiteralPath; Dst = $Destination })
+            }
+            Mock -ModuleName Publish.Helpers Test-Path { $true }
+        }
+        It 'copies Install.ps1, Uninstall.ps1, and Install.Helpers.psm1 in order' {
+            Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle'
+            $script:CopyCalls.Count | Should -Be 3
+            $script:CopyCalls[0].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.ps1')
+            $script:CopyCalls[0].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.ps1')
+            $script:CopyCalls[1].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Uninstall.ps1')
+            $script:CopyCalls[1].Dst | Should -Be (Join-Path 'C:\bundle' 'Uninstall.ps1')
+            $script:CopyCalls[2].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Helpers.psm1')
+            $script:CopyCalls[2].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Helpers.psm1')
+        }
+        It 'throws with the missing path when a source file is absent' {
+            $missing = Join-Path 'C:\repo\scripts' 'Uninstall.ps1'
+            Mock -ModuleName Publish.Helpers Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -eq $missing) { $false } else { $true }
+            }
+            { Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle' } |
+                Should -Throw "*$missing*"
+        }
+        It 'produces zero Copy-Item invocations under -WhatIf' {
+            Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle' -WhatIf
+            $script:CopyCalls.Count | Should -Be 0
         }
     }
 }

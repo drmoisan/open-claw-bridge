@@ -3,11 +3,11 @@
 - Issue: #36
 - Owner: drmoisan
 - Status: Draft
-- Last Updated: 2026-04-18T00:00:00Z
+- Last Updated: 2026-04-19T00:00:00Z
 
 ## Story Statement
 
-- As an **operator deploying an OpenClaw release bundle on a Windows host**, I want a single PowerShell command that unpacks the newest bundle under `artifacts/publish/`, installs the MSIX, starts the Docker compose stack, and records what was installed, so that I do not have to hand-copy files, remember the correct `Add-AppxPackage` invocation, or assemble a compose command from the runbook.
+- As an **operator deploying an OpenClaw release bundle on a Windows host**, I want to `cd` into the bundle directory and run `.\Install.ps1` with no arguments, so the install script self-locates the bundle via `$PSScriptRoot` and I never have to point the installer at the right directory.
 - As a **CI/CD workflow maintainer**, I want install and uninstall to be separate scripts with deterministic inputs and a shared install-record file, so that automated end-to-end tests can install a bundle, exercise it, and clean up without manual intervention.
 - As a **future-me debugging a failed install**, I want the install to abort before any filesystem side effects when the bundle manifest does not match its contents, so that a partial or tampered bundle cannot leave the host in an inconsistent state.
 
@@ -43,12 +43,12 @@ The multi-step recipe is not written down in one place, there is no record of wh
   - Constraint: debugging sessions happen under time pressure; diagnostic quality drives mean time to recovery.
   - Goal: read `scripts/Install.Helpers.psm1` and the install record, identify the failing stage (manifest verification, MSIX install, compose up, compose health), and know which `Uninstall.ps1` run or manual step unblocks the next attempt.
 
-- **Scenario: Install newest bundle on a clean host**
+- **Scenario: Install a bundle on a clean host**
   - **Trigger**: Operator has just run `Publish.ps1 -Version '1.2.3.0'` (signed) and wants to install the result locally.
   - **Steps**:
-    1. Operator runs `.\scripts\Install.ps1` with no arguments.
-    2. The script locates `artifacts/publish/1.2.3.0/` as the newest bundle.
-    3. The script verifies `manifest.json` against every file in the bundle.
+    1. Operator `cd`s to `artifacts/publish/1.2.3.0/` (the bundle produced by `Publish.ps1`).
+    2. Operator runs `.\Install.ps1` with no arguments.
+    3. The script sets `$BundleRoot = $PSScriptRoot` and reads the version from `<BundleRoot>/manifest.json` via `Get-ManifestVersion`.
     4. The script creates `%LOCALAPPDATA%\OpenClaw\1.2.3.0\` and copies `executables/` and `docker/` into it.
     5. The script copies `.env.example` to `.env` under the destination `docker/` directory (since `.env` is absent).
     6. The script installs the MSIX via `Add-AppxPackage` and captures the `PackageFullName`.
@@ -109,7 +109,7 @@ The multi-step recipe is not written down in one place, there is no record of wh
 ## Acceptance Criteria
 
 - [x] Running `.\scripts\Install.ps1` with no arguments on a clean host with a signed bundle under `artifacts/publish/` installs the MSIX and brings the docker stack up without further input.
-- [x] Running `.\scripts\Install.ps1 -SourcePath <path>` or `.\scripts\Install.ps1 -Version <v>` overrides the newest-bundle auto-detection.
+- [x] Running `.\Install.ps1` from a bundle root installs that bundle. `-SourcePath <path>` overrides the default `$PSScriptRoot` for dev/test scenarios. `-Version` is not a parameter.
 - [x] Running `.\scripts\Install.ps1 -AllowUnsigned` with a bundle produced by `Publish.ps1 -SkipSign` installs the MSIX.
 - [x] Running `.\scripts\Install.ps1 -SkipDocker` installs the MSIX only and records `skipDocker = true` in the install record.
 - [x] Running `.\scripts\Install.ps1 -Force` over an existing install performs a complete uninstall of the prior version before installing.
@@ -122,6 +122,8 @@ The multi-step recipe is not written down in one place, there is no record of wh
 - [x] Pester coverage >= 90% on new lines in `scripts/Install.ps1`, `scripts/Uninstall.ps1`, and `scripts/Install.Helpers.psm1`. Repo-wide coverage remains >= 80%.
 - [x] PoshQC suite (format -> analyze -> test) passes on `scripts/Install.ps1`, `scripts/Uninstall.ps1`, `scripts/Install.Helpers.psm1`, and their Pester test files.
 - [x] `README.md` and `docs/mailbridge-runbook.md` document the new install and uninstall flow without displacing the scheduled-task install path.
+- [x] `Publish.ps1` copies `Install.ps1`, `Uninstall.ps1`, and `Install.Helpers.psm1` into every bundle root.
+- [x] `manifest.json` uses the `{ version, files }` schema; `Get-ManifestVersion` returns the top-level `version` field.
 
 ## Non-Goals
 

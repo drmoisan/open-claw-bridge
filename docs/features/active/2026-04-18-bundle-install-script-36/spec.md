@@ -3,13 +3,15 @@
 - **Issue:** #36
 - **Parent (optional):** #34 (unified-publish-script)
 - **Owner:** drmoisan
-- **Last Updated:** 2026-04-18T00:00:00Z
+- **Last Updated:** 2026-04-19T00:00:00Z
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2
 
 ## Overview
 
-This feature introduces a scripted installer and uninstaller that consumes the versioned local bundle produced by `scripts/Publish.ps1` (feature #34). The installer unpacks a selected bundle under `%LOCALAPPDATA%\OpenClaw\<version>\`, installs the MSIX via `Add-AppxPackage`, starts the Docker compose stack (`openclaw-core` and `openclaw-agent`), and writes a single-record install manifest for later rollback. The uninstaller reverses those steps using the recorded manifest.
+This feature introduces a scripted installer and uninstaller that consumes the versioned local bundle produced by `scripts/Publish.ps1` (feature #34). The installer unpacks the bundle whose root directory the script lives in under `%LOCALAPPDATA%\OpenClaw\<version>\`, installs the MSIX via `Add-AppxPackage`, starts the Docker compose stack (`openclaw-core` and `openclaw-agent`), and writes a single-record install manifest for later rollback. The uninstaller reverses those steps using the recorded manifest.
+
+> Refinement 2026-04-19: install scripts now ship inside every bundle and self-locate via `$PSScriptRoot`.
 
 The feature delivers three new PowerShell files under `scripts/`:
 
@@ -25,8 +27,8 @@ This iteration is strictly local install and uninstall from a bundle already pre
 
 ### Main path (install)
 
-1. Operator runs `.\scripts\Install.ps1` on a Windows host with Docker Desktop running. Optional parameters select a non-default bundle (`-SourcePath`, `-Version`), opt into unsigned installs (`-AllowUnsigned`), skip the docker stage (`-SkipDocker`), or force a full reinstall (`-Force`).
-2. The script resolves the bundle root. When `-SourcePath` is supplied, it is used verbatim. Otherwise the script enumerates `artifacts/publish/`, filters directory names parseable as `[System.Version]`, sorts descending, and selects the first entry. When `-Version` is supplied, the script resolves `artifacts/publish/<Version>/` directly.
+1. Operator `cd`s into the bundle directory (produced by `Publish.ps1`) and runs `.\Install.ps1` on a Windows host with Docker Desktop running. Optional parameters include `-SourcePath` (dev/test override whose default is `$PSScriptRoot`), `-AllowUnsigned` (opt into unsigned installs), `-SkipDocker` (skip the docker stage), or `-Force` (force a full reinstall).
+2. The script resolves the bundle root from `$PSScriptRoot`. When `-SourcePath` is supplied, that value is used verbatim. The version is read from `<BundleRoot>/manifest.json` via `Get-ManifestVersion`.
 3. The script verifies that `manifest.json` exists at the bundle root and that every entry in `manifest.json` matches the file on disk by relative path, byte size, and SHA-256. The script also verifies that no files under the bundle root (excluding `manifest.json`) are missing from the manifest. Any mismatch produces a single terminating error enumerating every discrepancy.
 4. The script detects whether an install already exists for the selected version by checking the destination folder `%LOCALAPPDATA%\OpenClaw\<Version>\` and the install record at `%LOCALAPPDATA%\OpenClaw\install-record.json`. If either exists:
    - Without `-Force`: the script aborts with a remediation message.
@@ -51,19 +53,18 @@ This iteration is strictly local install and uninstall from a bundle already pre
 
 ### Negative / edge paths
 
-1. **Empty publish root**: `artifacts/publish/` contains no directory whose name parses as `[System.Version]`. The script aborts before any side effects with a message identifying the publish root searched.
-2. **`-Version` points to missing bundle**: The supplied `-Version` does not correspond to a directory under `artifacts/publish/`. The script aborts with the resolved path it attempted.
-3. **`-SourcePath` missing `manifest.json`**: The supplied `-SourcePath` exists but does not contain `manifest.json`. The script aborts with the path searched.
-4. **Manifest mismatch**: Any entry in `manifest.json` does not match the on-disk file (missing, wrong size, wrong hash), or any on-disk file under the bundle root is absent from the manifest. The script accumulates all discrepancies and throws a single terminating error listing them. No destination folder is created.
-5. **MSIX missing**: The bundle does not contain `msix/OpenClaw.MailBridge_<Version>_x64.msix`. The script aborts with the expected path.
-6. **Unsigned MSIX without `-AllowUnsigned`**: `Add-AppxPackage` fails with a trust-validation error. The script surfaces the raw error and suggests passing `-AllowUnsigned` or installing the signing certificate to `Cert:\LocalMachine\TrustedPeople`.
-7. **Same-version reinstall without `-Force`**: The destination folder already exists, or `install-record.json` exists for the same version. The script aborts with guidance to pass `-Force` or run `Uninstall.ps1` first.
-8. **Docker Desktop not running**: `docker info` exits non-zero. The script aborts with a remediation message that instructs the operator to start Docker Desktop or pass `-SkipDocker`.
-9. **Compose start failure**: `docker compose up -d` exits non-zero, or one of the two services fails to reach a healthy state within the bounded timeout. The script leaves the MSIX in place, writes no install record, and throws with the failing service name and the last observed `State` / `Health` values. The operator is instructed to run `Uninstall.ps1` or re-run with a working Docker environment.
-10. **`.env` already exists at destination**: The existing `.env` is not overwritten and no warning is emitted; the copy step is a silent no-op.
-11. **Uninstall with no record**: `install-record.json` is absent. The script aborts with a message indicating no prior install is known.
-12. **Uninstall with partial state**: One or more of the recorded artifacts (compose project, MSIX package, destination folder) is already gone. The missing-target cases are treated as success for that step; only genuine failures are collected and reported.
-13. **`-AllowUnsigned` on a host without administrator privileges and with a package containing executable content**: `Add-AppxPackage` fails. The script surfaces the raw error and documents the administrator-privilege requirement per Microsoft Learn guidance.
+1. **`-SourcePath` missing `manifest.json`**: The supplied `-SourcePath` exists but does not contain `manifest.json`. The script aborts with the path searched.
+2. **Manifest mismatch**: Any entry in `manifest.json` does not match the on-disk file (missing, wrong size, wrong hash), or any on-disk file under the bundle root is absent from the manifest. The script accumulates all discrepancies and throws a single terminating error listing them. No destination folder is created.
+3. **MSIX missing**: The bundle does not contain `msix/OpenClaw.MailBridge_<Version>_x64.msix`. The script aborts with the expected path.
+4. **Unsigned MSIX without `-AllowUnsigned`**: `Add-AppxPackage` fails with a trust-validation error. The script surfaces the raw error and suggests passing `-AllowUnsigned` or installing the signing certificate to `Cert:\LocalMachine\TrustedPeople`.
+5. **Same-version reinstall without `-Force`**: The destination folder already exists, or `install-record.json` exists for the same version. The script aborts with guidance to pass `-Force` or run `Uninstall.ps1` first.
+6. **Docker Desktop not running**: `docker info` exits non-zero. The script aborts with a remediation message that instructs the operator to start Docker Desktop or pass `-SkipDocker`.
+7. **Compose start failure**: `docker compose up -d` exits non-zero, or one of the two services fails to reach a healthy state within the bounded timeout. The script leaves the MSIX in place, writes no install record, and throws with the failing service name and the last observed `State` / `Health` values. The operator is instructed to run `Uninstall.ps1` or re-run with a working Docker environment.
+8. **`.env` already exists at destination**: The existing `.env` is not overwritten and no warning is emitted; the copy step is a silent no-op.
+9. **Uninstall with no record**: `install-record.json` is absent. The script aborts with a message indicating no prior install is known.
+10. **Uninstall with partial state**: One or more of the recorded artifacts (compose project, MSIX package, destination folder) is already gone. The missing-target cases are treated as success for that step; only genuine failures are collected and reported.
+11. **`-AllowUnsigned` on a host without administrator privileges and with a package containing executable content**: `Add-AppxPackage` fails. The script surfaces the raw error and documents the administrator-privilege requirement per Microsoft Learn guidance.
+12. **Bundle root missing `manifest.json`**: `-SourcePath` or `$PSScriptRoot` points to a directory without `manifest.json` at its root. The script aborts with the path searched.
 
 ## Inputs / Outputs
 
@@ -71,8 +72,7 @@ This iteration is strictly local install and uninstall from a bundle already pre
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `-SourcePath` | `string` | `''` | Absolute or relative path to a specific bundle root. When present, overrides auto-detection. |
-| `-Version` | `string` | `''` | 4-part version string. When present and `-SourcePath` is empty, selects `artifacts/publish/<Version>/`. |
+| `-SourcePath` | `string` | `$PSScriptRoot` | Absolute or relative path to a specific bundle root. Default is `$PSScriptRoot`; dev/test override. |
 | `-AllowUnsigned` | `switch` | `$false` | Passes `-AllowUnsigned` to `Add-AppxPackage`. Required for bundles produced with `Publish.ps1 -SkipSign`. |
 | `-SkipDocker` | `switch` | `$false` | Skips the Docker readiness check, compose up, and health polling. The install record captures `skipDocker = true` so uninstall mirrors the skip. |
 | `-Force` | `switch` | `$false` | Performs a full uninstall-then-install against any prior install for the same version. |
@@ -123,26 +123,24 @@ This iteration is strictly local install and uninstall from a bundle already pre
 ### Script invocations
 
 ```powershell
-# Install the newest bundle under artifacts/publish/ (signed MSIX, docker stage included).
-.\scripts\Install.ps1
+# Install the bundle whose directory the script lives in (signed MSIX, docker stage included).
+cd artifacts/publish/<version>
+.\Install.ps1
 
-# Install a specific bundle directory explicitly.
-.\scripts\Install.ps1 -SourcePath 'C:\releases\openclaw\1.2.3.0'
-
-# Install a specific version from the default publish root.
-.\scripts\Install.ps1 -Version '1.2.3.0'
+# Install a specific bundle directory explicitly (dev/test override of $PSScriptRoot).
+.\Install.ps1 -SourcePath 'C:\releases\openclaw\1.2.3.0'
 
 # Install an unsigned dev bundle produced with Publish.ps1 -SkipSign.
-.\scripts\Install.ps1 -AllowUnsigned
+.\Install.ps1 -AllowUnsigned
 
 # Install without the docker stage.
-.\scripts\Install.ps1 -SkipDocker
+.\Install.ps1 -SkipDocker
 
 # Force reinstall over an existing install of the same version.
-.\scripts\Install.ps1 -Force
+.\Install.ps1 -Force
 
 # Uninstall the currently recorded install.
-.\scripts\Uninstall.ps1
+.\Uninstall.ps1
 ```
 
 ### Exported helper module
@@ -151,8 +149,8 @@ This iteration is strictly local install and uninstall from a bundle already pre
 
 | Function | Purpose |
 |---|---|
-| `Find-NewestPublishVersion` | Enumerate subdirectories of the publish root, filter those parseable as `[System.Version]`, return the highest. Pure; throws on empty. |
-| `Test-ManifestIntegrity` | Read `manifest.json` from a bundle root, verify every entry against the file on disk by relative path, size, and SHA-256, and verify every on-disk file (excluding `manifest.json`) is listed. Throws a single terminating error enumerating all discrepancies. |
+| `Get-ManifestVersion` | Reads `manifest.json` at a bundle root and returns the top-level `version` field. Throws on missing or unparseable. |
+| `Test-ManifestIntegrity` | Read `manifest.json` from a bundle root using the `{ version, files }` schema, verify every entry in `files` against the file on disk by relative path, size, and SHA-256, and verify every on-disk file (excluding `manifest.json`) is listed. Throws a single terminating error enumerating all discrepancies, including a schema-violation message when the top-level `version` or `files` fields are missing. |
 | `Copy-BundleContents` | Copy `executables/` and `docker/` subtrees from a bundle root to a destination root, preserving relative paths. |
 | `Initialize-DotEnv` | Copy `.env.example` to `.env` under a destination docker directory only when `.env` is absent. |
 | `Invoke-MsixInstall` | Wrap `Add-AppxPackage -Path <msix-path>` with optional `-AllowUnsigned`. |
@@ -173,7 +171,7 @@ The scheduled-task install scripts (`scripts/install-mailbridge.ps1`, `scripts/u
 
 ### Data flow (install)
 
-1. The script selects the bundle root and verifies manifest integrity (read-only).
+1. The script resolves the bundle root from `$PSScriptRoot` (or `-SourcePath` override), reads the version via `Get-ManifestVersion`, and verifies manifest integrity (read-only).
 2. The script creates `%LOCALAPPDATA%\OpenClaw\<Version>\` and copies the `executables/` and `docker/` subtrees into it.
 3. The script copies `.env.example` to `.env` under the destination `docker/` directory when `.env` is absent.
 4. The script invokes `Add-AppxPackage` against the bundle's MSIX, then captures `PackageFullName` via `Get-AppxPackage -Name 'OpenClaw.MailBridge'`.
@@ -193,6 +191,8 @@ The scheduled-task install scripts (`scripts/install-mailbridge.ps1`, `scripts/u
 - `%LOCALAPPDATA%\OpenClaw\install-record.json` persists until uninstall; single-record JSON overwritten on each successful install.
 - `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` is never touched by either script.
 - `%LOCALAPPDATA%\OpenClaw\<Version>\docker\.env` is written once per destination (when absent) and never overwritten.
+
+Bundle `manifest.json` schema is `{ "version": "<4-part>", "files": [ { "path", "size", "sha256" } ] }`. The top-level `version` field matches the value returned by `Get-ManifestVersion`. `Install.ps1`, `Uninstall.ps1`, and `Install.Helpers.psm1` are included in `files` because they are staged into the bundle root by `Publish.ps1`.
 
 ### Migration / backfill
 
@@ -223,6 +223,8 @@ None. Operators who previously performed the install steps manually may continue
 | `tests/scripts/Install.Tests.ps1` | Pester v5 tests for `Install.ps1` stage ordering and parameter binding via dot-source with full mock injection. |
 | `tests/scripts/Uninstall.Tests.ps1` | Pester v5 tests for `Uninstall.ps1` stage ordering, failure collection, and missing-record behavior. |
 
+`Install.ps1`, `Uninstall.ps1`, and `Install.Helpers.psm1` are additionally copied into every bundle root by `Publish.ps1`, and the install script is executed from the bundle root via `$PSScriptRoot` rather than from the repo's `scripts/` directory.
+
 ### Scope — modified files
 
 | File | Change |
@@ -248,7 +250,7 @@ Helpers are designed to be individually mockable:
 
 | Helper | Mock target |
 |---|---|
-| `Find-NewestPublishVersion` | `Mock Get-ChildItem` |
+| `Get-ManifestVersion` | `Mock Get-Content`, `Mock Test-Path` |
 | `Test-ManifestIntegrity` | `Mock Get-FileHash`, `Mock Get-Item` |
 | `Copy-BundleContents` | `Mock New-Item`, `Mock Copy-Item` |
 | `Initialize-DotEnv` | `Mock Test-Path`, `Mock Copy-Item` |
@@ -270,7 +272,7 @@ All new files land in a single feature branch (`feature/bundle-install-script-36
 
 ## Definition of Done
 
-- [x] `scripts/Install.ps1` exists and accepts `-SourcePath`, `-Version`, `-AllowUnsigned`, `-SkipDocker`, `-Force`.
+- [x] `scripts/Install.ps1` exists and accepts `-SourcePath`, `-AllowUnsigned`, `-SkipDocker`, `-Force`. `-Version` is NOT a parameter (removed in refinement).
 - [x] `scripts/Uninstall.ps1` exists and consumes `install-record.json` with no parameters.
 - [x] `scripts/Install.Helpers.psm1` exists and exports the functions listed in the API / CLI Surface section.
 - [x] Running `.\scripts\Install.ps1` on a clean host with a signed bundle under `artifacts/publish/` installs the MSIX, starts the docker stack, and writes `install-record.json`.
@@ -282,6 +284,9 @@ All new files land in a single feature branch (`feature/bundle-install-script-36
 - [x] Pester coverage >= 90% on new lines in `scripts/Install.ps1`, `scripts/Uninstall.ps1`, and `scripts/Install.Helpers.psm1`. Repo-wide line coverage remains >= 80%.
 - [x] PoshQC suite (format -> analyze -> test) passes on all new and modified PowerShell files.
 - [x] `README.md` and `docs/mailbridge-runbook.md` document the new install and uninstall flow without removing the scheduled-task path content.
+- [x] `Publish.ps1` copies `Install.ps1`, `Uninstall.ps1`, and `Install.Helpers.psm1` into every bundle root.
+- [x] `manifest.json` uses the `{ version, files }` schema and includes the install scripts in `files`.
+- [x] Running `.\Install.ps1` from a bundle root (with `$PSScriptRoot` = that bundle) installs the bundle without any `-Version` or auto-detect parameter.
 
 ## Seeded Test Conditions (from potential)
 
@@ -289,13 +294,14 @@ All new files land in a single feature branch (`feature/bundle-install-script-36
 - [x] `.\scripts\Install.ps1 -SkipDocker` installs the MSIX only and records `skipDocker = true`; `Uninstall.ps1` skips the compose-down step.
 - [x] `.\scripts\Install.ps1 -AllowUnsigned` installs a bundle produced with `Publish.ps1 -SkipSign`.
 - [x] `manifest.json` hash mismatch aborts install before any destination folder is created.
-- [x] `artifacts/publish/` empty of parseable version directories fails fast with a clear error.
+- [x] Running `.\Install.ps1` from a directory without `manifest.json` fails fast with a clear error naming the directory searched.
 - [x] Docker Desktop not running with the docker stage enabled fails fast with a remediation message.
 - [x] `.\scripts\Uninstall.ps1` on a healthy install removes MSIX, stops compose, removes destination folder, deletes install record, and preserves `%LOCALAPPDATA%\OpenClaw\MailBridge\`.
 - [x] `.\scripts\Install.ps1 -Force` performs an implicit uninstall before reinstall.
 - [x] Existing `.env` at destination is not overwritten on re-install.
 - [x] Pester coverage on new lines >= 90%, repo-wide line coverage >= 80%.
 - [x] PoshQC format and analyze produce zero diagnostics on new PowerShell files.
+- [x] The bundle produced by `Publish.ps1` contains `Install.ps1`, `Uninstall.ps1`, `Install.Helpers.psm1` at the bundle root and the manifest lists them under `files`.
 
 ## Non-Goals
 
@@ -313,7 +319,7 @@ All new files land in a single feature branch (`feature/bundle-install-script-36
 
 These items were raised during research or scoping and resolved by the feature owner. They are binding inputs for the planner.
 
-- **Newest-bundle detection**: Auto-detect the newest `artifacts/publish/<version>/` by `[System.Version]` ordering. `-SourcePath` overrides.
+- **Newest-bundle detection**: Bundle root = `$PSScriptRoot` (the directory the install script lives in). `-SourcePath` is a dev/test override whose default is `$PSScriptRoot`. Auto-detect of `artifacts/publish/<version>/` is retired.
 - **Destination**: `%LOCALAPPDATA%\OpenClaw\<version>\`.
 - **Compose invocation**: Copy `docker/` subtree to destination, then run `docker compose --project-name openclaw --project-directory <dest-docker-dir> -f docker-compose.yml up -d openclaw-core openclaw-agent`; verify both services reach running / healthy within a bounded timeout.
 - **Install record**: Single-record JSON at `%LOCALAPPDATA%\OpenClaw\install-record.json`, overwritten per install, with the schema listed in Data & State.
@@ -327,6 +333,8 @@ These items were raised during research or scoping and resolved by the feature o
 ## Open Questions (for planner)
 
 The following items are delegated to the planner's discretion per research. The planner must record its choice and rationale in `plan.<timestamp>.md`.
+
+> Refinement 2026-04-19: Q1 (health-poll timeout/interval defaults 90s/3s) and Q2 (administrator precheck for `-AllowUnsigned`) are preserved from the original plan and are not reopened by this refinement.
 
 1. **Compose health-poll timeout and interval**: Research recommends a bounded loop of up to 60 seconds polling every 5 seconds. The planner may retain that baseline or tune it based on observed `start_period` values in `docker-compose.yml` (`openclaw-core` uses `start_period: 20s`, `openclaw-agent` uses `start_period: 30s`). The chosen values must be documented in the script header and be observable to the operator via progress output.
 2. **Administrator-privilege precheck for `-AllowUnsigned`**: Whether `Install.ps1` performs a proactive check that the current process is elevated before invoking `Add-AppxPackage -AllowUnsigned`, and the wording of the resulting failure message, is left to the planner. Microsoft Learn requires administrator privileges for `-AllowUnsigned` on packages containing executable content; the planner decides whether to precheck (fail fast) or rely on the `Add-AppxPackage` error surface.

@@ -472,55 +472,55 @@ For the scripted bundle flow that automates the compose stage (plus the MSIX ins
 
 This path consumes a release bundle produced by `scripts/Publish.ps1` at `artifacts/publish/<version>/` and installs the MSIX plus the docker stack on the local Windows host in a single command. It does not replace Path A, Path B, or Path C; it layers on top of them.
 
+Path D no longer requires the operator to locate a specific version. `Publish.ps1` stages `Install.ps1`, `Uninstall.ps1`, and `Install.Helpers.psm1` inside every bundle. Operators `cd` into the bundle directory (either produced locally by `Publish.ps1` or downloaded and extracted to a directory on the host) and run `.\Install.ps1` with no arguments. The install script self-locates the bundle via `$PSScriptRoot`.
+
 ### Prerequisites
 
 - PowerShell 7 or newer (the scripts declare `#Requires -Version 7.0`).
 - Docker Desktop installed and running (required when the docker stage is enabled).
-- A bundle present at `artifacts/publish/<version>/` produced by `scripts/Publish.ps1`.
+- A bundle directory on disk produced by `scripts/Publish.ps1` (for example under `artifacts/publish/<version>/`, or a copy of that directory on the target host).
 - An administrator PowerShell session when `-AllowUnsigned` is used on a package containing executable content (per Microsoft Learn's unsigned-package guidance). Omit `-AllowUnsigned` on signed bundles to avoid the elevation requirement.
 
 ### Command invocations
 
-Install the newest bundle under `artifacts/publish/` with signed MSIX and docker stage enabled:
+Install the bundle whose directory the script lives in (signed MSIX, docker stage enabled):
 
 ```powershell
-.\scripts\Install.ps1
+cd artifacts/publish/<version>
+.\Install.ps1
 ```
 
-Install from an explicit bundle path:
+Install from an explicit bundle path (dev/test override of the default `$PSScriptRoot`):
 
 ```powershell
-.\scripts\Install.ps1 -SourcePath 'C:\releases\openclaw\1.2.3.0'
-```
-
-Install a specific version from the default publish root:
-
-```powershell
-.\scripts\Install.ps1 -Version '1.2.3.0'
+.\Install.ps1 -SourcePath 'C:\releases\openclaw\1.2.3.0'
 ```
 
 Install an unsigned development bundle produced with `Publish.ps1 -SkipSign`:
 
 ```powershell
-.\scripts\Install.ps1 -AllowUnsigned
+cd artifacts/publish/<version>
+.\Install.ps1 -AllowUnsigned
 ```
 
 Install without the docker stage (MSIX only):
 
 ```powershell
-.\scripts\Install.ps1 -SkipDocker
+cd artifacts/publish/<version>
+.\Install.ps1 -SkipDocker
 ```
 
 Force reinstall over an existing install of the same version (full uninstall-then-install):
 
 ```powershell
-.\scripts\Install.ps1 -Force
+cd artifacts/publish/<version>
+.\Install.ps1 -Force
 ```
 
 Uninstall the currently recorded install (compose down, remove MSIX, remove destination, delete install record):
 
 ```powershell
-.\scripts\Uninstall.ps1
+.\Uninstall.ps1
 ```
 
 ### Outputs
@@ -637,3 +637,4 @@ Record these checks separately after the scripted suites pass:
 | `No prior install recorded` when running `Uninstall.ps1` | `%LOCALAPPDATA%\OpenClaw\install-record.json` is absent | Confirm that an install was performed via `Install.ps1`. If the install was performed via Path A or Path B, use the matching uninstall path instead (`uninstall-mailbridge.ps1` for Path A; `Get-AppxPackage ... | Remove-AppxPackage` for Path B). |
 | `Docker Desktop is not running or not installed. Start Docker Desktop and retry, or pass -SkipDocker to skip the container stage.` when running `Install.ps1` | `docker info` returned a non-zero exit code | Start Docker Desktop and rerun `Install.ps1`. If a docker-free install is acceptable, pass `-SkipDocker`; `Uninstall.ps1` later honors the recorded `skipDocker = true` and skips the compose-down step. |
 | `Manifest integrity check failed for bundle '<path>'. Discrepancies: ...` when running `Install.ps1` | One or more files under the bundle root do not match `manifest.json` by size or SHA-256, or on-disk files are absent from the manifest | Re-publish the bundle with `scripts\Publish.ps1` and retry. No destination folder is created when manifest integrity fails, so the host is left in a clean pre-install state. |
+| `manifest.json not found at '<path>\manifest.json'. Ensure Install.ps1 is executed from a bundle directory produced by Publish.ps1...` when running `Install.ps1` | The script resolved the bundle root from `$PSScriptRoot` (or `-SourcePath`) but no `manifest.json` sits at that root | Ensure the script is being run from the bundle directory produced by `Publish.ps1` (i.e. `cd artifacts/publish/<version>; .\Install.ps1`), not from the repo's `scripts/` directory. Pass `-SourcePath` only to override for dev/test scenarios. |

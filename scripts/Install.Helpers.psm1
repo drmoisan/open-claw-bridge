@@ -9,37 +9,44 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Find-NewestPublishVersion {
+function Get-ManifestVersion {
     <#
     .SYNOPSIS
-        Returns the highest [System.Version] subdirectory under a publish root.
+        Reads <BundleRoot>/manifest.json and returns its top-level version.
     .DESCRIPTION
-        Returns a pscustomobject with Version and Path. Throws when no
-        parseable directory exists; the thrown message names $PublishRoot.
+        The refinement 2026-04-19 manifest schema is { version, files }. This
+        helper returns the version field as a string after asserting the file
+        exists and the value parses as a 4-part [System.Version]. Throws with
+        a specific message when the manifest is missing, lacks the version
+        field, or has an unparseable value.
     #>
     [CmdletBinding()]
-    [OutputType([pscustomobject])]
+    [OutputType([string])]
     param(
         [Parameter(Mandatory = $true)]
-        [string]$PublishRoot
+        [string]$BundleRoot
     )
 
-    $candidates = Get-ChildItem -LiteralPath $PublishRoot -ErrorAction Stop |
-        Where-Object { $_.PSIsContainer } |
-            ForEach-Object {
-                $v = $null
-                if ([System.Version]::TryParse($_.Name, [ref]$v)) {
-                    [pscustomobject]@{ Version = $v; Path = $_.FullName }
-                }
-            } |
-                Sort-Object -Property Version -Descending
-
-    $winner = @($candidates) | Select-Object -First 1
-    if (-not $winner) {
-        throw "No version-named subdirectory found under '$PublishRoot'. Expected at least one folder whose name parses as [System.Version] (for example '1.2.3.0')."
+    $manifestPath = Join-Path $BundleRoot 'manifest.json'
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        throw "manifest.json not found at '$manifestPath'. The bundle at '$BundleRoot' is missing its manifest."
     }
 
-    return $winner
+    $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+    $hasVersion = $manifest.PSObject.Properties.Name -contains 'version'
+    if (-not $hasVersion) {
+        throw "manifest.json at '$manifestPath' is missing the top-level 'version' field. The bundle manifest must use the { version, files } schema."
+    }
+    $versionValue = [string]$manifest.version
+    if ([string]::IsNullOrWhiteSpace($versionValue)) {
+        throw "manifest.json at '$manifestPath' has an empty 'version' field."
+    }
+    $parsed = $null
+    if (-not [System.Version]::TryParse($versionValue, [ref]$parsed)) {
+        throw "manifest.json at '$manifestPath' has an unparseable 'version' value '$versionValue'. Expected a 4-part [System.Version]."
+    }
+
+    return $versionValue
 }
 
 function Test-ManifestIntegrity {
@@ -49,7 +56,11 @@ function Test-ManifestIntegrity {
         size, and SHA-256, and that no on-disk file is absent from the manifest.
     .DESCRIPTION
         Accumulates every discrepancy into a single array and throws one
-        terminating error listing all of them when non-empty.
+        terminating error listing all of them when non-empty. Asserts the
+        post-refinement schema { version, files }: throws with a schema-
+        violation message when either top-level field is missing. The top-
+        level version value itself is not compared against any external value
+        here; that cross-check is the orchestrator's responsibility.
     #>
     [CmdletBinding()]
     param(
@@ -63,6 +74,11 @@ function Test-ManifestIntegrity {
     }
 
     $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+
+    $topNames = $manifest.PSObject.Properties.Name
+    if (($topNames -notcontains 'version') -or ($topNames -notcontains 'files')) {
+        throw "manifest.json at '$manifestPath' does not conform to the expected { version, files } schema (refinement 2026-04-19). Top-level fields observed: $($topNames -join ', ')."
+    }
 
     $discrepancies = [System.Collections.ArrayList]::new()
     $manifestRelative = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
@@ -351,7 +367,7 @@ function Wait-ComposeHealthy {
     }
     $failing = $lastState.Keys |
         Where-Object { $lastState[$_].State -ne 'running' -or (-not [string]::IsNullOrEmpty($lastState[$_].Health) -and $lastState[$_].Health -ne 'healthy') } |
-            Select-Object -First 1
+        Select-Object -First 1
     if (-not $failing) {
         $failing = 'openclaw-core'
     }
@@ -433,7 +449,7 @@ function Read-InstallRecord {
 }
 
 Export-ModuleMember -Function `
-    'Find-NewestPublishVersion', `
+    'Get-ManifestVersion', `
     'Test-ManifestIntegrity', `
     'Copy-BundleContents', `
     'Initialize-DotEnv', `

@@ -37,11 +37,14 @@ Describe 'scripts/Install.ps1' {
 
     BeforeEach {
         $global:InstallTestCalls.Clear()
+        $global:LastGetManifestVersionBundleRoot = $null
 
         # Helper mocks (module-exported functions intercepted at the caller's scope).
-        Mock Find-NewestPublishVersion {
-            [void]$global:InstallTestCalls.Add('Find-NewestPublishVersion')
-            [pscustomobject]@{ Version = [System.Version]'1.2.3.0'; Path = 'C:\repo\artifacts\publish\1.2.3.0' }
+        Mock Get-ManifestVersion {
+            param($BundleRoot)
+            [void]$global:InstallTestCalls.Add('Get-ManifestVersion')
+            $global:LastGetManifestVersionBundleRoot = $BundleRoot
+            '1.2.3.0'
         }
         Mock Test-ManifestIntegrity { [void]$global:InstallTestCalls.Add('Test-ManifestIntegrity') }
         Mock Test-DockerAvailable { [void]$global:InstallTestCalls.Add('Test-DockerAvailable'); $true }
@@ -90,18 +93,25 @@ Describe 'scripts/Install.ps1' {
     }
 
     Context 'parameter binding' {
-        It 'accepts all five parameters with defaults' {
+        It 'accepts the refinement parameter set with defaults' {
             { & $script:ScriptPath -WhatIf } | Should -Not -Throw
         }
 
-        It '-SourcePath overrides the newest-version auto-detect' {
+        It '-SourcePath overrides the default $PSScriptRoot' {
             & $script:ScriptPath -SourcePath 'C:\custom\bundle' | Out-Null
+            # Find-NewestPublishVersion has been retired and must never be called.
             ($global:InstallTestCalls -contains 'Find-NewestPublishVersion') | Should -BeFalse
+            $global:InstallTestCalls[0] | Should -Be 'Get-ManifestVersion'
+            $global:LastGetManifestVersionBundleRoot | Should -Be 'C:\custom\bundle'
         }
 
-        It 'rejects an invalid 3-part -Version (ValidatePattern)' {
-            { & $script:ScriptPath -Version '1.2.3' } |
-                Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
+        It 'defaults -SourcePath to $PSScriptRoot when not supplied' {
+            & $script:ScriptPath | Out-Null
+            # The script resolves $PSScriptRoot to the directory scripts/Install.ps1
+            # lives in (the repo scripts/ folder during tests). The orchestrator's
+            # $PSScriptRoot is always the fully resolved path.
+            $expected = (Resolve-Path (Split-Path -Path $script:ScriptPath -Parent)).Path
+            $global:LastGetManifestVersionBundleRoot | Should -Be $expected
         }
     }
 
@@ -132,7 +142,7 @@ Describe 'scripts/Install.ps1' {
             & $script:ScriptPath | Out-Null
             $helperOrder = $global:InstallTestCalls | Where-Object { $_ -ne 'New-Item' -and $_ -ne 'Remove-Item' }
             $expected = @(
-                'Find-NewestPublishVersion',
+                'Get-ManifestVersion',
                 'Test-ManifestIntegrity',
                 'Test-DockerAvailable',
                 'Copy-BundleContents',
@@ -220,15 +230,6 @@ Describe 'scripts/Install.ps1' {
         }
     }
 
-    Context '-Version path' {
-        It '-Version overrides auto-detection but respects ValidatePattern' {
-            & $script:ScriptPath -Version '2.0.0.0' | Out-Null
-            # Find-NewestPublishVersion is not invoked when -Version is supplied.
-            $global:InstallTestCalls -contains 'Find-NewestPublishVersion' | Should -BeFalse
-            $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeTrue
-        }
-    }
-
     Context 'manifest integrity failure' {
         It 'throws and never invokes helpers after Test-ManifestIntegrity' {
             Mock Test-ManifestIntegrity {
@@ -249,6 +250,39 @@ Describe 'scripts/Install.ps1' {
             }
             { & $script:ScriptPath } | Should -Throw -ExpectedMessage '*-SkipDocker*'
             $global:InstallTestCalls -contains 'Copy-BundleContents' | Should -BeFalse
+        }
+    }
+
+    Context 'bundle-root self-location' {
+        It 'computes $BundleRoot = $PSScriptRoot when -SourcePath is not supplied and passes that value to Get-ManifestVersion and Test-ManifestIntegrity' {
+            $global:LastTestManifestBundleRoot = $null
+            Mock Test-ManifestIntegrity {
+                param($BundleRoot)
+                [void]$global:InstallTestCalls.Add('Test-ManifestIntegrity')
+                $global:LastTestManifestBundleRoot = $BundleRoot
+            }
+            & $script:ScriptPath | Out-Null
+            $expected = (Resolve-Path (Split-Path -Path $script:ScriptPath -Parent)).Path
+            $global:LastGetManifestVersionBundleRoot | Should -Be $expected
+            $global:LastTestManifestBundleRoot | Should -Be $expected
+        }
+
+        It 'throws with the bundle root path in the message when manifest.json is absent' {
+            # Override the BeforeEach Test-Path mock so the bundle-selection guard
+            # fires on the missing manifest.json. The orchestrator throws BEFORE
+            # any helper runs.
+            $missingBundle = 'C:\nowhere\empty-bundle'
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -eq (Join-Path $missingBundle 'manifest.json')) { return $false }
+                if ($LiteralPath -like '*install-record.json') { return $false }
+                $true
+            }
+            { & $script:ScriptPath -SourcePath $missingBundle } |
+                Should -Throw -ExpectedMessage "*empty-bundle*manifest.json*"
+            # The early abort runs before Get-ManifestVersion / Test-ManifestIntegrity.
+            $global:InstallTestCalls -contains 'Get-ManifestVersion' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
         }
     }
 

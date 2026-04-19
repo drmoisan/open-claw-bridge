@@ -78,6 +78,10 @@ Describe 'scripts/Publish.ps1' {
             $entry = [pscustomobject]@{ Name = 'Invoke-SignTool'; Args = [pscustomobject]@{ MsixPath = $MsixPath; CertThumbprint = $CertThumbprint } }
             [void]$global:PublishTestCalls.Add($entry)
         }
+        Mock Copy-InstallScriptsIntoBundle {
+            $entry = [pscustomobject]@{ Name = 'Copy-InstallScriptsIntoBundle'; Args = [pscustomobject]@{ RepoRoot = $RepoRoot; BundleRoot = $BundleRoot } }
+            [void]$global:PublishTestCalls.Add($entry)
+        }
         Mock Write-PublishManifest {
             $entry = [pscustomobject]@{ Name = 'Write-PublishManifest'; Args = [pscustomobject]@{ BundleRoot = $BundleRoot; Version = $Version } }
             [void]$global:PublishTestCalls.Add($entry)
@@ -115,9 +119,26 @@ Describe 'scripts/Publish.ps1' {
                 'Invoke-DotnetPublish', 'Invoke-DotnetPublish', 'Invoke-DotnetPublish', 'Invoke-DotnetPublish',
                 'Copy-DockerArtifact',
                 'Invoke-LayoutAssembly', 'Invoke-VersionStamp', 'Invoke-MakePri', 'Invoke-MakeAppx',
+                'Copy-InstallScriptsIntoBundle',
                 'Write-PublishManifest'
             )
             ($names -join ',') | Should -Be ($expectedPrefix -join ',')
+        }
+        It 'invokes Copy-InstallScriptsIntoBundle exactly once between Invoke-MakeAppx/Invoke-SignTool and Write-PublishManifest' {
+            & $script:ScriptPath -Version '1.2.3.0' -CertThumbprint 'ABCDEF0123' | Out-Null
+
+            $stageCalls = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Copy-InstallScriptsIntoBundle' })
+            $stageCalls.Count | Should -Be 1
+
+            $names = @($global:PublishTestCalls | ForEach-Object { $_.Name })
+            $idxMakeAppx = [array]::IndexOf($names, 'Invoke-MakeAppx')
+            $idxSign = [array]::IndexOf($names, 'Invoke-SignTool')
+            $idxStage = [array]::IndexOf($names, 'Copy-InstallScriptsIntoBundle')
+            $idxManifest = [array]::IndexOf($names, 'Write-PublishManifest')
+
+            $idxStage | Should -BeGreaterThan $idxMakeAppx
+            $idxStage | Should -BeGreaterThan $idxSign
+            $idxManifest | Should -BeGreaterThan $idxStage
         }
         It 'stamps AppxManifest.xml after staging layout assembly so the manifest is not deleted before makeappx' {
             & $script:ScriptPath -Version '1.2.3.0' -SkipSign | Out-Null
@@ -136,9 +157,11 @@ Describe 'scripts/Publish.ps1' {
             $names = @($global:PublishTestCalls | ForEach-Object { $_.Name })
             $idxMakeAppx = [array]::IndexOf($names, 'Invoke-MakeAppx')
             $idxSign = [array]::IndexOf($names, 'Invoke-SignTool')
+            $idxStage = [array]::IndexOf($names, 'Copy-InstallScriptsIntoBundle')
             $idxManifest = [array]::IndexOf($names, 'Write-PublishManifest')
             $idxSign | Should -BeGreaterThan $idxMakeAppx
-            $idxManifest | Should -BeGreaterThan $idxSign
+            $idxStage | Should -BeGreaterThan $idxSign
+            $idxManifest | Should -BeGreaterThan $idxStage
         }
     }
 

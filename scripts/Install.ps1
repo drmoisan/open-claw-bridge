@@ -7,6 +7,11 @@
     compose stack, and writes a single-record install manifest at
     %LOCALAPPDATA%\OpenClaw\install-record.json.
 
+    The script self-locates the bundle via $PSScriptRoot. The install scripts
+    (Install.ps1, Uninstall.ps1, Install.Helpers.psm1) ship INSIDE every
+    bundle produced by Publish.ps1, so operators `cd` into the bundle
+    directory and run `.\Install.ps1` with no arguments.
+
 .DESCRIPTION
     Planner decisions captured in this header:
       Q1  Wait-ComposeHealthy defaults to -TimeoutSeconds 90 and
@@ -24,12 +29,9 @@
     itself stays thin and under 500 lines.
 
 .PARAMETER SourcePath
-    Absolute or relative path to a specific bundle root. When supplied,
-    overrides newest-version auto-detection and -Version.
-
-.PARAMETER Version
-    4-part version. When -SourcePath is empty and -Version is supplied, the
-    script installs 'artifacts/publish/<Version>/'. Defaults to empty (auto).
+    Absolute or relative path to the bundle root. Default is $PSScriptRoot
+    (the directory the script lives in). Production installs rely on the
+    default; -SourcePath is a dev/test override.
 
 .PARAMETER AllowUnsigned
     Passes -AllowUnsigned to Add-AppxPackage. Required for bundles produced
@@ -46,20 +48,18 @@
     delete install record).
 
 .EXAMPLE
-    .\scripts\Install.ps1
-    Installs the newest bundle under artifacts/publish/ with signed MSIX and
-    docker stage.
+    cd artifacts/publish/1.2.3.0
+    .\Install.ps1
+    Installs the bundle whose directory the script lives in (signed MSIX,
+    docker stage included).
 
 .EXAMPLE
-    .\scripts\Install.ps1 -Version '1.2.3.0' -SkipDocker
-    Installs only the MSIX for the named version; records skipDocker = true.
+    .\Install.ps1 -SkipDocker
+    Installs only the MSIX; records skipDocker = true.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$SourcePath = '',
-
-    [ValidatePattern('^(\d+\.\d+\.\d+\.\d+)?$')]
-    [string]$Version = '',
+    [string]$SourcePath = $PSScriptRoot,
 
     [switch]$AllowUnsigned,
 
@@ -95,30 +95,16 @@ if ($MyInvocation.InvocationName -ne '.') {
         }
     }
 
-    # Stage 1: bundle selection (precedence: -SourcePath, -Version, auto-detect).
-    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-    $PublishRoot = Join-Path $RepoRoot 'artifacts/publish'
-
-    if (-not [string]::IsNullOrEmpty($SourcePath)) {
-        $BundleRoot = $SourcePath
-        if (-not (Test-Path -LiteralPath $BundleRoot)) {
-            throw "Bundle not found at -SourcePath '$BundleRoot'."
-        }
+    # Stage 1: bundle selection. Bundle root = -SourcePath (defaults to
+    # $PSScriptRoot, the directory this script lives in after it has been
+    # staged into the bundle by Publish.ps1).
+    $BundleRoot = $SourcePath
+    $BundleManifestPath = Join-Path $BundleRoot 'manifest.json'
+    if (-not (Test-Path -LiteralPath $BundleManifestPath)) {
+        throw "manifest.json not found at '$BundleManifestPath'. Ensure Install.ps1 is executed from a bundle directory produced by Publish.ps1 (or pass -SourcePath to a valid bundle root)."
     }
-    elseif (-not [string]::IsNullOrEmpty($Version)) {
-        $BundleRoot = Join-Path $PublishRoot $Version
-        if (-not (Test-Path -LiteralPath $BundleRoot)) {
-            throw "Bundle for -Version '$Version' not found at '$BundleRoot'."
-        }
-    }
-    else {
-        $BundleRoot = (Find-NewestPublishVersion -PublishRoot $PublishRoot).Path
-    }
-    Write-Information "[install:select] Selected bundle root $BundleRoot" -InformationAction Continue
-
-    # Resolve the version segment from the bundle root's leaf name (used for
-    # destination path and MSIX filename).
-    $ResolvedVersion = if (-not [string]::IsNullOrEmpty($Version)) { $Version } else { (Split-Path -Path $BundleRoot -Leaf) }
+    $ResolvedVersion = Get-ManifestVersion -BundleRoot $BundleRoot
+    Write-Information "[install:select] Selected bundle root $BundleRoot (version $ResolvedVersion)" -InformationAction Continue
 
     # Stage 2: manifest integrity.
     Write-Information '[install:verify] Validating manifest integrity' -InformationAction Continue

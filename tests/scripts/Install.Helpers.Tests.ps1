@@ -31,7 +31,7 @@ Describe 'Install.Helpers.psm1' {
         It 'exports exactly the helpers currently implemented (progressive batches)' {
             $exported = Get-Command -Module Install.Helpers | Select-Object -ExpandProperty Name | Sort-Object
             $expected = @(
-                'Find-NewestPublishVersion',
+                'Get-ManifestVersion',
                 'Test-ManifestIntegrity',
                 'Copy-BundleContents',
                 'Initialize-DotEnv',
@@ -49,41 +49,34 @@ Describe 'Install.Helpers.psm1' {
         }
     }
 
-    Context 'Find-NewestPublishVersion' {
-        It 'returns the highest-version directory when multiple parseable names exist' {
-            Mock -ModuleName Install.Helpers Get-ChildItem {
-                @(
-                    [pscustomobject]@{ Name = '1.0.0.0'; FullName = 'C:\pub\1.0.0.0'; PSIsContainer = $true },
-                    [pscustomobject]@{ Name = '1.2.3.0'; FullName = 'C:\pub\1.2.3.0'; PSIsContainer = $true },
-                    [pscustomobject]@{ Name = '0.0.0.1'; FullName = 'C:\pub\0.0.0.1'; PSIsContainer = $true }
-                )
-            }
-            $result = Find-NewestPublishVersion -PublishRoot 'C:\pub'
-            $result.Version.ToString() | Should -Be '1.2.3.0'
-            $result.Path | Should -Be 'C:\pub\1.2.3.0'
+    Context 'Get-ManifestVersion' {
+        BeforeEach {
+            $script:Bundle = 'C:\bundle'
+            $script:ManifestPath = Join-Path $script:Bundle 'manifest.json'
+            Mock -ModuleName Install.Helpers Test-Path { $true }
         }
-
-        It 'filters out non-parseable directory names (bridge, client)' {
-            Mock -ModuleName Install.Helpers Get-ChildItem {
-                @(
-                    [pscustomobject]@{ Name = 'bridge'; FullName = 'C:\pub\bridge'; PSIsContainer = $true },
-                    [pscustomobject]@{ Name = 'client'; FullName = 'C:\pub\client'; PSIsContainer = $true },
-                    [pscustomobject]@{ Name = '1.0.0.1'; FullName = 'C:\pub\1.0.0.1'; PSIsContainer = $true }
-                )
-            }
-            $result = Find-NewestPublishVersion -PublishRoot 'C:\pub'
-            $result.Version.ToString() | Should -Be '1.0.0.1'
+        It 'returns the top-level version string when manifest.json has a valid 4-part version' {
+            $m = [pscustomobject]@{ version = '1.2.3.0'; files = @() }
+            Mock -ModuleName Install.Helpers Get-Content { $m | ConvertTo-Json -Depth 5 }
+            $v = Get-ManifestVersion -BundleRoot $script:Bundle
+            $v | Should -Be '1.2.3.0'
         }
-
-        It 'throws with a message containing the publish root when no parseable directory exists' {
-            Mock -ModuleName Install.Helpers Get-ChildItem {
-                @(
-                    [pscustomobject]@{ Name = 'bridge'; FullName = 'C:\pub\bridge'; PSIsContainer = $true },
-                    [pscustomobject]@{ Name = 'client'; FullName = 'C:\pub\client'; PSIsContainer = $true }
-                )
-            }
-            { Find-NewestPublishVersion -PublishRoot 'C:\pub' } |
-                Should -Throw -ExpectedMessage "*'C:\pub'*"
+        It 'throws with the bundle root in the message when manifest.json is absent' {
+            Mock -ModuleName Install.Helpers Test-Path { $false }
+            { Get-ManifestVersion -BundleRoot 'C:\missing' } |
+                Should -Throw -ExpectedMessage "*'C:\missing\manifest.json'*"
+        }
+        It 'throws a schema-violation message when manifest.json lacks the version field' {
+            $m = [pscustomobject]@{ files = @() }
+            Mock -ModuleName Install.Helpers Get-Content { $m | ConvertTo-Json -Depth 5 }
+            { Get-ManifestVersion -BundleRoot $script:Bundle } |
+                Should -Throw -ExpectedMessage "*missing the top-level 'version' field*"
+        }
+        It 'throws a parse-failure message when the version is unparseable' {
+            $m = [pscustomobject]@{ version = 'not-a-version'; files = @() }
+            Mock -ModuleName Install.Helpers Get-Content { $m | ConvertTo-Json -Depth 5 }
+            { Get-ManifestVersion -BundleRoot $script:Bundle } |
+                Should -Throw -ExpectedMessage "*unparseable 'version' value*"
         }
     }
 
@@ -152,6 +145,13 @@ Describe 'Install.Helpers.psm1' {
             }
             $thrown = { Test-ManifestIntegrity -BundleRoot $script:Bundle } | Should -Throw -PassThru
             $thrown.Exception.Message | Should -Match 'Missing file.*foo.exe'
+        }
+
+        It 'throws when manifest lacks the top-level version field' {
+            $bad = [pscustomobject]@{ files = @() }
+            Mock -ModuleName Install.Helpers Get-Content { $bad | ConvertTo-Json -Depth 5 }
+            { Test-ManifestIntegrity -BundleRoot $script:Bundle } |
+                Should -Throw -ExpectedMessage '*does not conform to the expected { version, files } schema*'
         }
     }
 
