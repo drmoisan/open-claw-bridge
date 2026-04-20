@@ -233,14 +233,14 @@ dotnet run --project .\src\OpenClaw.HostAdapter\OpenClaw.HostAdapter.csproj --co
 
 You can also publish the HostAdapter and run the published executable instead. The default external config path remains `C:\ProgramData\OpenClaw\HostAdapter\appsettings.json`.
 
-### 3. Start `OpenClaw.Core` with Docker Desktop
+### 3. Start the OpenClaw container stack with Docker Desktop
 
 Copy `.env.example` to `.env`, then update at least `HOSTADAPTER_TOKEN_FILE` if your token file lives somewhere else.
 
-Start the container:
+Start the default local stack:
 
 ```powershell
-docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d openclaw-core
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d openclaw-core openclaw-agent
 ```
 
 Open the local UI:
@@ -264,46 +264,51 @@ Operational notes:
 - The container keeps its own SQLite database at `/data/openclaw.db`.
 - If the HostAdapter or container path is unavailable, use `OpenClaw.MailBridge.Client` directly on the Windows host as the fallback troubleshooting path.
 
-### 4. Start the OpenClaw Assistant Service
+### 4. Manage the OpenClaw Agent (Required)
 
-The repository also uses an external OpenClaw assistant runtime (`openclaw-agent`) that sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API. The assistant provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data.
+The container stack includes `openclaw-agent`, a required peer service that provides the operator dashboard and consumes the HostAdapter HTTP API alongside `openclaw-core`. The agent provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data.
 
-**Naming distinction:** `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime. They are independent services that both consume the HostAdapter API.
+**Naming distinction:** `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime. Both are required when the container stack is deployed; they independently consume the HostAdapter API.
 
-The assistant image is `ghcr.io/openclaw/openclaw:latest` (published at the [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw)). Set `OPENCLAW_AGENT_IMAGE` in your `.env` file if you wish to pin to a specific version tag.
+The agent image is built locally from the upstream `ghcr.io/openclaw/openclaw:latest` runtime (published at the [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw)). Set `OPENCLAW_AGENT_IMAGE` in your `.env` file if you wish to pin the upstream base image to a specific version tag.
 
-Start the full stack including the assistant:
+**First-run onboarding.** Before starting the stack the first time, run `scripts/Invoke-OpenClawAgentOnboarding.ps1`. The script executes the upstream `openclaw onboard` command inside a throwaway container, captures the generated `OPENCLAW_GATEWAY_TOKEN`, and writes it to the repository-root `.env`. The dashboard will not accept any other credential; no placeholder default is shipped.
 
 ```powershell
-docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d
+pwsh -NoProfile -File scripts/Invoke-OpenClawAgentOnboarding.ps1
 ```
 
-Check assistant service status:
+The default stack startup command in Step 3 already brings up both `openclaw-core` and `openclaw-agent`. Use the commands below when you need to inspect or control the agent independently:
+
+The agent workspace under `deploy/docker/openclaw-assistant/` is baked into the local wrapper image and copied into a Docker-managed `/workspace` volume on first start. The entrypoint script seeds workspace files only when they are absent, so onboarding state persists across container restarts.
+
+Check agent service status:
 
 ```powershell
 docker compose ps openclaw-agent
 ```
 
-View assistant logs:
+View agent logs:
 
 ```powershell
 docker compose logs openclaw-agent
 ```
 
-Stop only the assistant without affecting `openclaw-core`:
+Stop only the agent without affecting `openclaw-core`:
 
 ```powershell
 docker compose stop openclaw-agent
 ```
 
-Validate assistant-to-HostAdapter connectivity:
+Validate the full container path (container health, endpoints, HostAdapter reachability from inside the container, token presence, dashboard auth):
 
 ```powershell
-$token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
-curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:18789/
+pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassThru
 ```
 
-Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments.
+The dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` authenticates against the `OPENCLAW_GATEWAY_TOKEN` in `.env` produced by the onboarding script. Open the URL after the container is healthy; the dashboard reads the token without an operator paste step.
+
+Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments of the local wrapper image.
 
 ## Bridge Configuration
 

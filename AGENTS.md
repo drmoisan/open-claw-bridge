@@ -22,6 +22,7 @@
 - For coding and testing policies, always follow the sections below in the order:
   Copilot instructions -> general policies -> language-specific policies -> CI policies.
 - Use the language- and domain-specific sections for Python, PowerShell, and CI behavior.
+- `openclaw-agent` is a required peer service in the compose stack; first-run operators must run `scripts/Invoke-OpenClawAgentOnboarding.ps1` to provision the `OPENCLAW_GATEWAY_TOKEN` that the dashboard authenticates against.
 
 
 ## Agent Code Change Policy

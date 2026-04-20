@@ -1,11 +1,11 @@
 {
-  "_placeholder": "VERIFY ALL VALUES against https://docs.openclaw.ai/gateway/configuration-reference before production use. This file was generated from unverified integration research.",
   "gateway": {
     "mode": "local",
     "port": 18789,
-    "bind": "loopback",
+    "bind": "auto",
     "auth": {
-      "mode": "token"
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     }
   },
   "session": {
@@ -18,14 +18,18 @@
     "defaults": {
       "model": {
         "primary": "anthropic/claude-opus-4-6",
-        "fallbacks": ["anthropic/claude-sonnet-4-6"]
+        "fallbacks": [
+          "anthropic/claude-sonnet-4-6"
+        ]
       }
     },
     "list": [
       {
         "id": "admin-assistant",
         "workspace": "/workspace",
-        "skills": ["mailbridge_admin"]
+        "skills": [
+          "mailbridge_admin"
+        ]
       }
     ]
   }
