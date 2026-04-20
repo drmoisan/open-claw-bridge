@@ -18,6 +18,16 @@ The repository also contains the local-only HTTP and Docker components required 
 - Supports two Windows installation paths today:
   - published binaries plus `install-mailbridge.ps1`
   - MSIX package install
+- Supports a scripted bundle install path on top of the above that consumes
+  an `artifacts/publish/<version>/` bundle. Run `.\Install.ps1` from inside
+  the bundle directory (for example `cd artifacts/publish/<version>;
+  .\Install.ps1`). The install scripts ship INSIDE the bundle and self-locate
+  via `$PSScriptRoot`:
+  - `Install.ps1` unpacks the bundle to `%LOCALAPPDATA%\OpenClaw\<version>\`,
+    installs the MSIX, starts the `openclaw-core` and `openclaw-agent`
+    compose stack, and writes a single-record install manifest for later
+    rollback
+  - `Uninstall.ps1` reads the install record and reverses the install
 - Supports a complete local solution path beyond the bridge transport:
   - `OpenClaw.HostAdapter` on Windows, `OpenClaw.Core` in Docker Desktop, and the `openclaw-agent` assistant service
 
@@ -41,7 +51,7 @@ The repository also contains the local-only HTTP and Docker components required 
 | `src/OpenClaw.HostAdapter.Contracts/` | Shared HTTP envelope types and typed HostAdapter client contract. |
 | `src/OpenClaw.Core/` | Local-only ASP.NET Core UI and API with its own SQLite cache. |
 | `tests/` | MSTest coverage for the bridge, HostAdapter, and Core, plus Pester coverage for scripts. |
-| `scripts/` | Build, test, install, uninstall, MSIX, and acceptance helpers. |
+| `scripts/` | Build, test, publish (`Publish.ps1`), scripted bundle install and uninstall (`Install.ps1`, `Uninstall.ps1`, `Install.Helpers.psm1`; these three are additionally staged into every bundle by `Publish.ps1` and are intended to run from the bundle root via `$PSScriptRoot`, not from the repo `scripts/` directory), scheduled-task install (`install-mailbridge.ps1`, `uninstall-mailbridge.ps1`), MSIX, and acceptance helpers. |
 | `installer/` | MSIX manifest and package assets. |
 | `deploy/docker/` | Docker assets for `OpenClaw.Core`. |
 | `docs/` | Operator runbook, API reference, architecture diagrams, and feature records. |
