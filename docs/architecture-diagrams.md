@@ -22,7 +22,7 @@ graph TB
         CoreDb["/data/openclaw.db"]
         TokenMount["/run/openclaw/hostadapter.token<br/>read-only bind mount"]
         Healthcheck["healthcheck.sh<br/>GET /health/live"]
-        Agent["openclaw-agent<br/>external assistant runtime<br/>127.0.0.1:8181"]
+        Agent["openclaw-agent<br/>external assistant runtime<br/>127.0.0.1:18789"]
         AgentTokenMount["/run/openclaw/hostadapter.token<br/>read-only bind mount (agent)"]
     end
 
@@ -43,10 +43,10 @@ graph TB
     Browser -->|"127.0.0.1 only"| Core
     Agent -->|"GET /v1/* via host.docker.internal"| HostAdapter
     AgentTokenMount --> Agent
-    Browser -->|"127.0.0.1:8181"| Agent
+    Browser -->|"127.0.0.1:18789"| Agent
 ```
 
-This topology includes two container services that independently consume the HostAdapter HTTP API. `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime for AI-powered triage and summarization. Both run as non-root containers with read-only root filesystems, loopback-only port publishing, and read-only token-file bind mounts. The current Windows path remains available as the fallback to `OpenClaw.MailBridge.Client`.
+This topology includes two container services that independently consume the HostAdapter HTTP API. `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime for AI-powered triage and summarization and is a required peer of `openclaw-core` in every container deployment; the agent publishes on `127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}` and authenticates operators with the `OPENCLAW_GATEWAY_TOKEN` produced by `scripts/Invoke-OpenClawAgentOnboarding.ps1`. Both services run as non-root containers with read-only root filesystems, loopback-only port publishing, and read-only token-file bind mounts. The current Windows path remains available as the fallback to `OpenClaw.MailBridge.Client`.
 
 ## 1. Existing Bridge Runtime
 
