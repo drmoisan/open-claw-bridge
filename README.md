@@ -278,6 +278,8 @@ The agent image is built locally from the upstream `ghcr.io/openclaw/openclaw:la
 pwsh -NoProfile -File scripts/Invoke-OpenClawAgentOnboarding.ps1
 ```
 
+The onboarding script accepts an optional `-OnboardBinaryPath` parameter. Its default value `dist/index.js` matches the upstream onboarding binary location published in the GitHub Container Registry image at the time of this release. Supply `-OnboardBinaryPath <new-path>` only when the upstream image renames or relocates the entry-point binary (for example, after an upstream release that moves it to `openclaw.mjs`). The parameter accepts any path that is resolvable inside the `openclaw-agent` image.
+
 The default stack startup command in Step 3 already brings up both `openclaw-core` and `openclaw-agent`. Use the commands below when you need to inspect or control the agent independently:
 
 The agent workspace under `deploy/docker/openclaw-assistant/` is baked into the local wrapper image and copied into a Docker-managed `/workspace` volume on first start. The entrypoint script seeds workspace files only when they are absent, so onboarding state persists across container restarts.

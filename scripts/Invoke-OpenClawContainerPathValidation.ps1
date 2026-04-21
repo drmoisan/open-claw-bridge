@@ -14,6 +14,11 @@ Helpers (URL composition, docker wrapper, HTTP wrapper, `.env` parsing,
 and the four new probes introduced by issue #38) live in the
 `OpenClawContainerValidation` module under
 `scripts/powershell/modules/OpenClawContainerValidation/`.
+
+.PARAMETER DashboardAuthPath
+Relative path on the openclaw-agent gateway used by the DashboardAuth probe.
+Default: `/auth/verify`. Operators can override when their upstream gateway
+exposes the auth-verify endpoint at a non-default path.
 #>
 [CmdletBinding()]
 param(
@@ -25,6 +30,7 @@ param(
     [ValidateRange(1, 300)]
     [int]$TimeoutSeconds = 10,
     [string]$EnvFilePath = './.env',
+    [string]$DashboardAuthPath = '/auth/verify',
     [switch]$PassThru,
     [switch]$AsJson
 )
@@ -216,7 +222,7 @@ $coreStatus = Invoke-OpenClawStatusEndpointValidation -Uri (Get-OpenClawEndpoint
 $agentDashboard = Invoke-OpenClawAgentDashboardEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $AgentBaseUrl -Path '/') -TimeoutSeconds $TimeoutSeconds
 $agentReadyz = Invoke-OpenClawReadyzProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds
 $tokenPresence = Test-OpenClawGatewayTokenPresence -EnvFilePath $EnvFilePath
-$dashboardAuth = Invoke-OpenClawDashboardAuthProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds -EnvFilePath $EnvFilePath
+$dashboardAuth = Invoke-OpenClawDashboardAuthProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds -EnvFilePath $EnvFilePath -AuthPath $DashboardAuthPath
 
 $dockerEngine = Invoke-OpenClawDockerEngineValidation -ExecutablePath $DockerPath
 $containerDiagnostics = @(

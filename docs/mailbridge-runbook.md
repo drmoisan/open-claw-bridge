@@ -519,6 +519,14 @@ pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassTh
 
 The page served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` is the OpenClaw Gateway Dashboard. For this loopback-only deployment, `deploy/docker/openclaw-assistant/openclaw.json` sets `gateway.auth.mode` to `token` and references `${OPENCLAW_GATEWAY_TOKEN}` from `.env`. The token is produced by `scripts/Invoke-OpenClawAgentOnboarding.ps1` and written to the repository-root `.env`. The HostAdapter bearer token remains separate and is still used only for the agent's HTTP calls to `OpenClaw.HostAdapter`.
 
+#### Onboarding parameter overrides
+
+`scripts/Invoke-OpenClawAgentOnboarding.ps1` exposes an optional `-OnboardBinaryPath` parameter (default `dist/index.js`). The default matches the upstream onboarding binary location in the GitHub Container Registry image at the time of this release. Supply an override only when an upstream release renames or relocates the entry-point binary (for example, `-OnboardBinaryPath 'openclaw.mjs'`). No other invocation change is required; the new value substitutes directly into the `docker compose run` argument list.
+
+#### Validation-script dashboard-auth overrides
+
+`scripts/Invoke-OpenClawContainerPathValidation.ps1` exposes an optional `-DashboardAuthPath` parameter (default `/auth/verify`). The default matches the OpenClaw gateway auth-verify endpoint path referenced by `deploy/docker/openclaw-assistant/openclaw.json`. Supply an override when the upstream gateway exposes auth-verify at a non-default path (for example, `-DashboardAuthPath '/api/auth/verify'`). The value is threaded through to the module's `Invoke-OpenClawDashboardAuthProbe -AuthPath` argument and used only for the DashboardAuth probe URI; all other probes are unaffected. The default path is tracked as a manual pre-release verification gate in the feature followups list.
+
 ### Troubleshooting
 
 | Symptom | Likely cause | Corrective action |

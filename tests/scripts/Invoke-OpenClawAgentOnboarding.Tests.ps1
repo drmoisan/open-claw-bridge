@@ -204,4 +204,47 @@ Describe 'Invoke-OpenClawAgentOnboarding.ps1' {
         # Assert
         Should -Invoke -CommandName Read-Host -Times 1 -ParameterFilter { $AsSecureString -eq $true }
     }
+
+    It 'Onboarding script invokes docker with the default OnboardBinaryPath when -OnboardBinaryPath is not supplied' {
+        # Arrange: standard fake-docker shim records the argument list; capture it for
+        # positional inspection. No temporary files; no real filesystem writes.
+        Mock Test-Path { return $true }
+        Mock Get-Content { return @() } -ParameterFilter { (($Path -and $Path -match '\.env$') -or ($LiteralPath -and $LiteralPath -match '\.env$')) }
+        Mock Set-Content {
+            $effectivePath = if ($Path) { $Path } else { $LiteralPath }
+            $Global:__OpenClawOnboardingTestWrittenContent.Add(@{ Path = $effectivePath; Value = $Value })
+        }
+
+        # Act: invoke without -OnboardBinaryPath. The default 'dist/index.js' must land
+        # immediately after 'openclaw-agent' and immediately before 'onboard' in argv.
+        & $script:ScriptPath -AnthropicApiKey (ConvertTo-SecureString -String 'sk-test' -AsPlainText -Force) -DockerPath 'Invoke-FakeDocker' -EnvFilePath 'dummy.env'
+
+        # Assert
+        $onboardLine = @($script:DockerRequests | Where-Object { $_ -match 'onboard' }) | Select-Object -First 1
+        $onboardLine | Should -Not -BeNullOrEmpty
+        $tokens = $onboardLine -split '\s+'
+        $agentIndex = [Array]::IndexOf($tokens, 'openclaw-agent')
+        $agentIndex | Should -BeGreaterThan -1
+        $tokens[$agentIndex + 1] | Should -Be 'dist/index.js'
+        $tokens[$agentIndex + 2] | Should -Be 'onboard'
+    }
+
+    It 'Onboarding script substitutes -OnboardBinaryPath into docker arguments when explicitly supplied' {
+        # Arrange: same fake-docker shim. The caller overrides the onboard binary path.
+        Mock Test-Path { return $true }
+        Mock Get-Content { return @() } -ParameterFilter { (($Path -and $Path -match '\.env$') -or ($LiteralPath -and $LiteralPath -match '\.env$')) }
+        Mock Set-Content {
+            $effectivePath = if ($Path) { $Path } else { $LiteralPath }
+            $Global:__OpenClawOnboardingTestWrittenContent.Add(@{ Path = $effectivePath; Value = $Value })
+        }
+
+        # Act: override the binary path.
+        & $script:ScriptPath -AnthropicApiKey (ConvertTo-SecureString -String 'sk-test' -AsPlainText -Force) -DockerPath 'Invoke-FakeDocker' -EnvFilePath 'dummy.env' -OnboardBinaryPath 'openclaw.mjs'
+
+        # Assert: the captured argument list contains the override and does not contain the default.
+        $onboardLine = @($script:DockerRequests | Where-Object { $_ -match 'onboard' }) | Select-Object -First 1
+        $onboardLine | Should -Not -BeNullOrEmpty
+        $onboardLine | Should -Match 'openclaw\.mjs'
+        $onboardLine | Should -Not -Match 'dist/index\.js'
+    }
 }

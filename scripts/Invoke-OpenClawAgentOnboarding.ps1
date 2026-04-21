@@ -27,6 +27,11 @@ compose files.
 Path or command name for the docker CLI. Default: `docker`. Tests inject a
 fake docker via this parameter.
 
+.PARAMETER OnboardBinaryPath
+Relative path inside the `openclaw-agent` image to the upstream onboarding
+binary. Default: `dist/index.js`. Operators can override this when an
+upstream release renames or relocates the entry-point binary.
+
 .PARAMETER Force
 When set, overwrites an existing non-empty `OPENCLAW_GATEWAY_TOKEN` in the
 target `.env`. Otherwise, the script exits `0` with a verbose message.
@@ -51,6 +56,9 @@ param(
 
     [Parameter(Mandatory = $false)]
     [string]$DockerPath = 'docker',
+
+    [Parameter(Mandatory = $false)]
+    [string]$OnboardBinaryPath = 'dist/index.js',
 
     [Parameter(Mandatory = $false)]
     [switch]$Force
@@ -116,7 +124,8 @@ function Invoke-OpenClawOnboardCommand {
     param(
         [Parameter(Mandatory = $true)][string]$DockerPath,
         [Parameter(Mandatory = $true)][string[]]$ComposeFiles,
-        [Parameter(Mandatory = $true)][string]$AnthropicApiKeyPlaintext
+        [Parameter(Mandatory = $true)][string]$AnthropicApiKeyPlaintext,
+        [Parameter(Mandatory = $true)][string]$OnboardBinaryPath
     )
 
     $composeArgs = @('compose')
@@ -128,7 +137,7 @@ function Invoke-OpenClawOnboardCommand {
     $composeArgs += @(
         'run', '--rm', '--no-deps',
         '--entrypoint', 'node',
-        'openclaw-agent', 'dist/index.js',
+        'openclaw-agent', $OnboardBinaryPath,
         'onboard',
         '--mode', 'local',
         '--no-install-daemon',
@@ -211,7 +220,7 @@ if (-not $AnthropicApiKey) {
 }
 $apiKeyPlain = ConvertFrom-OpenClawSecureString -SecureValue $AnthropicApiKey
 try {
-    $output = Invoke-OpenClawOnboardCommand -DockerPath $DockerPath -ComposeFiles $ComposeFiles -AnthropicApiKeyPlaintext $apiKeyPlain
+    $output = Invoke-OpenClawOnboardCommand -DockerPath $DockerPath -ComposeFiles $ComposeFiles -AnthropicApiKeyPlaintext $apiKeyPlain -OnboardBinaryPath $OnboardBinaryPath
     $token = Get-OpenClawTokenFromOnboardOutput -Output $output
     Set-OpenClawEnvEntry -EnvFilePath $EnvFilePath -Key 'OPENCLAW_GATEWAY_TOKEN' -Value $token
     Write-Verbose "Wrote OPENCLAW_GATEWAY_TOKEN to '$EnvFilePath'."

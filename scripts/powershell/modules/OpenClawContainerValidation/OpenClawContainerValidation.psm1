@@ -348,6 +348,7 @@ function Invoke-OpenClawDashboardAuthProbe {
         [Parameter(Mandatory = $true)][uri]$AgentBaseUrl,
         [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
         [Parameter(Mandatory = $true)][string]$EnvFilePath,
+        # Default '/auth/verify' is unverified against upstream config; tracked as a manual pre-release verification gate in docs/features/active/2026-04-20-cannot-access-agent-in-docker-38/followups.md
         [string]$AuthPath = '/auth/verify'
     )
     $map = Get-OpenClawEnvFileMap -EnvFilePath $EnvFilePath
