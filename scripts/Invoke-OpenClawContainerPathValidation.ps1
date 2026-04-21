@@ -19,10 +19,16 @@ and the four new probes introduced by issue #38) live in the
 Relative path on the openclaw-agent gateway used by the DashboardAuth probe.
 Default: `/auth/verify`. Operators can override when their upstream gateway
 exposes the auth-verify endpoint at a non-default path.
+
+.PARAMETER CoreBaseUrl
+Base URL for OpenClaw.Core endpoint probes. When omitted, the script reads
+`OPENCLAW_HTTP_PORT` from `-EnvFilePath` and uses `http://127.0.0.1:<port>`.
+If the env file or port setting is absent, the fallback is
+`http://127.0.0.1:8080`.
 #>
 [CmdletBinding()]
 param(
-    [uri]$CoreBaseUrl = 'http://127.0.0.1:8080',
+    [uri]$CoreBaseUrl,
     [uri]$AgentBaseUrl = 'http://127.0.0.1:18789',
     [string]$CoreContainerName = 'openclaw-core',
     [string]$AgentContainerName = 'openclaw-agent',
@@ -42,6 +48,28 @@ $moduleManifest = Join-Path $PSScriptRoot 'powershell/modules/OpenClawContainerV
 # inside the module's scope; re-importing with -Force would invalidate those mocks.
 if (-not (Get-Module -Name OpenClawContainerValidation)) {
     Import-Module -Name $moduleManifest -ErrorAction Stop
+}
+
+function Get-OpenClawCoreBaseUrl {
+    [CmdletBinding()]
+    [OutputType([uri])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFilePath
+    )
+
+    $envMap = Get-OpenClawEnvFileMap -EnvFilePath $EnvFilePath
+    $portValue = '8080'
+    if ($envMap.ContainsKey('OPENCLAW_HTTP_PORT') -and -not [string]::IsNullOrWhiteSpace([string]$envMap['OPENCLAW_HTTP_PORT'])) {
+        $portValue = ([string]$envMap['OPENCLAW_HTTP_PORT']).Trim().Trim([char[]]@('"', "'"))
+    }
+
+    $port = 0
+    if (-not [int]::TryParse($portValue, [ref]$port) -or $port -lt 1 -or $port -gt 65535) {
+        throw "OPENCLAW_HTTP_PORT in '$EnvFilePath' must be an integer from 1 through 65535. Actual value: '$portValue'."
+    }
+
+    return [uri]("http://127.0.0.1:{0}" -f $port)
 }
 
 function Invoke-OpenClawDockerEngineValidation {
@@ -214,6 +242,10 @@ function Invoke-OpenClawAgentDashboardEndpointValidation {
         -ExpectedCondition 'HTTP 200 with a non-empty response body' `
         -Request $request -IsExpected $isExpected -Summary $summary `
         -Details @{ hasBody = $hasBody }
+}
+
+if ($null -eq $CoreBaseUrl) {
+    $CoreBaseUrl = Get-OpenClawCoreBaseUrl -EnvFilePath $EnvFilePath
 }
 
 $live = Invoke-OpenClawLiveEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $CoreBaseUrl -Path '/health/live') -TimeoutSeconds $TimeoutSeconds

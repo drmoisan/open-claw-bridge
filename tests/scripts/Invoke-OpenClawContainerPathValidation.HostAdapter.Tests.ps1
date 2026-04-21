@@ -72,6 +72,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
         $probe = $result.SupportingDiagnostics | Where-Object { $_.Name -eq 'HostAdapterInContainer' }
         $probe | Should -Not -BeNullOrEmpty
         $probe.IsExpected | Should -BeTrue
+        $execRequest = @($script:DockerRequests | Where-Object { $_ -like '*compose exec*' })[0]
+        $execRequest | Should -Match 'tr -d'
+        $execRequest | Should -Match 'hostadapter\.token'
     }
 
     It 'HostAdapterInContainer probe reports Unexpected when docker exec returns non-200' -Tag 'ExpectFail-Phase5' {
