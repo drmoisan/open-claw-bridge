@@ -6,17 +6,20 @@ This runbook describes how to install, validate, operate, and remove the current
 
 1. Windows published binaries plus scheduled-task registration
 2. Windows MSIX package install
-3. Optional additive `OpenClaw.HostAdapter` plus Docker `OpenClaw.Core`
+3. `OpenClaw.HostAdapter` plus Docker `OpenClaw.Core` and the required `openclaw-agent`
 
 The bridge remains a local-only, read-only Outlook integration. Outlook COM access stays on the Windows host and in the interactive user session.
+
+Release builds now use `scripts/Publish.ps1` as the supported package-build entry point. The retired standalone MSIX build entry point is no longer part of the in-repo release path.
 
 ## Operational Model
 
 - `OpenClaw.MailBridge` scans the default Outlook Inbox and Calendar on a dedicated STA thread.
 - The bridge caches normalized message and event metadata in `%LOCALAPPDATA%\OpenClaw\MailBridge\cache.db`.
 - `OpenClaw.MailBridge.Client.exe` connects over the configured named pipe and returns JSON responses.
-- `OpenClaw.HostAdapter` is optional. It exposes authenticated HTTP routes on the Windows host by shelling out to the client CLI.
-- `OpenClaw.Core` is optional. It runs in Docker Desktop, polls the HostAdapter, stores its own SQLite cache at `/data/openclaw.db`, and serves a local UI plus internal API on loopback only.
+- `OpenClaw.HostAdapter` exposes authenticated HTTP routes on the Windows host by shelling out to the client CLI. It is a required peer of the agent container path.
+- `OpenClaw.Core` runs in Docker Desktop, polls the HostAdapter, stores its own SQLite cache at `/data/openclaw.db`, and serves a local UI plus internal API on loopback only.
+- `openclaw-agent` is a required peer service when the container stack is deployed. It provides the operator dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` and the onboarding-produced gateway token is the only credential the dashboard accepts.
 
 ## Prerequisites
 
@@ -33,6 +36,13 @@ The bridge remains a local-only, read-only Outlook integration. Outlook COM acce
 - Docker Desktop
 - A Windows bridge installation that is already working
 - A HostAdapter bearer token file on the Windows host
+
+### Release bundle prerequisites
+
+- PowerShell 7 or later
+- .NET 10 SDK
+- Windows 10 SDK tools available for the MSIX stage (`makeappx.exe`, `makepri.exe`, and `signtool.exe`)
+- A signing certificate in `Cert:\CurrentUser\My` for signed builds, unless you intentionally pass `-SkipSign`
 
 ## Install Path A: Published Binaries Plus Scheduled Task
 
@@ -196,11 +206,14 @@ The certificate script installs the CER into the trusted root store so the local
 
 ### 3. Publish and build the package
 
+The unified publish entry point `.\scripts\Publish.ps1` produces a single
+versioned bundle under `artifacts/publish/<version>/`. The bundle contains
+every runnable project's published output, the docker artifact set, the MSIX
+installer, and a top-level `manifest.json`.
+
 ```powershell
 Set-Location $repoRoot
-dotnet publish .\src\OpenClaw.MailBridge\OpenClaw.MailBridge.csproj /p:PublishProfile=msix
-dotnet publish .\src\OpenClaw.MailBridge.Client\OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix
-.\scripts\build-msix.ps1 -Version '1.0.0.0' -CertThumbprint $thumbprint
+.\scripts\Publish.ps1 -Version '1.0.0.0' -CertThumbprint $thumbprint
 Remove-Variable thumbprint -ErrorAction SilentlyContinue
 ```
 
@@ -208,15 +221,61 @@ Step 3 notes:
 
 - Step 3 assumes `$thumbprint` was created in the current PowerShell session by step 2.
 - `Remove-Variable thumbprint` clears the temporary variable after signing if you do not need it again in the session.
+- For an unsigned dev bundle, pass `-SkipSign` instead of `-CertThumbprint`.
+- The `-Version` parameter is strictly validated against the 4-part pattern
+  `^\d+\.\d+\.\d+\.\d+$`; 3-part inputs are rejected at parameter binding
+  time rather than silently normalized.
+- `-OutputDir` can override the bundle root. The default is
+  `artifacts/publish`. If you override it, use the matching path in the
+  install command.
+- `-Configuration` accepts `Debug` or `Release`. The default is `Release`.
+- The script removes and recreates `artifacts/publish/<version>/` before
+  writing a new bundle for that version.
+- `OpenClaw.Core` and `OpenClaw.HostAdapter` are published self-contained for
+  `win-x64`. `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client` keep the
+  MSIX publish-profile behavior used by the package installer.
+- The docker stage copies deployment inputs only. It copies compose files,
+  `deploy/docker/**`, and `.env.example` when present; it does not build or
+  export docker images.
+- `secrets/` paths are excluded from the docker bundle. The
+  `deploy/docker/openclaw-assistant/` tree is copied verbatim, so review that
+  content before distributing a bundle. The compose stack now bakes that tree
+  into the assistant wrapper image instead of bind-mounting it from the host.
+- `manifest.json` is written last. It lists each bundled file except itself
+  with a forward-slash relative path, byte size, and SHA-256 hash.
+- Binary hashes can differ between publish runs because the MSIX-bound
+  projects retain ReadyToRun publishing. Treat the manifest as an integrity
+  record for the produced bundle, not as proof that all binary outputs are
+  byte-identical across separate builds.
+- The script emits local artifacts only. It does not upload files, create a
+  GitHub Release, or publish to a release server.
 
-Expected artifact:
+Migration note for operators who previously ran the separate `dotnet publish`
+plus MSIX build recipe:
 
-- `artifacts/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix`
+- Replace the separate `dotnet publish` calls and the prior MSIX-build script
+  with a single `Publish.ps1` call. The new entry point publishes every
+  runnable `src/` project (not just the MailBridge-side executables), copies
+  the docker artifact set, and writes `manifest.json` enumerating every file
+  in the bundle with size and SHA-256 hash.
+- The MSIX output path changed from `artifacts/msix/` to
+  `artifacts/publish/<version>/msix/`. Update any install scripts accordingly.
+
+Expected bundle layout:
+
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.Core/`
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.HostAdapter/`
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.MailBridge/`
+- `artifacts/publish/1.0.0.0/executables/OpenClaw.MailBridge.Client/`
+- `artifacts/publish/1.0.0.0/docker/` - docker compose files, `.env.example`
+  when present, and `deploy/docker/**`
+- `artifacts/publish/1.0.0.0/msix/OpenClaw.MailBridge_1.0.0.0_x64.msix` - MSIX installer
+- `artifacts/publish/1.0.0.0/manifest.json` - full bundle manifest
 
 ### 4. Install or upgrade
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
+Add-AppxPackage -Path .\artifacts\publish\1.0.0.0\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
 ```
 
 MSIX behavior:
@@ -224,6 +283,14 @@ MSIX behavior:
 - installs both executables under the Windows Apps package location
 - registers the `OpenClawMailBridge` startup task
 - preserves `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json` across upgrade and uninstall
+
+Version guidance:
+
+- Use a new four-part package version for each rebuilt package you intend to
+  install over an existing MSIX. Windows blocks installation when the installed
+  package has the same identity and version but different contents.
+- For local rebuild testing with the same version, remove the installed package
+  first, then install the rebuilt `.msix`.
 
 ### 5. Verify package registration and bridge startup
 
@@ -261,6 +328,8 @@ Operational limitation:
 - the startup task launches the bridge on user logon
 - it does not restart the bridge automatically after a crash
 
+For the scripted bundle flow that wraps these steps together with docker compose, see Install Path D below.
+
 ## Configure The Bridge
 
 Settings file:
@@ -295,7 +364,7 @@ Operating guidance:
 
 ## Install Path C: Additive HostAdapter Plus Docker Core
 
-This path is optional and depends on a working Windows bridge installation.
+This path depends on a working Windows bridge installation and completes the required container deployment topology (HostAdapter plus `openclaw-core` plus `openclaw-agent`).
 
 Privilege guidance:
 
@@ -357,7 +426,7 @@ Expected result:
 - HTTP `200`
 - an `ApiEnvelope<BridgeStatusDto>` payload
 
-### 3. Start `OpenClaw.Core` in Docker Desktop
+### 3. Start the OpenClaw container stack in Docker Desktop
 
 Copy `.env.example` to `.env` and confirm these values:
 
@@ -365,29 +434,40 @@ Copy `.env.example` to `.env` and confirm these values:
 - `HOSTADAPTER_TOKEN_FILE=C:\ProgramData\OpenClaw\HostAdapter\adapter.token`
 - `OPENCLAW_HTTP_PORT=8080`
 
-Start the container:
+Start the default local stack:
 
 ```powershell
-docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d openclaw-core
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d openclaw-core openclaw-agent
 ```
 
 Step C.3 note:
 
 - Run Docker Desktop and the `docker compose` command from the normal user session that owns Docker Desktop access.
 
-Validate the container path:
+Validate the container path. The validation script runs the same endpoint checks, saves the responses into named result properties, and reports whether the observed responses are expected:
 
 ```powershell
-curl.exe http://127.0.0.1:8080/health/live
-curl.exe http://127.0.0.1:8080/health/ready
-curl.exe http://127.0.0.1:8080/api/status
+.\scripts\Invoke-OpenClawContainerPathValidation.ps1
 ```
 
 Expected behavior:
 
-- `/health/live` returns `200` when the app is running
-- `/health/ready` returns `200` only when SQLite is ready and the HostAdapter is reachable
-- `/api/status` reports cache counts, bridge freshness, and poll timestamps
+- `OverallResult` is `Expected` only when every container and endpoint check returns the expected response.
+- `DockerEngine` is expected when Docker is reachable and returns a server version.
+- `CoreContainerExists` and `AgentContainerExists` are expected when Docker can inspect the expected containers.
+- `CoreContainerRunning` and `AgentContainerRunning` are expected when the containers are in the `running` state.
+- `CoreContainerHealthy` and `AgentContainerHealthy` are expected when Docker reports each container health status as `healthy`.
+- `Live` is expected when `/health/live` returns `200` with JSON status `live`.
+- `Ready` is expected when `/health/ready` returns `200` with JSON status `ready`, `sqliteReady=true`, and `hostAdapterReachable=true`.
+- `CoreStatus` is expected when `/api/status` returns `200`, reports ready dependencies, and includes cache count and bridge freshness diagnostics.
+- `AgentDashboard` is expected when `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` returns `200` with a response body.
+- `AgentReadyz` is expected when `/readyz` returns `200`.
+- `HostAdapterInContainer` is expected when `docker compose exec openclaw-agent` returns HTTP `200` from `http://host.docker.internal:4319/v1/status` with the bind-mounted bearer token.
+- `GatewayTokenPresence` is expected when `OPENCLAW_GATEWAY_TOKEN` is present and non-empty in the target `.env`.
+- `DashboardAuth` is expected when a POST to the dashboard auth endpoint with the stored token returns HTTP `200` and a JSON body.
+- If `OverallResult` is `Unexpected`, inspect the diagnostics table. For structured details, rerun the script with `-PassThru` and inspect `SupportingDiagnostics`.
+
+The default stack command also starts `openclaw-agent`. Use `docker compose ps openclaw-agent`, `docker compose logs openclaw-agent`, or `docker compose stop openclaw-agent` only when you need to inspect or control the assistant independently.
 
 ### 4. Fallback behavior
 
@@ -398,6 +478,64 @@ If the HostAdapter or Docker path is unavailable, continue using:
 ```
 
 The Windows bridge and client remain the canonical fallback path for troubleshooting.
+
+## OpenClaw Agent (Required)
+
+The repository supports an external OpenClaw assistant runtime (`openclaw-agent`) that provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data. This service sits beside `openclaw-core` as a separate consumer of the HostAdapter HTTP API.
+
+### Prerequisites
+
+- Docker Desktop installed and running.
+- A working HostAdapter with a valid token file (as configured in Install Path C above).
+- `OPENCLAW_AGENT_IMAGE` set in `.env` to the verified upstream base image name from the OpenClaw platform documentation at `docs.openclaw.ai`.
+
+### Start and stop
+
+Start the assistant alongside the existing stack:
+
+```powershell
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up -d openclaw-agent
+```
+
+Stop the assistant without affecting `openclaw-core`:
+
+```powershell
+docker compose stop openclaw-agent
+```
+
+Stopping `openclaw-agent` does not affect `openclaw-core`, and vice versa. Both services independently consume the HostAdapter API.
+
+The assistant configuration workspace is no longer bind-mounted from the host. The compose build bakes `deploy/docker/openclaw-assistant/` into a local wrapper image and Docker populates a managed `/workspace` volume from that image on first start.
+
+### Connectivity verification
+
+Run the aggregated validation script. It performs container inspection, `/health/live`, `/health/ready`, `/api/status`, agent dashboard root reachability, `/readyz`, in-container HostAdapter reachability, `.env` token presence, and a live dashboard auth probe in a single pass and reports a single `OverallResult`.
+
+```powershell
+pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassThru
+```
+
+`OverallResult: Expected` means every probe passed. `OverallResult: Unexpected` will list the specific failing probes in `SupportingDiagnostics`.
+
+### Dashboard access
+
+The page served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` is the OpenClaw Gateway Dashboard. For this loopback-only deployment, `deploy/docker/openclaw-assistant/openclaw.json` sets `gateway.auth.mode` to `token` and references `${OPENCLAW_GATEWAY_TOKEN}` from `.env`. The token is produced by `scripts/Invoke-OpenClawAgentOnboarding.ps1` and written to the repository-root `.env`. The HostAdapter bearer token remains separate and is still used only for the agent's HTTP calls to `OpenClaw.HostAdapter`.
+
+#### Onboarding parameter overrides
+
+`scripts/Invoke-OpenClawAgentOnboarding.ps1` exposes an optional `-OnboardBinaryPath` parameter (default `dist/index.js`). The default matches the upstream onboarding binary location in the GitHub Container Registry image at the time of this release. Supply an override only when an upstream release renames or relocates the entry-point binary (for example, `-OnboardBinaryPath 'openclaw.mjs'`). No other invocation change is required; the new value substitutes directly into the `docker compose run` argument list.
+
+#### Validation-script dashboard-auth overrides
+
+`scripts/Invoke-OpenClawContainerPathValidation.ps1` exposes an optional `-DashboardAuthPath` parameter (default `/auth/verify`). The default matches the OpenClaw gateway auth-verify endpoint path referenced by `deploy/docker/openclaw-assistant/openclaw.json`. Supply an override when the upstream gateway exposes auth-verify at a non-default path (for example, `-DashboardAuthPath '/api/auth/verify'`). The value is threaded through to the module's `Invoke-OpenClawDashboardAuthProbe -AuthPath` argument and used only for the DashboardAuth probe URI; all other probes are unaffected. The default path is tracked as a manual pre-release verification gate in the feature followups list.
+
+### Troubleshooting
+
+| Symptom | Likely cause | Corrective action |
+| --- | --- | --- |
+| `401 Unauthorized` from HostAdapter | Token file missing, empty, or invalid inside the container | Verify `HOSTADAPTER_TOKEN_FILE` in `.env` points to the correct host path and the file is non-empty. Confirm the bind mount at `/run/openclaw/hostadapter.token` is present inside the container. |
+| Container exits immediately on startup | `OPENCLAW_AGENT_IMAGE` is unset or set to the placeholder value | Set `OPENCLAW_AGENT_IMAGE` in `.env` to a valid, verified image reference. |
+| `host.docker.internal` resolution failure | Docker Desktop networking not available or not using dev compose | Ensure you include `-f docker-compose.dev.yml` in the compose command, or verify Docker Desktop is running with host networking support enabled. |
 
 ## Scripted Acceptance Evidence
 
@@ -440,6 +578,7 @@ Record these checks separately after the scripted suites pass:
 | `Bridge status preflight failed after registration.` | The task was created but the bridge did not start correctly, often because the task points `--config` at the wrong `%LOCALAPPDATA%` path | In the elevated shell, set `$env:LOCALAPPDATA` to the target user's `AppData\Local`, then rerun `install-mailbridge.ps1`. Afterward, inspect `schtasks /query /tn "OpenClaw MailBridge" /v /fo list`, the bridge log, and the manual client `status` command. |
 | Install helper reports wrong framework | Published output is not targeting `.NET 10` runtimeconfig files | Republish both host and client, then rerun `install-mailbridge.ps1`. |
 | `Bridge executable not found` or `Client executable not found` | Install folder is incomplete | Republish both projects into the same install directory. |
+| `Add-AppxPackage` fails with `0x80073CFB` and says the package has the same identity but different contents | A package with the same identity and version is already installed, and the rebuilt `.msix` is not byte-identical to the installed package | Publish with an incremented four-part version, or remove the installed package with `Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage`, then rerun `Add-AppxPackage`. If the package is installed for other users, remove it for those users from an elevated PowerShell session before reusing the same version. |
 | `Access is denied` when running `client\OpenClaw.MailBridge.Client.exe` from `%ProgramFiles%\WindowsApps\...` after MSIX install | The package is installed, but the current manifest does not expose the packaged client as a terminal-invokable entry point | Treat the MSIX install as successful, sign out and back in so the startup task can launch the bridge, and validate the bridge through process and log checks instead of direct client execution. |
 | PowerShell reports that `C:\Program` is not recognized when running the client executable | The executable path contains a space and was entered without the PowerShell call operator | Run `& "C:\Program Files\OpenClaw\MailBridge\OpenClaw.MailBridge.Client.exe" status` instead of entering the path bare. |
 | HostAdapter returns `401` | Bearer token missing or invalid | Read the expected token from the configured token file and retry. |
@@ -448,3 +587,7 @@ Record these checks separately after the scripted suites pass:
 | Docker readiness returns `503` | SQLite not initialized or HostAdapter unreachable | Check the container logs, confirm `host.docker.internal` resolves, and verify the HostAdapter is running on `127.0.0.1:4319`. |
 | Empty calendar result set | Request window is outside the cached calendar range | Confirm `calendarPastDays` and `calendarFutureDays`; empty results are expected outside the cached window. |
 | Safe mode seems to hide sender or preview fields | Bridge is operating as designed | Keep `safe` mode if privacy is required, or switch to `enhanced` only after operator approval. |
+| `No prior install recorded` when running `Uninstall.ps1` | `%LOCALAPPDATA%\OpenClaw\install-record.json` is absent | Confirm that an install was performed via `Install.ps1`. If the install was performed via Path A or Path B, use the matching uninstall path instead (`uninstall-mailbridge.ps1` for Path A; `Get-AppxPackage ... | Remove-AppxPackage` for Path B). |
+| `Docker Desktop is not running or not installed. Start Docker Desktop and retry, or pass -SkipDocker to skip the container stage.` when running `Install.ps1` | `docker info` returned a non-zero exit code | Start Docker Desktop and rerun `Install.ps1`. If a docker-free install is acceptable, pass `-SkipDocker`; `Uninstall.ps1` later honors the recorded `skipDocker = true` and skips the compose-down step. |
+| `Manifest integrity check failed for bundle '<path>'. Discrepancies: ...` when running `Install.ps1` | One or more files under the bundle root do not match `manifest.json` by size or SHA-256, or on-disk files are absent from the manifest | Re-publish the bundle with `scripts\Publish.ps1` and retry. No destination folder is created when manifest integrity fails, so the host is left in a clean pre-install state. |
+| `manifest.json not found at '<path>\manifest.json'. Ensure Install.ps1 is executed from a bundle directory produced by Publish.ps1...` when running `Install.ps1` | The script resolved the bundle root from `$PSScriptRoot` (or `-SourcePath`) but no `manifest.json` sits at that root | Ensure the script is being run from the bundle directory produced by `Publish.ps1` (i.e. `cd artifacts/publish/<version>; .\Install.ps1`), not from the repo's `scripts/` directory. Pass `-SourcePath` only to override for dev/test scenarios. |

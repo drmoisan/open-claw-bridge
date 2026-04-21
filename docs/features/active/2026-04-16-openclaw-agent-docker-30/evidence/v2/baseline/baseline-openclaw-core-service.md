@@ -1,0 +1,55 @@
+# Baseline — openclaw-core service block
+
+Timestamp: 2026-04-18T00-00
+
+## openclaw-core service YAML (verbatim from docker-compose.yml lines 3–51)
+
+```yaml
+  openclaw-core:
+    build:
+      context: .
+      dockerfile: deploy/docker/openclaw-core.Dockerfile
+      target: runtime
+      args:
+        BUILD_CONFIGURATION: Release
+    image: openclaw/core:pre-mvp
+    container_name: openclaw-core
+    init: true
+    restart: unless-stopped
+    user: "1654:1654"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=256m,noexec,nosuid,nodev
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      OpenClaw__Storage__DbPath: /data/openclaw.db
+      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319/v1}
+      OpenClaw__HostAdapter__TokenFile: /run/openclaw/hostadapter.token
+      OpenClaw__Polling__MessagesIntervalSeconds: ${OpenClaw__Polling__MessagesIntervalSeconds:-60}
+      OpenClaw__Polling__MeetingRequestsIntervalSeconds: ${OpenClaw__Polling__MeetingRequestsIntervalSeconds:-60}
+      OpenClaw__Polling__CalendarIntervalSeconds: ${OpenClaw__Polling__CalendarIntervalSeconds:-300}
+      OpenClaw__Polling__MessageLookbackHours: ${OpenClaw__Polling__MessageLookbackHours:-48}
+      OpenClaw__Polling__CalendarPastDays: ${OpenClaw__Polling__CalendarPastDays:-14}
+      OpenClaw__Polling__CalendarFutureDays: ${OpenClaw__Polling__CalendarFutureDays:-30}
+      OpenClaw__Defaults__Limit: ${OpenClaw__Defaults__Limit:-100}
+      OpenClaw__Defaults__MaxLimit: ${OpenClaw__Defaults__MaxLimit:-250}
+    ports:
+      - "127.0.0.1:${OPENCLAW_HTTP_PORT:-8080}:8080"
+    volumes:
+      - openclaw_data:/data
+      - type: bind
+        source: ${HOSTADAPTER_TOKEN_FILE}
+        target: /run/openclaw/hostadapter.token
+        read_only: true
+    healthcheck:
+      test: [ "CMD", "/app/healthcheck.sh" ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+```

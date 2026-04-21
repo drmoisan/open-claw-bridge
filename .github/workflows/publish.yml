@@ -1,0 +1,46 @@
+name: publish
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Publish bundle version
+        required: true
+        type: string
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Run unified publish
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = "${{ github.ref_name }}"
+          }
+          $version = $version.TrimStart('v')
+
+          $thumbprint = "${{ secrets.MSIX_CERT_THUMBPRINT }}"
+          if ([string]::IsNullOrWhiteSpace($thumbprint)) {
+            $password = ConvertTo-SecureString 'GitHubActionsDevCert!' -AsPlainText -Force
+            $thumbprint = ./scripts/New-MsixDevCert.ps1 -PfxPassword $password
+          }
+
+          ./scripts/Publish.ps1 -Version $version -CertThumbprint $thumbprint
+
+      - name: Upload publish bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: publish-bundle
+          path: artifacts/publish/**

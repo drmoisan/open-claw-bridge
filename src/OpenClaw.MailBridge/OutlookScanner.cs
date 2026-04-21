@@ -355,6 +355,14 @@ internal sealed class OutlookScanner : IOutlookScanner
 
             yield return item;
             count++;
+
+            // Yield control back to Outlook's UI thread at batch boundaries
+            // to prevent COM cross-apartment call starvation.
+            if (count > 0 && count % _settings.ComYieldBatchSize == 0)
+            {
+                Thread.Sleep(_settings.ComYieldMilliseconds);
+            }
+
             if (count >= maxItems)
             {
                 yield break;

@@ -136,6 +136,10 @@ public static class BridgeSettingsValidator
             errors.Add("maxItemsPerScan must be 1..2000");
         if (settings.BodyPreviewMaxChars is < 1 or > 2000)
             errors.Add("bodyPreviewMaxChars must be 1..2000");
+        if (settings.ComYieldBatchSize < 1)
+            errors.Add("comYieldBatchSize must be >= 1");
+        if (settings.ComYieldMilliseconds < 0)
+            errors.Add("comYieldMilliseconds must be >= 0");
         if (string.IsNullOrWhiteSpace(settings.PipeName))
             errors.Add("pipeName required");
         return errors;

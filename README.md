@@ -2,7 +2,7 @@
 
 OpenClaw MailBridge is a Windows-first .NET solution that reads Outlook data locally, caches normalized message and calendar metadata in SQLite, and exposes that cached data through a local named-pipe RPC interface.
 
-The repository also contains an additive local-only HTTP and Docker path:
+The repository also contains the local-only HTTP and Docker components required for the complete OpenClaw solution:
 
 - `OpenClaw.MailBridge` remains the Windows process that talks to Outlook over COM.
 - `OpenClaw.MailBridge.Client` remains the canonical six-command client for local reads.
@@ -18,8 +18,18 @@ The repository also contains an additive local-only HTTP and Docker path:
 - Supports two Windows installation paths today:
   - published binaries plus `install-mailbridge.ps1`
   - MSIX package install
-- Supports one optional additive path for local UI and HTTP access:
-  - `OpenClaw.HostAdapter` on Windows plus `OpenClaw.Core` in Docker Desktop
+- Supports a scripted bundle install path on top of the above that consumes
+  an `artifacts/publish/<version>/` bundle. Run `.\Install.ps1` from inside
+  the bundle directory (for example `cd artifacts/publish/<version>;
+  .\Install.ps1`). The install scripts ship INSIDE the bundle and self-locate
+  via `$PSScriptRoot`:
+  - `Install.ps1` unpacks the bundle to `%LOCALAPPDATA%\OpenClaw\<version>\`,
+    installs the MSIX, starts the `openclaw-core` and `openclaw-agent`
+    compose stack, and writes a single-record install manifest for later
+    rollback
+  - `Uninstall.ps1` reads the install record and reverses the install
+- Supports a complete local solution path beyond the bridge transport:
+  - `OpenClaw.HostAdapter` on Windows, `OpenClaw.Core` in Docker Desktop, and the `openclaw-agent` assistant service
 
 ## How It Works
 
@@ -28,7 +38,7 @@ The repository also contains an additive local-only HTTP and Docker path:
 3. The bridge caches normalized message and event data in SQLite and records bridge state.
 4. `PipeRpcWorker` listens on a local named pipe and returns cached responses for the supported RPC methods.
 5. `OpenClaw.MailBridge.Client` resolves the configured pipe name, sends a JSON RPC request, and writes the bridge response to stdout.
-6. If you enable the additive deployment path, `OpenClaw.HostAdapter` shells out to `OpenClaw.MailBridge.Client` and `OpenClaw.Core` polls the HostAdapter from Docker.
+6. For the complete OpenClaw solution, `OpenClaw.HostAdapter` shells out to `OpenClaw.MailBridge.Client`, `OpenClaw.Core` polls the HostAdapter from Docker, and the assistant service consumes the same HostAdapter HTTP API.
 
 ## Repository Layout
 
@@ -41,7 +51,7 @@ The repository also contains an additive local-only HTTP and Docker path:
 | `src/OpenClaw.HostAdapter.Contracts/` | Shared HTTP envelope types and typed HostAdapter client contract. |
 | `src/OpenClaw.Core/` | Local-only ASP.NET Core UI and API with its own SQLite cache. |
 | `tests/` | MSTest coverage for the bridge, HostAdapter, and Core, plus Pester coverage for scripts. |
-| `scripts/` | Build, test, install, uninstall, MSIX, and acceptance helpers. |
+| `scripts/` | Build, test, publish (`Publish.ps1`), scripted bundle install and uninstall (`Install.ps1`, `Uninstall.ps1`, `Install.Helpers.psm1`; these three are additionally staged into every bundle by `Publish.ps1` and are intended to run from the bundle root via `$PSScriptRoot`, not from the repo `scripts/` directory), scheduled-task install (`install-mailbridge.ps1`, `uninstall-mailbridge.ps1`), MSIX, and acceptance helpers. |
 | `installer/` | MSIX manifest and package assets. |
 | `deploy/docker/` | Docker assets for `OpenClaw.Core`. |
 | `docs/` | Operator runbook, API reference, architecture diagrams, and feature records. |
@@ -147,18 +157,38 @@ $pwd = ConvertTo-SecureString 'your-password' -AsPlainText -Force
 .\scripts\New-MsixDevCert.ps1 -PfxPassword $pwd -OutputDir artifacts
 ```
 
-Publish both projects using the MSIX publish profiles and build the package:
+Publish a full release bundle with `scripts/Publish.ps1`. The unified entry
+point publishes every runnable `src/` project, copies the docker artifact
+set, builds (and optionally signs) the MSIX, and writes a top-level
+`manifest.json` that enumerates every file in the bundle with its size and
+SHA-256 hash. The output is written to `artifacts/publish/<version>/`.
+
+Signed release build:
 
 ```powershell
-dotnet publish .\src\OpenClaw.MailBridge\OpenClaw.MailBridge.csproj /p:PublishProfile=msix
-dotnet publish .\src\OpenClaw.MailBridge.Client\OpenClaw.MailBridge.Client.csproj /p:PublishProfile=msix
-.\scripts\build-msix.ps1 -Version '1.0.0.0' -CertThumbprint 'THUMBPRINT'
+.\scripts\Publish.ps1 -Version '1.0.0.0' -CertThumbprint 'THUMBPRINT'
 ```
+
+Dev (unsigned) build:
+
+```powershell
+.\scripts\Publish.ps1 -Version '1.0.0.0' -SkipSign
+```
+
+Supported parameters:
+
+- `-Version` — mandatory 4-part version string (for example `1.2.3.0`).
+  Strict validation via `ValidatePattern`; 3-part inputs are rejected.
+- `-OutputDir` — root directory for the bundle. Default: `artifacts/publish`.
+- `-Configuration` — `Debug` or `Release`. Default: `Release`.
+- `-CertThumbprint` — SHA-1 thumbprint of the code-signing certificate in
+  `Cert:\CurrentUser\My`. Required unless `-SkipSign` is supplied.
+- `-SkipSign` — switch; when present the MSIX is packed without signing.
 
 Install or upgrade the generated package:
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
+Add-AppxPackage -Path .\artifacts\publish\1.0.0.0\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
 ```
 
 Remove it:
@@ -170,12 +200,15 @@ Get-AppxPackage -Name 'OpenClaw.MailBridge' | Remove-AppxPackage
 Notes:
 
 - The MSIX package does not replace the PowerShell install path. Both deployment models are supported.
+- The MSIX installs only `OpenClaw.MailBridge` and `OpenClaw.MailBridge.Client`.
+- The MSIX does not install or configure `OpenClaw.HostAdapter`, `OpenClaw.Core`, Docker assets, or the `openclaw-agent` assistant service.
+- If you are setting up the complete OpenClaw solution, the remaining components below are additional required steps after the bridge or MSIX install completes.
 - MSIX install, upgrade, and uninstall preserve `%LOCALAPPDATA%\OpenClaw\MailBridge\bridge.settings.json`.
 - The startup task runs on user logon. It does not provide automatic crash restart.
 
-## Optional HostAdapter And Docker Core Path
+## Complete Solution Setup After Bridge Or MSIX Install
 
-This path is additive. Keep the Windows bridge installed and running, then add the HostAdapter on Windows and `OpenClaw.Core` in Docker Desktop.
+The bridge install is only the first stage. To run the complete OpenClaw solution described in this repository, keep the Windows bridge installed and running, then complete the HostAdapter, `OpenClaw.Core`, and assistant setup below.
 
 ### 1. Provision the HostAdapter token and config
 
@@ -210,14 +243,14 @@ dotnet run --project .\src\OpenClaw.HostAdapter\OpenClaw.HostAdapter.csproj --co
 
 You can also publish the HostAdapter and run the published executable instead. The default external config path remains `C:\ProgramData\OpenClaw\HostAdapter\appsettings.json`.
 
-### 3. Start `OpenClaw.Core` with Docker Desktop
+### 3. Start the OpenClaw container stack with Docker Desktop
 
 Copy `.env.example` to `.env`, then update at least `HOSTADAPTER_TOKEN_FILE` if your token file lives somewhere else.
 
-Start the container:
+Start the default local stack:
 
 ```powershell
-docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d openclaw-core
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml up --build -d openclaw-core openclaw-agent
 ```
 
 Open the local UI:
@@ -240,6 +273,54 @@ Operational notes:
 - `OpenClaw.Core` publishes only to `127.0.0.1:${OPENCLAW_HTTP_PORT:-8080}`.
 - The container keeps its own SQLite database at `/data/openclaw.db`.
 - If the HostAdapter or container path is unavailable, use `OpenClaw.MailBridge.Client` directly on the Windows host as the fallback troubleshooting path.
+
+### 4. Manage the OpenClaw Agent (Required)
+
+The container stack includes `openclaw-agent`, a required peer service that provides the operator dashboard and consumes the HostAdapter HTTP API alongside `openclaw-core`. The agent provides AI-powered triage, summarization, and scheduling analysis of mail and calendar data.
+
+**Naming distinction:** `OpenClaw.Core` is the repository-owned UI and cache container. `openclaw-agent` is the external OpenClaw assistant runtime. Both are required when the container stack is deployed; they independently consume the HostAdapter API.
+
+The agent image is built locally from the upstream `ghcr.io/openclaw/openclaw:latest` runtime (published at the [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw)). Set `OPENCLAW_AGENT_IMAGE` in your `.env` file if you wish to pin the upstream base image to a specific version tag.
+
+**First-run onboarding.** Before starting the stack the first time, run `scripts/Invoke-OpenClawAgentOnboarding.ps1`. The script executes the upstream `openclaw onboard` command inside a throwaway container, captures the generated `OPENCLAW_GATEWAY_TOKEN`, and writes it to the repository-root `.env`. The dashboard will not accept any other credential; no placeholder default is shipped.
+
+```powershell
+pwsh -NoProfile -File scripts/Invoke-OpenClawAgentOnboarding.ps1
+```
+
+The onboarding script accepts an optional `-OnboardBinaryPath` parameter. Its default value `dist/index.js` matches the upstream onboarding binary location published in the GitHub Container Registry image at the time of this release. Supply `-OnboardBinaryPath <new-path>` only when the upstream image renames or relocates the entry-point binary (for example, after an upstream release that moves it to `openclaw.mjs`). The parameter accepts any path that is resolvable inside the `openclaw-agent` image.
+
+The default stack startup command in Step 3 already brings up both `openclaw-core` and `openclaw-agent`. Use the commands below when you need to inspect or control the agent independently:
+
+The agent workspace under `deploy/docker/openclaw-assistant/` is baked into the local wrapper image and copied into a Docker-managed `/workspace` volume on first start. The entrypoint script seeds workspace files only when they are absent, so onboarding state persists across container restarts.
+
+Check agent service status:
+
+```powershell
+docker compose ps openclaw-agent
+```
+
+View agent logs:
+
+```powershell
+docker compose logs openclaw-agent
+```
+
+Stop only the agent without affecting `openclaw-core`:
+
+```powershell
+docker compose stop openclaw-agent
+```
+
+Validate the full container path (container health, endpoints, HostAdapter reachability from inside the container, token presence, dashboard auth):
+
+```powershell
+pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassThru
+```
+
+The dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` authenticates against the `OPENCLAW_GATEWAY_TOKEN` in `.env` produced by the onboarding script. Open the URL after the container is healthy; the dashboard reads the token without an operator paste step.
+
+Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments of the local wrapper image.
 
 ## Bridge Configuration
 

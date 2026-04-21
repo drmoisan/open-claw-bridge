@@ -7,13 +7,20 @@ internal sealed class FileHostAdapterTokenProvider(IOptions<HostAdapterOptions> 
 {
     private readonly HostAdapterOptions options = optionsAccessor.Value;
 
+    /// <summary>
+    /// Reads raw file content from the given path, or returns null when the file does not exist.
+    /// Replaced in unit tests to avoid filesystem access.
+    /// </summary>
+    internal Func<string, string?> FileReader { get; init; } =
+        static path => File.Exists(path) ? File.ReadAllText(path) : null;
+
     public string? ReadExpectedToken()
     {
-        if (string.IsNullOrWhiteSpace(options.TokenFilePath) || !File.Exists(options.TokenFilePath))
+        if (string.IsNullOrWhiteSpace(options.TokenFilePath))
         {
             return null;
         }
 
-        return File.ReadAllText(options.TokenFilePath).Trim();
+        return FileReader(options.TokenFilePath)?.Trim();
     }
 }

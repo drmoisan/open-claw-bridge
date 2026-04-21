@@ -67,6 +67,7 @@ desktop.ini
 .env
 .env.*
 !.env.example
+secrets/
 
 # Tooling
 *.tmp
@@ -75,3 +76,4 @@ desktop.ini
 .github/
 .tmp-tools/
 .tool-wrappers/
+.claude

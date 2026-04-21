@@ -122,11 +122,27 @@ public sealed record BridgeSettings(
     int CalendarFutureDays,
     int MaxItemsPerScan,
     int BodyPreviewMaxChars,
+    int ComYieldBatchSize,
+    int ComYieldMilliseconds,
     string LogLevel
 )
 {
     public static BridgeSettings Default =>
-        new("openclaw_mailbridge_v1", "safe", true, 30, 300, 5, 14, 60, 500, 500, "Information");
+        new(
+            "openclaw_mailbridge_v1",
+            "safe",
+            true,
+            30,
+            300,
+            5,
+            14,
+            60,
+            500,
+            500,
+            25,
+            15,
+            "Information"
+        );
 }
 
 public static class BridgeErrorCodes

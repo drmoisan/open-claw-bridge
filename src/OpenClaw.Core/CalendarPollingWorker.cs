@@ -92,74 +92,7 @@ internal sealed class CalendarPollingWorker(
 
         while (!stoppingToken.IsCancellationRequested)
         {
-            var startedAtUtc = DateTimeOffset.UtcNow;
-            var requestId = Guid.NewGuid().ToString();
-            var startUtc = DateTimeOffset.UtcNow.AddDays(-options.Polling.CalendarPastDays);
-            var endUtc = DateTimeOffset.UtcNow.AddDays(options.Polling.CalendarFutureDays);
-            var envelope = await hostAdapterClient.ListCalendarWindowAsync(
-                startUtc,
-                endUtc,
-                options.Defaults.Limit,
-                requestId,
-                stoppingToken
-            );
-            var finishedAtUtc = DateTimeOffset.UtcNow;
-
-            if (envelope.Ok && envelope.Meta.Bridge is not null)
-            {
-                await repository.UpsertBridgeStatusSnapshotAsync(
-                    envelope.Meta.Bridge,
-                    envelope.Meta.RequestId,
-                    finishedAtUtc
-                );
-                await repository.UpsertEventsAsync(
-                    envelope.Data?.Items
-                        ?? Array.Empty<OpenClaw.MailBridge.Contracts.Models.EventDto>(),
-                    envelope.Meta.Bridge,
-                    envelope.Meta.RequestId,
-                    finishedAtUtc
-                );
-                await repository.SetCursorAsync("calendar_window_last_run_utc", finishedAtUtc);
-                await repository.AddIngestRunAsync(
-                    "calendar_window",
-                    "success",
-                    envelope.Meta.RequestId,
-                    startedAtUtc,
-                    finishedAtUtc,
-                    null
-                );
-                healthState.MarkPollSuccess(envelope.Meta.Bridge, finishedAtUtc);
-            }
-            else
-            {
-                logger.LogWarning(
-                    "Core calendar poll failed for request {RequestId}: {Message}",
-                    envelope.Meta.RequestId,
-                    envelope.Error?.Message ?? "Unknown HostAdapter failure."
-                );
-                healthState.MarkPollFailure(
-                    envelope.Error?.Message ?? "Unknown HostAdapter failure.",
-                    envelope.Meta.Bridge
-                );
-                if (envelope.Meta.Bridge is not null)
-                {
-                    await repository.UpsertBridgeStatusSnapshotAsync(
-                        envelope.Meta.Bridge,
-                        envelope.Meta.RequestId,
-                        finishedAtUtc
-                    );
-                }
-
-                await repository.AddIngestRunAsync(
-                    "calendar_window",
-                    "failed",
-                    envelope.Meta.RequestId,
-                    startedAtUtc,
-                    finishedAtUtc,
-                    envelope.Error?.Message
-                );
-            }
-
+            await RunCalendarPollOnceAsync(stoppingToken);
             await Task.Delay(
                 TimeSpan.FromSeconds(options.Polling.CalendarIntervalSeconds),
                 stoppingToken

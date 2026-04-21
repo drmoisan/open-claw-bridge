@@ -5,11 +5,41 @@ using OpenClaw.MailBridge.Contracts.Models;
 
 namespace OpenClaw.HostAdapter;
 
+/// <summary>
+/// Holds stdout, stderr, and exit code captured from a completed process execution.
+/// Returned by <see cref="HostAdapterProcessRunner.ProcessExecutor"/> to decouple process
+/// I/O from the parsing and response-mapping logic in
+/// <see cref="HostAdapterProcessRunner.ExecuteAsync{T}"/>.
+/// </summary>
+internal record ProcessExecutionResult(string Stdout, string Stderr, int ExitCode);
+
 internal sealed class HostAdapterProcessRunner(IOptions<HostAdapterOptions> optionsAccessor)
     : IHostAdapterProcessRunner
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     private readonly HostAdapterOptions options = optionsAccessor.Value;
+
+    /// <summary>
+    /// Starts the process described by <paramref name="startInfo"/>, waits for it to exit,
+    /// and captures stdout, stderr, and the exit code.
+    /// Returns null when the process fails to start (i.e. <c>Process.Start()</c> returns false).
+    /// Replaced in unit tests to avoid spawning real child processes.
+    /// </summary>
+    internal Func<
+        ProcessStartInfo,
+        CancellationToken,
+        Task<ProcessExecutionResult?>
+    > ProcessExecutor { get; init; } =
+        static async (startInfo, cancellationToken) =>
+        {
+            using var process = new Process { StartInfo = startInfo };
+            if (!process.Start())
+                return null;
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync(cancellationToken);
+            return new ProcessExecutionResult(await stdoutTask, await stderrTask, process.ExitCode);
+        };
 
     public async Task<AdapterCommandResult<T>> ExecuteAsync<T>(
         ProcessStartInfo startInfo,
@@ -19,11 +49,11 @@ internal sealed class HostAdapterProcessRunner(IOptions<HostAdapterOptions> opti
         CancellationToken cancellationToken
     )
     {
-        using var process = new Process { StartInfo = startInfo };
-
+        ProcessExecutionResult? execution;
         try
         {
-            if (!process.Start())
+            execution = await ProcessExecutor(startInfo, cancellationToken);
+            if (execution is null)
             {
                 return HostAdapterResponses.Failure<T>(
                     StatusCodes.Status502BadGateway,
@@ -49,13 +79,9 @@ internal sealed class HostAdapterProcessRunner(IOptions<HostAdapterOptions> opti
             );
         }
 
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
-        var stderrTask = process.StandardError.ReadToEndAsync();
-
-        await process.WaitForExitAsync(cancellationToken);
-        var stdout = await stdoutTask;
-        var stderr = await stderrTask;
-        var cliExitCode = process.ExitCode;
+        var stdout = execution.Stdout;
+        var stderr = execution.Stderr;
+        var cliExitCode = execution.ExitCode;
 
         if (!TryDeserializeRpcResponse(stdout, out var response))
         {

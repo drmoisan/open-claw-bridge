@@ -306,4 +306,162 @@ public partial class MailBridgeRuntimeTests
         repo.Messages.Should().BeEmpty("items with blank EntryID should be skipped");
         state.State.Should().Be(BridgeState.ready);
     }
+
+    // ── COM yield boundary tests ────────────────────────────────────────
+
+    [TestMethod]
+    public async Task EnumerateItems_should_yield_after_ComYieldBatchSize_items()
+    {
+        var settings = BridgeSettings.Default with
+        {
+            ComYieldBatchSize = 5,
+            ComYieldMilliseconds = 0,
+            MaxItemsPerScan = 10,
+            BodyPreviewMaxChars = 50,
+        };
+        var state = new BridgeStateStore(settings);
+        var inbox = new FakeOutlookFolder();
+        for (var i = 0; i < 10; i++)
+        {
+            inbox.Items.Add(
+                new FakeMailItem
+                {
+                    EntryID = $"entry-yield-{i}",
+                    Subject = $"Item {i}",
+                    MessageClass = "IPM.Note",
+                    SenderName = "Tester",
+                }
+            );
+        }
+
+        var calendar = new FakeOutlookFolder();
+        var outlook = BuildOutlookWithFolders(inbox: inbox, calendar: calendar);
+        var com = new FakeComActiveObject { RunningObject = outlook };
+        var repo = new FakeScanStateRepository();
+        var scanner = BuildScanner(settings: settings, state: state, com: com);
+
+        await scanner.ScanAsync(repo);
+
+        // All 10 items should be processed despite yield points at items 5 and 10
+        repo.Messages.Should().HaveCount(10);
+        state.State.Should().Be(BridgeState.ready);
+    }
+
+    [TestMethod]
+    public async Task EnumerateItems_should_not_yield_when_count_is_below_batch_size()
+    {
+        var settings = BridgeSettings.Default with
+        {
+            ComYieldBatchSize = 50,
+            ComYieldMilliseconds = 100,
+            MaxItemsPerScan = 100,
+            BodyPreviewMaxChars = 50,
+        };
+        var state = new BridgeStateStore(settings);
+        var inbox = new FakeOutlookFolder();
+        for (var i = 0; i < 3; i++)
+        {
+            inbox.Items.Add(
+                new FakeMailItem
+                {
+                    EntryID = $"entry-small-{i}",
+                    Subject = $"Small {i}",
+                    MessageClass = "IPM.Note",
+                    SenderName = "Tester",
+                }
+            );
+        }
+
+        var calendar = new FakeOutlookFolder();
+        var outlook = BuildOutlookWithFolders(inbox: inbox, calendar: calendar);
+        var com = new FakeComActiveObject { RunningObject = outlook };
+        var repo = new FakeScanStateRepository();
+        var scanner = BuildScanner(settings: settings, state: state, com: com);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await scanner.ScanAsync(repo);
+        sw.Stop();
+
+        // With only 3 items and batch size 50, no Thread.Sleep should fire.
+        // If it did, elapsed time would be >= 100ms.
+        repo.Messages.Should().HaveCount(3);
+        sw.ElapsedMilliseconds.Should().BeLessThan(100, "no yield should occur below batch size");
+    }
+
+    [TestMethod]
+    public async Task EnumerateItems_should_yield_multiple_times_for_large_item_sets()
+    {
+        var settings = BridgeSettings.Default with
+        {
+            ComYieldBatchSize = 25,
+            ComYieldMilliseconds = 0,
+            MaxItemsPerScan = 100,
+            BodyPreviewMaxChars = 50,
+        };
+        var state = new BridgeStateStore(settings);
+        var inbox = new FakeOutlookFolder();
+        for (var i = 0; i < 75; i++)
+        {
+            inbox.Items.Add(
+                new FakeMailItem
+                {
+                    EntryID = $"entry-large-{i}",
+                    Subject = $"Large {i}",
+                    MessageClass = "IPM.Note",
+                    SenderName = "Tester",
+                }
+            );
+        }
+
+        var calendar = new FakeOutlookFolder();
+        var outlook = BuildOutlookWithFolders(inbox: inbox, calendar: calendar);
+        var com = new FakeComActiveObject { RunningObject = outlook };
+        var repo = new FakeScanStateRepository();
+        var scanner = BuildScanner(settings: settings, state: state, com: com);
+
+        await scanner.ScanAsync(repo);
+
+        // All 75 items processed; yield points at 25, 50, 75
+        repo.Messages.Should().HaveCount(75);
+        state.State.Should().Be(BridgeState.ready);
+    }
+
+    [TestMethod]
+    public void BridgeSettingsValidator_should_reject_ComYieldBatchSize_less_than_1()
+    {
+        var settings = BridgeSettings.Default with { ComYieldBatchSize = 0 };
+
+        var errors = BridgeSettingsValidator.Validate(settings);
+
+        errors.Should().Contain(e => e.Contains("comYieldBatchSize"));
+    }
+
+    [TestMethod]
+    public void BridgeSettingsValidator_should_reject_negative_ComYieldMilliseconds()
+    {
+        var settings = BridgeSettings.Default with { ComYieldMilliseconds = -1 };
+
+        var errors = BridgeSettingsValidator.Validate(settings);
+
+        errors.Should().Contain(e => e.Contains("comYieldMilliseconds"));
+    }
+
+    [TestMethod]
+    public void BridgeSettingsValidator_should_accept_valid_yield_settings()
+    {
+        var settings = BridgeSettings.Default with
+        {
+            ComYieldBatchSize = 25,
+            ComYieldMilliseconds = 15,
+        };
+
+        var errors = BridgeSettingsValidator.Validate(settings);
+
+        errors
+            .Should()
+            .NotContain(
+                e => e.Contains("comYieldBatchSize") || e.Contains("comYieldMilliseconds"),
+                "valid yield settings should produce no yield-related errors"
+            );
+    }
 }
