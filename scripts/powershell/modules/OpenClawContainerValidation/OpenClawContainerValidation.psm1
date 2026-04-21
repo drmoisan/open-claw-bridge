@@ -272,7 +272,7 @@ function Invoke-OpenClawHostAdapterInContainerProbe {
         [Parameter(Mandatory = $true)][string]$DockerExecutablePath,
         [Parameter(Mandatory = $true)][string]$AgentContainerName
     )
-    $shellCommand = 'curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $(cat /run/openclaw/hostadapter.token)" http://host.docker.internal:4319/v1/status'
+    $shellCommand = 'TOKEN=$(tr -d "\r\n" < /run/openclaw/hostadapter.token); curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://host.docker.internal:4319/v1/status'
     $command = Invoke-OpenClawDockerCommand -ExecutablePath $DockerExecutablePath -CommandArguments @(
         'compose', 'exec', '-T', $AgentContainerName, 'sh', '-c', $shellCommand
     )

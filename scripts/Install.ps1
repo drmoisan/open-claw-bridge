@@ -42,6 +42,17 @@
     install record captures skipDocker = true so Uninstall.ps1 mirrors the
     skip.
 
+.PARAMETER DockerEnvFilePath
+    Optional operator-managed Docker .env file to copy into the installed
+    docker directory after bundle manifest validation. Do not place this file
+    inside artifacts/publish/<version>; that directory is manifest-controlled.
+
+.PARAMETER AnthropicEnvFilePath
+    Optional operator-managed Anthropic env file to copy to
+    docker/secrets/.env.anthropic in the installed docker directory after
+    bundle manifest validation. Do not place this file inside
+    artifacts/publish/<version>; that directory is manifest-controlled.
+
 .PARAMETER Force
     Performs a full uninstall-then-install against any prior install of the
     same version (compose down, remove MSIX, remove destination folder,
@@ -56,6 +67,11 @@
 .EXAMPLE
     .\Install.ps1 -SkipDocker
     Installs only the MSIX; records skipDocker = true.
+
+.EXAMPLE
+    .\Install.ps1 -DockerEnvFilePath "$env:LOCALAPPDATA\OpenClaw\operator-config\.env" -AnthropicEnvFilePath "$env:LOCALAPPDATA\OpenClaw\operator-config\secrets\.env.anthropic"
+    Installs the bundle and stages operator-managed Docker env files from a
+    version-neutral local configuration directory.
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
@@ -64,6 +80,10 @@ param(
     [switch]$AllowUnsigned,
 
     [switch]$SkipDocker,
+
+    [string]$DockerEnvFilePath,
+
+    [string]$AnthropicEnvFilePath,
 
     [switch]$Force
 )
@@ -84,6 +104,192 @@ if (-not (Get-Command -Name 'Test-IsElevatedAdmin' -ErrorAction SilentlyContinue
     }
 }
 
+function Assert-OptionalInputFile {
+    [CmdletBinding()]
+    param(
+        [AllowEmptyString()]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ParameterName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        throw "The file supplied by -$ParameterName was not found at '$Path'. Keep operator env files outside artifacts/publish/<version> and pass their local paths to Install.ps1."
+    }
+}
+
+function Copy-OperatorDockerConfiguration {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestDockerDir,
+
+        [AllowEmptyString()]
+        [string]$DockerEnvFilePath,
+
+        [AllowEmptyString()]
+        [string]$AnthropicEnvFilePath
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($DockerEnvFilePath)) {
+        $destEnv = Join-Path $DestDockerDir '.env'
+        Write-Information "[install:env] Copying operator Docker env file to $destEnv" -InformationAction Continue
+        Copy-Item -LiteralPath $DockerEnvFilePath -Destination $destEnv -Force
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($AnthropicEnvFilePath)) {
+        $destSecretsDir = Join-Path $DestDockerDir 'secrets'
+        $destAnthropicEnv = Join-Path $destSecretsDir '.env.anthropic'
+        Write-Information "[install:env] Copying operator Anthropic env file to $destAnthropicEnv" -InformationAction Continue
+        $null = New-Item -ItemType Directory -Path $destSecretsDir -Force
+        Copy-Item -LiteralPath $AnthropicEnvFilePath -Destination $destAnthropicEnv -Force
+    }
+}
+
+function Assert-DockerRuntimeInput {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestDockerDir
+    )
+
+    $anthropicEnvPath = Join-Path $DestDockerDir 'secrets/.env.anthropic'
+    if (-not (Test-Path -LiteralPath $anthropicEnvPath)) {
+        throw "Required Docker secret file not found at '$anthropicEnvPath'. Keep the file outside artifacts/publish/<version> and pass -AnthropicEnvFilePath to Install.ps1, or pass -SkipDocker and stage Docker configuration before starting compose manually."
+    }
+}
+
+function Get-InstallEnvFileMap {
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFilePath
+    )
+
+    $map = @{}
+    if (-not (Test-Path -LiteralPath $EnvFilePath)) {
+        return $map
+    }
+
+    $lines = @(Get-Content -LiteralPath $EnvFilePath)
+    foreach ($line in $lines) {
+        if ($null -eq $line) {
+            continue
+        }
+
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith('#')) {
+            continue
+        }
+
+        $equalsIndex = $trimmed.IndexOf('=')
+        if ($equalsIndex -lt 1) {
+            continue
+        }
+
+        $key = $trimmed.Substring(0, $equalsIndex).Trim()
+        $value = $trimmed.Substring($equalsIndex + 1).Trim().Trim([char[]]@('"', "'"))
+        $map[$key] = $value
+    }
+
+    return $map
+}
+
+function Get-InstallEndpointUri {
+    [CmdletBinding()]
+    [OutputType([uri])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [uri]$BaseUri,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    $builder = [UriBuilder]::new($BaseUri)
+    $basePath = $builder.Path.TrimEnd('/')
+    $relativePath = $Path.TrimStart('/')
+    $builder.Path = if ([string]::IsNullOrWhiteSpace($basePath)) {
+        $relativePath
+    } else {
+        '{0}/{1}' -f $basePath, $relativePath
+    }
+
+    return $builder.Uri
+}
+
+function Get-HostAdapterPreflightUri {
+    [CmdletBinding()]
+    [OutputType([uri])]
+    param(
+        [hashtable]$EnvMap
+    )
+
+    $baseUrl = 'http://host.docker.internal:4319/v1'
+    if ($EnvMap -and $EnvMap.ContainsKey('OpenClaw__HostAdapter__BaseUrl') -and -not [string]::IsNullOrWhiteSpace([string]$EnvMap['OpenClaw__HostAdapter__BaseUrl'])) {
+        $baseUrl = [string]$EnvMap['OpenClaw__HostAdapter__BaseUrl']
+    }
+
+    try {
+        $builder = [UriBuilder]::new([uri]$baseUrl)
+    } catch {
+        throw "OpenClaw__HostAdapter__BaseUrl in the installed docker .env is not a valid URI: '$baseUrl'."
+    }
+
+    if ($builder.Host -eq 'host.docker.internal') {
+        $builder.Host = '127.0.0.1'
+    }
+
+    return Get-InstallEndpointUri -BaseUri $builder.Uri -Path '/status'
+}
+
+function Assert-HostAdapterRuntimePreflight {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestDockerDir
+    )
+
+    $envFilePath = Join-Path $DestDockerDir '.env'
+    $envMap = Get-InstallEnvFileMap -EnvFilePath $envFilePath
+    $tokenFilePath = 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token'
+    if ($envMap.ContainsKey('HOSTADAPTER_TOKEN_FILE') -and -not [string]::IsNullOrWhiteSpace([string]$envMap['HOSTADAPTER_TOKEN_FILE'])) {
+        $tokenFilePath = [Environment]::ExpandEnvironmentVariables([string]$envMap['HOSTADAPTER_TOKEN_FILE'])
+    }
+
+    if (-not (Test-Path -LiteralPath $tokenFilePath)) {
+        throw "HostAdapter preflight failed before starting Docker. Token file not found at '$tokenFilePath'. Provision the HostAdapter token file, start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage."
+    }
+
+    $token = (Get-Content -LiteralPath $tokenFilePath -Raw).Trim()
+    if ([string]::IsNullOrWhiteSpace($token)) {
+        throw "HostAdapter preflight failed before starting Docker. Token file '$tokenFilePath' is empty. Provision a non-empty HostAdapter token, start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage."
+    }
+
+    $statusUri = Get-HostAdapterPreflightUri -EnvMap $envMap
+    try {
+        $response = Invoke-WebRequest `
+            -Uri $statusUri `
+            -Method Get `
+            -Headers @{ Authorization = "Bearer $token" } `
+            -UseBasicParsing `
+            -SkipHttpErrorCheck `
+            -TimeoutSec 10
+    } catch {
+        throw "HostAdapter preflight failed before starting Docker. GET $statusUri was unreachable: $($_.Exception.Message). Start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage."
+    }
+
+    if ([int]$response.StatusCode -ne 200) {
+        throw "HostAdapter preflight failed before starting Docker. GET $statusUri returned HTTP $($response.StatusCode). Confirm OpenClaw.HostAdapter is running, the token is valid, and OpenClaw.MailBridge is running, then retry; or pass -SkipDocker to skip the container stage."
+    }
+}
+
 # --- Main (only runs when executed directly, not when dot-sourced for tests) ---
 if ($MyInvocation.InvocationName -ne '.') {
 
@@ -94,6 +300,9 @@ if ($MyInvocation.InvocationName -ne '.') {
             throw '-AllowUnsigned requires the current PowerShell session to run as administrator when the MSIX contains executable content. Relaunch PowerShell as administrator and retry, or install the signing certificate to Cert:\LocalMachine\TrustedPeople and omit -AllowUnsigned. See https://learn.microsoft.com/en-us/windows/msix/package/unsigned-package for details.'
         }
     }
+
+    Assert-OptionalInputFile -Path $DockerEnvFilePath -ParameterName 'DockerEnvFilePath'
+    Assert-OptionalInputFile -Path $AnthropicEnvFilePath -ParameterName 'AnthropicEnvFilePath'
 
     # Stage 1: bundle selection. Bundle root = -SourcePath (defaults to
     # $PSScriptRoot, the directory this script lives in after it has been
@@ -139,6 +348,8 @@ if ($MyInvocation.InvocationName -ne '.') {
             catch { Write-Information "[install:force-uninstall] remove-record tolerated failure: $($_.Exception.Message)" -InformationAction Continue }
         }
         elseif (Test-Path -LiteralPath $DestinationPath) {
+            try { Invoke-MsixRemove -PackageFullName '' }
+            catch { Write-Information "[install:force-uninstall] destination-only msix-remove tolerated failure: $($_.Exception.Message)" -InformationAction Continue }
             try { Remove-Item -LiteralPath $DestinationPath -Recurse -Force }
             catch { Write-Information "[install:force-uninstall] remove-destination tolerated failure: $($_.Exception.Message)" -InformationAction Continue }
         }
@@ -159,6 +370,10 @@ if ($MyInvocation.InvocationName -ne '.') {
     $DestDockerDir = Join-Path $DestinationPath 'docker'
     Write-Information '[install:env] Provisioning .env when absent' -InformationAction Continue
     Initialize-DotEnv -DestDockerDir $DestDockerDir
+    Copy-OperatorDockerConfiguration -DestDockerDir $DestDockerDir -DockerEnvFilePath $DockerEnvFilePath -AnthropicEnvFilePath $AnthropicEnvFilePath
+    if (-not $SkipDocker) {
+        Assert-DockerRuntimeInput -DestDockerDir $DestDockerDir
+    }
 
     # Stage 7: MSIX install + capture.
     $MsixPath = Join-Path $BundleRoot "msix/OpenClaw.MailBridge_${ResolvedVersion}_x64.msix"
@@ -173,6 +388,8 @@ if ($MyInvocation.InvocationName -ne '.') {
     # Stage 8: compose up + health poll (skipped when -SkipDocker).
     $ComposeFilePath = Join-Path $DestDockerDir 'docker-compose.yml'
     if (-not $SkipDocker) {
+        Write-Information '[install:hostadapter-check] Verifying HostAdapter and MailBridge readiness before compose up' -InformationAction Continue
+        Assert-HostAdapterRuntimePreflight -DestDockerDir $DestDockerDir
         Write-Information '[install:docker] Starting compose stack' -InformationAction Continue
         Invoke-ComposeUp -DestDockerDir $DestDockerDir -ComposeFilePath $ComposeFilePath
         Wait-ComposeHealthy -ComposeFilePath $ComposeFilePath

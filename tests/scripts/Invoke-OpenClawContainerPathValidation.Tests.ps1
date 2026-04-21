@@ -104,6 +104,63 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         @($script:DockerRequests) | Should -Contain 'container inspect openclaw-agent'
     }
 
+    It 'derives the default CoreBaseUrl from OPENCLAW_HTTP_PORT in the selected env file' {
+        $requestedUris = $script:RequestedUris
+        Mock -ModuleName OpenClawContainerValidation Get-Content { return @('OPENCLAW_HTTP_PORT=8081', 'OPENCLAW_GATEWAY_TOKEN=valid-token-abc') } -ParameterFilter { (($Path -and $Path -match '\.env$') -or ($LiteralPath -and $LiteralPath -match '\.env$')) }
+        Mock -ModuleName OpenClawContainerValidation Test-Path { return $true }
+        Mock -ModuleName OpenClawContainerValidation Invoke-WebRequest {
+            param(
+                [uri]$Uri,
+                [string]$Method,
+                [int]$TimeoutSec,
+                [switch]$UseBasicParsing,
+                [switch]$SkipHttpErrorCheck,
+                $Headers,
+                $Body
+            )
+
+            $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
+            $requestedUris.Add([string]$Uri)
+            $content = switch ($Uri.AbsolutePath) {
+                '/health/live' { '{"status":"live"}' }
+                '/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                '/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                '/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
+                '/readyz' { 'ready' }
+                '/auth/verify' { '{"ok":true}' }
+                default { throw "Unexpected URI: $Uri" }
+            }
+
+            return [pscustomobject]@{
+                StatusCode = 200
+                Headers    = @{ 'Content-Type' = 'application/json' }
+                Content    = $content
+            }
+        }
+        $dockerRequests = $script:DockerRequests
+        Set-Item -Path Function:\Global:Invoke-FakeDocker -Value ({
+                [CmdletBinding()]
+                param([Parameter(ValueFromRemainingArguments = $true)][object[]]$Arguments)
+                $commandLine = $Arguments -join ' '
+                $dockerRequests.Add($commandLine)
+                $global:LASTEXITCODE = 0
+                switch -Regex ($commandLine) {
+                    '^version --format' { '25.0.0'; return }
+                    'container inspect openclaw-core' { '[{"Name":"/openclaw-core","Config":{"Image":"openclaw/core:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'; return }
+                    'container inspect openclaw-agent' { '[{"Name":"/openclaw-agent","Config":{"Image":"openclaw/agent:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'; return }
+                    'compose exec' { '200'; return }
+                    default { $global:LASTEXITCODE = 1; "Unexpected: $commandLine" }
+                }
+            }.GetNewClosure())
+
+        $result = & $script:ScriptPath -DockerPath 'Invoke-FakeDocker' -EnvFilePath 'C:\operator\.env' -PassThru
+
+        $result.CoreBaseUrl | Should -Be 'http://127.0.0.1:8081/'
+        @($requestedUris) | Should -Contain 'http://127.0.0.1:8081/health/live'
+        @($requestedUris) | Should -Contain 'http://127.0.0.1:8081/health/ready'
+        @($requestedUris) | Should -Contain 'http://127.0.0.1:8081/api/status'
+    }
+
     It 'returns unexpected when readiness diagnostics report a degraded dependency' {
         Mock -ModuleName OpenClawContainerValidation Get-Content { return @('OPENCLAW_GATEWAY_TOKEN=valid-token-abc') } -ParameterFilter { (($Path -and $Path -match '\.env$') -or ($LiteralPath -and $LiteralPath -match '\.env$')) }
         Mock -ModuleName OpenClawContainerValidation Test-Path { return $true }

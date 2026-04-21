@@ -450,6 +450,11 @@ Validate the container path. The validation script runs the same endpoint checks
 .\scripts\Invoke-OpenClawContainerPathValidation.ps1
 ```
 
+When `-CoreBaseUrl` is omitted, the validation script reads
+`OPENCLAW_HTTP_PORT` from `-EnvFilePath` (default `./.env`). If `.env`
+contains `OPENCLAW_HTTP_PORT=8081`, the Core probes target
+`http://127.0.0.1:8081`.
+
 Expected behavior:
 
 - `OverallResult` is `Expected` only when every container and endpoint check returns the expected response.
@@ -478,6 +483,71 @@ If the HostAdapter or Docker path is unavailable, continue using:
 ```
 
 The Windows bridge and client remain the canonical fallback path for troubleshooting.
+
+## Install Path D: Scripted Bundle Install
+
+Use this path for a bundle produced by `scripts/Publish.ps1`. The bundle root
+under `artifacts/publish/<version>/` is manifest-controlled. Do not add
+machine-local files such as `docker/.env` or `docker/secrets/.env.anthropic` to
+that directory.
+
+Prepare version-neutral operator configuration outside the publish bundle:
+
+```powershell
+$operatorConfig = Join-Path $env:LOCALAPPDATA 'OpenClaw\operator-config'
+New-Item -ItemType Directory -Force -Path (Join-Path $operatorConfig 'secrets') | Out-Null
+Copy-Item .\artifacts\publish\1.0.0.3\docker\.env.example (Join-Path $operatorConfig '.env') -Force
+notepad (Join-Path $operatorConfig '.env')
+notepad (Join-Path $operatorConfig 'secrets\.env.anthropic')
+```
+
+Configuration requirements:
+
+- The operator `.env` file must contain the same Docker settings normally used
+  by compose, including `OPENCLAW_GATEWAY_TOKEN` after onboarding.
+- The Anthropic env file must contain `ANTHROPIC_API_KEY=<real key>`.
+- Keep these files out of `artifacts/publish/<version>/`; the installer copies
+  them into the installed Docker directory after manifest verification.
+- When Docker is enabled, `Install.ps1` fails before MSIX installation if the
+  installed Docker directory does not have `secrets/.env.anthropic`.
+
+Before installing, confirm that both operator-managed files exist:
+
+```powershell
+Test-Path (Join-Path $operatorConfig '.env')
+Test-Path (Join-Path $operatorConfig 'secrets\.env.anthropic')
+```
+
+Both commands must return `True`. If either returns `False`, create or correct
+the missing file before running `Install.ps1`.
+
+Run the installer from the bundle directory and pass the operator-managed files:
+
+```powershell
+$bundle = 'C:\Users\DanMoisan\repos\open-claw-bridge\artifacts\publish\1.0.0.5'
+Set-Location $bundle
+.\Install.ps1 `
+  -DockerEnvFilePath (Join-Path $operatorConfig '.env') `
+  -AnthropicEnvFilePath (Join-Path $operatorConfig 'secrets\.env.anthropic')
+```
+
+If a prior attempt failed after creating `%LOCALAPPDATA%\OpenClaw\<version>\`,
+rerun the installer with `-Force` and the same env-file parameters:
+
+```powershell
+.\Install.ps1 -Force `
+  -DockerEnvFilePath (Join-Path $operatorConfig '.env') `
+  -AnthropicEnvFilePath (Join-Path $operatorConfig 'secrets\.env.anthropic')
+```
+
+If the Docker stage is intentionally deferred, run:
+
+```powershell
+.\Install.ps1 -SkipDocker
+```
+
+Then place the operator env files under
+`%LOCALAPPDATA%\OpenClaw\<version>\docker\` before starting compose manually.
 
 ## OpenClaw Agent (Required)
 
@@ -514,6 +584,10 @@ Run the aggregated validation script. It performs container inspection, `/health
 ```powershell
 pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassThru
 ```
+
+When `-CoreBaseUrl` is omitted, the script derives the Core probe URL from
+`OPENCLAW_HTTP_PORT` in the selected `.env`; `OPENCLAW_HTTP_PORT=8081`
+resolves to `http://127.0.0.1:8081`.
 
 `OverallResult: Expected` means every probe passed. `OverallResult: Unexpected` will list the specific failing probes in `SupportingDiagnostics`.
 
@@ -589,5 +663,6 @@ Record these checks separately after the scripted suites pass:
 | Safe mode seems to hide sender or preview fields | Bridge is operating as designed | Keep `safe` mode if privacy is required, or switch to `enhanced` only after operator approval. |
 | `No prior install recorded` when running `Uninstall.ps1` | `%LOCALAPPDATA%\OpenClaw\install-record.json` is absent | Confirm that an install was performed via `Install.ps1`. If the install was performed via Path A or Path B, use the matching uninstall path instead (`uninstall-mailbridge.ps1` for Path A; `Get-AppxPackage ... | Remove-AppxPackage` for Path B). |
 | `Docker Desktop is not running or not installed. Start Docker Desktop and retry, or pass -SkipDocker to skip the container stage.` when running `Install.ps1` | `docker info` returned a non-zero exit code | Start Docker Desktop and rerun `Install.ps1`. If a docker-free install is acceptable, pass `-SkipDocker`; `Uninstall.ps1` later honors the recorded `skipDocker = true` and skips the compose-down step. |
-| `Manifest integrity check failed for bundle '<path>'. Discrepancies: ...` when running `Install.ps1` | One or more files under the bundle root do not match `manifest.json` by size or SHA-256, or on-disk files are absent from the manifest | Re-publish the bundle with `scripts\Publish.ps1` and retry. No destination folder is created when manifest integrity fails, so the host is left in a clean pre-install state. |
+| `Required Docker secret file not found at '<path>\docker\secrets\.env.anthropic'...` when running `Install.ps1` | Docker installation was requested, but the Anthropic env file was not supplied to the installed Docker directory | Keep the secret outside the publish bundle and rerun `Install.ps1` with `-AnthropicEnvFilePath <operator-config>\secrets\.env.anthropic`, or pass `-SkipDocker` and stage Docker configuration manually before starting compose. |
+| `Manifest integrity check failed for bundle '<path>'. Discrepancies: ...` when running `Install.ps1` | One or more files under the bundle root do not match `manifest.json` by size or SHA-256, or on-disk files are absent from the manifest. This includes manually added files such as `docker/.env` or `docker/secrets/.env.anthropic`. | Remove machine-local files from `artifacts/publish/<version>/`. Keep operator env files outside the bundle and pass them with `Install.ps1 -DockerEnvFilePath ... -AnthropicEnvFilePath ...`, or re-publish the bundle with `scripts\Publish.ps1` if packaged files were changed. No destination folder is created when manifest integrity fails. |
 | `manifest.json not found at '<path>\manifest.json'. Ensure Install.ps1 is executed from a bundle directory produced by Publish.ps1...` when running `Install.ps1` | The script resolved the bundle root from `$PSScriptRoot` (or `-SourcePath`) but no `manifest.json` sits at that root | Ensure the script is being run from the bundle directory produced by `Publish.ps1` (i.e. `cd artifacts/publish/<version>; .\Install.ps1`), not from the repo's `scripts/` directory. Pass `-SourcePath` only to override for dev/test scenarios. |
