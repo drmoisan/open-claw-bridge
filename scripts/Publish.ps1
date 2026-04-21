@@ -174,7 +174,13 @@ if ($MyInvocation.InvocationName -ne '.') {
         Write-Information '[msix] Skipping sign (-SkipSign)' -InformationAction Continue
     }
 
-    # Stage 5: manifest.
+    # Stage 5: stage install scripts into the bundle root so the bundle is
+    # self-installing (operator cd's into the bundle and runs .\Install.ps1).
+    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1 into $BundleRoot" -InformationAction Continue
+    Copy-InstallScriptsIntoBundle -RepoRoot $RepoRoot -BundleRoot $BundleRoot
+
+    # Stage 6: manifest (runs AFTER install-script staging so the manifest
+    # lists the staged install scripts).
     Write-Information "[manifest] Writing manifest.json under $BundleRoot" -InformationAction Continue
     Write-PublishManifest -BundleRoot $BundleRoot -Version $Version
 

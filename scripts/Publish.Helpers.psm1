@@ -39,8 +39,8 @@ function Find-WindowsSdkTool {
     if (Test-Path $sdkBinRoot) {
         $found = Get-ChildItem $sdkBinRoot -Recurse -Filter $ToolName -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -like '*\x64\*' } |
-                Sort-Object FullName -Descending |
-                    Select-Object -First 1
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
         if ($found) {
             return $found.FullName
         }
@@ -391,15 +391,57 @@ function New-ManifestEntry {
     }
 }
 
+function Copy-InstallScriptsIntoBundle {
+    <#
+    .SYNOPSIS
+        Copies the install-related scripts from the repo into the bundle root.
+    .DESCRIPTION
+        The three files Install.ps1, Uninstall.ps1, and Install.Helpers.psm1
+        must ship inside every bundle so operators can `cd` into the bundle
+        directory and invoke .\Install.ps1 directly (the script self-locates
+        via $PSScriptRoot). This helper resolves <RepoRoot>/scripts/<name> for
+        each file, verifies the source exists, and copies it to the bundle
+        root with Copy-Item -LiteralPath ... -Force.
+    .PARAMETER RepoRoot
+        Absolute path to the repository root containing the scripts/ directory.
+    .PARAMETER BundleRoot
+        Absolute path to the bundle root (same level as executables/, docker/,
+        msix/). The three install-script files are copied to this directory.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$BundleRoot
+    )
+
+    $srcScriptsDir = Join-Path $RepoRoot 'scripts'
+    $names = @('Install.ps1', 'Uninstall.ps1', 'Install.Helpers.psm1')
+
+    foreach ($name in $names) {
+        $srcPath = Join-Path $srcScriptsDir $name
+        if (-not (Test-Path -LiteralPath $srcPath)) {
+            throw "Install-script source file not found at '$srcPath'. Cannot stage into bundle."
+        }
+        $dstPath = Join-Path $BundleRoot $name
+        if ($PSCmdlet.ShouldProcess($dstPath, "Copy install script $name into bundle")) {
+            Copy-Item -LiteralPath $srcPath -Destination $dstPath -Force
+        }
+    }
+}
+
 function Write-PublishManifest {
     <#
     .SYNOPSIS
         Walks the bundle root, composes the manifest, and writes manifest.json.
     .DESCRIPTION
         Enumerates every file under $BundleRoot excluding manifest.json itself.
-        Composes an object with version, generatedAt (UTC ISO-8601), and files
-        (sorted ascending by path using invariant culture). Writes the JSON
-        to <BundleRoot>/manifest.json.
+        Composes an object with the { version, files } schema where files is
+        sorted ascending by path using invariant culture. Writes the JSON to
+        <BundleRoot>/manifest.json. The top-level version is the -Version
+        parameter verbatim; downstream consumers read it via Get-ManifestVersion.
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -421,16 +463,12 @@ function Write-PublishManifest {
     }
 
     # Sort by path using InvariantCulture for stable diffs across locales.
-    # PowerShell's default Sort-Object uses the thread's current culture which
-    # can introduce locale-specific ordering drift; using InvariantCulture
-    # produces a deterministic order.
     $entriesArray = @($entries)
     $sortedEntries = $entriesArray | Sort-Object -Property path -Culture 'en-US'
 
     $manifest = [pscustomobject]@{
-        version     = $Version
-        generatedAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-        files       = @($sortedEntries)
+        version = $Version
+        files   = @($sortedEntries)
     }
 
     if ($PSCmdlet.ShouldProcess($manifestPath, 'Write publish manifest')) {
@@ -451,6 +489,7 @@ Export-ModuleMember -Function @(
     'Invoke-SignTool'
     'Invoke-DotnetPublish'
     'Copy-DockerArtifact'
+    'Copy-InstallScriptsIntoBundle'
     'New-ManifestEntry'
     'Write-PublishManifest'
 )
