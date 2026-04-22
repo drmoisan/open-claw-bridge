@@ -5,7 +5,7 @@ Single pass/fail diagnostic for the OpenClaw container path.
 
 .DESCRIPTION
 Probes container health, `/health` endpoints on `openclaw-core`, readiness
-(`/readyz`) and dashboard auth on `openclaw-agent`, in-container HostAdapter
+(`/readyz`) on `openclaw-agent`, in-container HostAdapter
 reachability via `docker compose exec`, and the presence of
 `OPENCLAW_GATEWAY_TOKEN` in the operator's `.env`. Aggregates the results
 into a single `OverallResult` value (`Expected` or `Unexpected`).
@@ -14,11 +14,6 @@ Helpers (URL composition, docker wrapper, HTTP wrapper, `.env` parsing,
 and the four new probes introduced by issue #38) live in the
 `OpenClawContainerValidation` module under
 `scripts/powershell/modules/OpenClawContainerValidation/`.
-
-.PARAMETER DashboardAuthPath
-Relative path on the openclaw-agent gateway used by the DashboardAuth probe.
-Default: `/auth/verify`. Operators can override when their upstream gateway
-exposes the auth-verify endpoint at a non-default path.
 
 .PARAMETER CoreBaseUrl
 Base URL for OpenClaw.Core endpoint probes. When omitted, the script reads
@@ -36,7 +31,6 @@ param(
     [ValidateRange(1, 300)]
     [int]$TimeoutSeconds = 10,
     [string]$EnvFilePath = './.env',
-    [string]$DashboardAuthPath = '/auth/verify',
     [switch]$PassThru,
     [switch]$AsJson
 )
@@ -80,7 +74,8 @@ function Invoke-OpenClawDockerEngineValidation {
     $isExpected = $command.Succeeded -and -not [string]::IsNullOrWhiteSpace($version)
     $summary = if ($isExpected) {
         'Expected: Docker engine responded to the version probe.'
-    } else {
+    }
+    else {
         'Unexpected: Docker engine did not respond to the version probe.'
     }
     return Get-OpenClawValidationResult `
@@ -123,7 +118,8 @@ function Get-OpenClawContainerInspection {
             Output       = @($command.Output)
             ErrorMessage = $null
         }
-    } catch {
+    }
+    catch {
         return [pscustomobject]@{
             Exists       = $false
             Container    = $null
@@ -254,7 +250,6 @@ $coreStatus = Invoke-OpenClawStatusEndpointValidation -Uri (Get-OpenClawEndpoint
 $agentDashboard = Invoke-OpenClawAgentDashboardEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $AgentBaseUrl -Path '/') -TimeoutSeconds $TimeoutSeconds
 $agentReadyz = Invoke-OpenClawReadyzProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds
 $tokenPresence = Test-OpenClawGatewayTokenPresence -EnvFilePath $EnvFilePath
-$dashboardAuth = Invoke-OpenClawDashboardAuthProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds -EnvFilePath $EnvFilePath -AuthPath $DashboardAuthPath
 
 $dockerEngine = Invoke-OpenClawDockerEngineValidation -ExecutablePath $DockerPath
 $containerDiagnostics = @(
@@ -262,7 +257,7 @@ $containerDiagnostics = @(
     Invoke-OpenClawContainerValidation -DockerExecutablePath $DockerPath -ContainerName $AgentContainerName -DisplayName 'Agent'
 )
 $hostAdapterProbe = Invoke-OpenClawHostAdapterInContainerProbe -DockerExecutablePath $DockerPath -AgentContainerName $AgentContainerName
-$endpointDiagnostics = @($live, $ready, $coreStatus, $agentDashboard, $agentReadyz, $tokenPresence, $dashboardAuth)
+$endpointDiagnostics = @($live, $ready, $coreStatus, $agentDashboard, $agentReadyz, $tokenPresence)
 $supportingDiagnostics = @($dockerEngine) + $containerDiagnostics + @($hostAdapterProbe) + $endpointDiagnostics
 $isExpected = -not [bool]($supportingDiagnostics | Where-Object { -not $_.IsExpected })
 $result = [pscustomobject]@{
@@ -284,19 +279,20 @@ $result = [pscustomobject]@{
     AgentReadyz            = $agentReadyz
     HostAdapterInContainer = $hostAdapterProbe
     GatewayTokenPresence   = $tokenPresence
-    DashboardAuth          = $dashboardAuth
     SupportingDiagnostics  = $supportingDiagnostics
 }
 
 if ($AsJson) {
     $result | ConvertTo-Json -Depth 8
-} elseif ($PassThru) {
+}
+elseif ($PassThru) {
     $result
-} else {
+}
+else {
     Write-Output "OverallResult: $($result.OverallResult)"
     Write-Output "IsExpected: $($result.IsExpected)"
     Write-Output "CheckedAtUtc: $($result.CheckedAtUtc)"
     $result.SupportingDiagnostics |
         Select-Object Category, Name, IsExpected, HttpStatusCode, Summary |
-            Format-Table -AutoSize
+        Format-Table -AutoSize
 }

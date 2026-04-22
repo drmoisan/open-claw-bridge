@@ -7,6 +7,8 @@ runtime_dir="/.openclaw"
 
 mkdir -p "$workspace_dir"
 mkdir -p "$runtime_dir"
+mkdir -p "${CODEX_HOME:-$workspace_dir/.codex}"
+mkdir -p "${NPM_CONFIG_CACHE:-$workspace_dir/.npm-cache}"
 
 # Seed the managed workspace files only when they are missing so operator
 # onboarding state written under /workspace survives container restarts.
