@@ -1,10 +1,16 @@
-# Bug — OpenClaw agent reports `capabilities=none`; container-path validator falsely reports `Unexpected`
+# Bug — OpenClaw agent reports `capabilities=none`; container-path validator falsely reports `Unexpected` (Issue #43)
 
 - Promotion type: bug
 - Branch: `bug/openclaw-agent-capabilities-none`
 - Base branch: `development`
 - Created (UTC): 2026-04-21
 - Associated GitHub issue: *(not yet opened; track locally)*
+
+- Issue: #43
+- Issue URL: https://github.com/drmoisan/open-claw-bridge/issues/43
+- Last Updated: 2026-04-22
+- Status: Promoted -> docs/features/active/Bug__OpenClaw_agent_reports_capabilitiesnone_container-path_validator_falsely_reports_Unexpected/ (Issue #43)
+- Work Mode: full-bug
 
 ## Summary
 
