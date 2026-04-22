@@ -1,0 +1,26 @@
+{
+    "phase": "complete",
+    "version": "2.0",
+    "status": "PASS_PENDING_MANUAL_AGENT_VERIFY",
+    "feature_folder": "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2",
+    "plan_path": "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/plan.2026-04-22T10-45.md",
+    "fix_file": "deploy/docker/openclaw-assistant/openclaw.json",
+    "fix_change": "\"profile\": \"minimal\" -> \"profile\": \"coding\"",
+    "last_updated": "2026-04-22T11:03:00Z",
+    "evidence_artifacts": [
+        "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/verify-gateway-logs.2026-04-22.md",
+        "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/verify-hardening.2026-04-22.md",
+        "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/verify-profile-in-container.2026-04-22.md",
+        "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/verify-compose-unchanged.2026-04-22.md",
+        "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/verify-agent-capability.2026-04-22.md",
+        "docs/features/active/2026-04-21-openclaw-agent-capabilities-none-43/v2/verify-dockerfile-v1.2026-04-22.md"
+    ],
+    "ac_status": {
+        "AC-1-v2": "PENDING_MANUAL_VERIFY",
+        "AC-2-v2": "PENDING_MANUAL_VERIFY",
+        "AC-3-v2": "PASS",
+        "AC-4-v2": "PASS",
+        "AC-5-v2": "PASS"
+    },
+    "manual_followup": "P3-T5 requires operator to ask agent a calendar question via gateway and confirm exec tools are available. Update verify-agent-capability.2026-04-22.md and set AC-1-v2/AC-2-v2 to PASS when confirmed."
+}
