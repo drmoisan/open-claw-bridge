@@ -74,12 +74,20 @@ Describe 'scripts/Install.ps1' {
         Mock New-Item { [void]$global:InstallTestCalls.Add('New-Item') }
         Mock Copy-Item { [void]$global:InstallTestCalls.Add('Copy-Item') }
         Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') }
-        Mock Get-Content { 'test-hostadapter-token' }
+        Mock Get-Content {
+            param($LiteralPath)
+            if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
+                return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
+            }
+            return 'test-hostadapter-token'
+        }
         Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' } }
         Mock Test-Path {
             param($LiteralPath)
             if ($LiteralPath -like '*install-record.json') { return $false }
             if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
+            if ($LiteralPath -like '*TestAppData*OpenClaw*docker*.env') { return $true }
+            if ($LiteralPath -like '*TestAppData*OpenClaw*docker/.env') { return $true }
             # Any destination under LOCALAPPDATA\OpenClaw\<leaf> must default to absent so
             # tests that supply -SourcePath or -Version do not trip the prior-install guard.
             if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
@@ -208,6 +216,53 @@ Describe 'scripts/Install.ps1' {
         }
     }
 
+    Context 'OPENCLAW_GATEWAY_TOKEN guard' {
+        It 'throws before MSIX install when the staged .env has an empty OPENCLAW_GATEWAY_TOKEN' {
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=')
+                }
+                return 'test-hostadapter-token'
+            }
+
+            { & $script:ScriptPath } |
+                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Wait-ComposeHealthy' | Should -BeFalse
+        }
+
+        It 'throws before MSIX install when the staged .env is missing OPENCLAW_GATEWAY_TOKEN entirely' {
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @('OPENCLAW_AGENT_PORT=18789')
+                }
+                return 'test-hostadapter-token'
+            }
+
+            { & $script:ScriptPath } |
+                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
+        }
+
+        It 'does not run the gateway token guard when -SkipDocker is supplied' {
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=')
+                }
+                return 'test-hostadapter-token'
+            }
+
+            { & $script:ScriptPath -SkipDocker } | Should -Not -Throw
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeTrue
+        }
+    }
+
     Context 'Docker runtime input preflight' {
         It 'throws before MSIX install when Docker is enabled and the Anthropic env file is absent' {
             Mock Test-Path {
@@ -269,7 +324,8 @@ Describe 'scripts/Install.ps1' {
                 if ($LiteralPath -like '*docker*.env') {
                     return @(
                         'OpenClaw__HostAdapter__BaseUrl=http://host.docker.internal:5319/v1',
-                        'HOSTADAPTER_TOKEN_FILE=C:\tokens\adapter.token'
+                        'HOSTADAPTER_TOKEN_FILE=C:\tokens\adapter.token',
+                        'OPENCLAW_GATEWAY_TOKEN=custom-gateway-token'
                     )
                 }
                 return 'custom-token'

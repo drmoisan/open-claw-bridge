@@ -1,85 +1,52 @@
 #Requires -Version 7
 <#
 .SYNOPSIS
-Runs the OpenClaw upstream onboarding command once and writes the generated
-`OPENCLAW_GATEWAY_TOKEN` to the repository-root `.env`.
+Generates a cryptographically strong OPENCLAW_GATEWAY_TOKEN and writes it to
+the target `.env` file.
 
 .DESCRIPTION
-Wraps `docker compose run --rm --no-deps --entrypoint node openclaw-agent
-dist/index.js onboard ...` with the argument set from docs.openclaw.ai/install
-/docker. Parses the `OPENCLAW_GATEWAY_TOKEN=<value>` line from stdout and
-writes it to the target `.env`. Idempotent: if the `.env` already contains a
-non-empty token, returns `0` without re-running onboard unless `-Force` is
-supplied.
+The baked `openclaw.json` seed in the `openclaw-agent` container image already
+references `${OPENCLAW_GATEWAY_TOKEN}` as the gateway auth token via SecretRef
+(see `deploy/docker/openclaw-assistant/openclaw.json`). Compose passes the
+value from the project `.env` into the container at runtime. This script's
+only job is to produce that secret on the operator host and persist it in the
+target `.env`.
 
-.PARAMETER AnthropicApiKey
-SecureString containing the Anthropic API key. When absent, prompts the
-operator via `Read-Host -AsSecureString`.
+Idempotent: if the target `.env` already contains a non-empty
+`OPENCLAW_GATEWAY_TOKEN`, the script returns without changes unless `-Force`
+is supplied.
 
 .PARAMETER EnvFilePath
 Target `.env` path. Default: `./.env` in the current working directory.
 
-.PARAMETER ComposeFiles
-Compose file paths forwarded to `docker compose`. Defaults to the project
-compose files.
-
-.PARAMETER DockerPath
-Path or command name for the docker CLI. Default: `docker`. Tests inject a
-fake docker via this parameter.
-
-.PARAMETER OnboardBinaryPath
-Relative path inside the `openclaw-agent` image to the upstream onboarding
-binary. Default: `dist/index.js`. Operators can override this when an
-upstream release renames or relocates the entry-point binary.
+.PARAMETER TokenByteLength
+Number of random bytes sampled from the system RNG. The resulting token is
+base64url-encoded (RFC 4648 Section 5) so it is safe to embed verbatim in a
+shell-quoted `.env` value. Default: 48 bytes (~64 characters of output).
 
 .PARAMETER Force
 When set, overwrites an existing non-empty `OPENCLAW_GATEWAY_TOKEN` in the
-target `.env`. Otherwise, the script exits `0` with a verbose message.
+target `.env`. Without `-Force`, an already-populated token is preserved and
+the script exits `0`.
 
 .NOTES
-Fails fast with distinct error categories for:
- - Missing Docker CLI (invariant violation before any side effect).
- - Non-zero exit from the upstream onboard command.
- - Malformed onboard output (no OPENCLAW_GATEWAY_TOKEN= line).
- - Unable to write the target `.env`.
+The `ANTHROPIC_API_KEY` is NOT the gateway token. Operators supply the
+Anthropic key separately in `secrets/.env.anthropic` (see the runbook).
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $false)]
-    [SecureString]$AnthropicApiKey,
-
-    [Parameter(Mandatory = $false)]
     [string]$EnvFilePath = './.env',
 
     [Parameter(Mandatory = $false)]
-    [string[]]$ComposeFiles = @('./docker-compose.yml', './docker-compose.dev.yml'),
-
-    [Parameter(Mandatory = $false)]
-    [string]$DockerPath = 'docker',
-
-    [Parameter(Mandatory = $false)]
-    [string]$OnboardBinaryPath = 'dist/index.js',
+    [ValidateRange(24, 128)]
+    [int]$TokenByteLength = 48,
 
     [Parameter(Mandatory = $false)]
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
-
-# Helpers are defined inline below. The file stays well under the 500-line
-# cap in `.claude/rules/general-code-change.md`, so no module extraction is
-# required. If a future change pushes the file over the cap, extract these
-# helpers into scripts/powershell/modules/OpenClawOnboarding/.
-
-function Assert-OpenClawDockerAvailable {
-    [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][string]$DockerPath)
-
-    $resolved = Get-Command -Name $DockerPath -ErrorAction SilentlyContinue
-    if (-not $resolved) {
-        throw "Docker CLI not found at '$DockerPath'. Install Docker Desktop or supply an explicit -DockerPath value."
-    }
-}
 
 function Get-OpenClawEnvEntryMap {
     [CmdletBinding()]
@@ -89,6 +56,7 @@ function Get-OpenClawEnvEntryMap {
     if (-not (Test-Path -LiteralPath $EnvFilePath)) {
         return @{}
     }
+
     $lines = @(Get-Content -LiteralPath $EnvFilePath)
     $map = @{}
     foreach ($line in $lines) {
@@ -105,73 +73,31 @@ function Get-OpenClawEnvEntryMap {
     return $map
 }
 
-function ConvertFrom-OpenClawSecureString {
+function New-OpenClawGatewayToken {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Pure function: samples random bytes from the system RNG with no filesystem, network, or process side effects.'
+    )]
     [CmdletBinding()]
     [OutputType([string])]
-    param([Parameter(Mandatory = $true)][SecureString]$SecureValue)
-
-    $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
-    try {
-        return [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
-    } finally {
-        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
-    }
-}
-
-function Invoke-OpenClawOnboardCommand {
-    [CmdletBinding()]
-    [OutputType([object[]])]
     param(
-        [Parameter(Mandatory = $true)][string]$DockerPath,
-        [Parameter(Mandatory = $true)][string[]]$ComposeFiles,
-        [Parameter(Mandatory = $true)][string]$AnthropicApiKeyPlaintext,
-        [Parameter(Mandatory = $true)][string]$OnboardBinaryPath
+        [Parameter(Mandatory = $true)]
+        [ValidateRange(24, 128)]
+        [int]$ByteLength
     )
 
-    $composeArgs = @('compose')
-    foreach ($file in $ComposeFiles) {
-        if (-not [string]::IsNullOrWhiteSpace($file)) {
-            $composeArgs += @('--file', $file)
-        }
+    $bytes = [byte[]]::new($ByteLength)
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
     }
-    $composeArgs += @(
-        'run', '--rm', '--no-deps',
-        '--entrypoint', 'node',
-        'openclaw-agent', $OnboardBinaryPath,
-        'onboard',
-        '--mode', 'local',
-        '--no-install-daemon',
-        '--non-interactive',
-        '--auth-choice', 'apiKey',
-        '--anthropic-api-key', $AnthropicApiKeyPlaintext,
-        '--secret-input-mode', 'plaintext',
-        '--gateway-port', '18789',
-        '--gateway-bind', 'loopback',
-        '--skip-skills'
-    )
-
-    $global:LASTEXITCODE = 0
-    $output = @(& $DockerPath @composeArgs 2>&1)
-    $exitCode = if ($null -eq $LASTEXITCODE) { 0 } else { [int]$LASTEXITCODE }
-    if ($exitCode -ne 0) {
-        $joined = ($output -join [Environment]::NewLine)
-        throw "Upstream onboard command exited with code $exitCode. Output: $joined"
+    finally {
+        $rng.Dispose()
     }
-    return $output
-}
 
-function Get-OpenClawTokenFromOnboardOutput {
-    [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][object[]]$Output)
-
-    foreach ($line in $Output) {
-        $text = [string]$line
-        $match = [regex]::Match($text, 'OPENCLAW_GATEWAY_TOKEN\s*=\s*(?<token>\S+)')
-        if ($match.Success) {
-            return $match.Groups['token'].Value
-        }
-    }
-    throw "Onboard output did not contain an OPENCLAW_GATEWAY_TOKEN= line. Output appears malformed; the upstream onboarding contract may have changed."
+    # Base64url (RFC 4648 Section 5): replace '+' and '/', strip padding.
+    $base64 = [Convert]::ToBase64String($bytes)
+    return ($base64 -replace '\+', '-' -replace '/', '_' -replace '=', '')
 }
 
 function Set-OpenClawEnvEntry {
@@ -186,6 +112,7 @@ function Set-OpenClawEnvEntry {
     if (Test-Path -LiteralPath $EnvFilePath) {
         $lines = @(Get-Content -LiteralPath $EnvFilePath)
     }
+
     $pattern = "^\s*$([regex]::Escape($Key))\s*="
     $replacement = "$Key=$Value"
     $replaced = $false
@@ -193,13 +120,16 @@ function Set-OpenClawEnvEntry {
         if ($line -match $pattern) {
             $replaced = $true
             $replacement
-        } else {
+        }
+        else {
             $line
         }
     }
+
     if (-not $replaced) {
         $updated = @($updated) + @($replacement)
     }
+
     if ($PSCmdlet.ShouldProcess($EnvFilePath, "Write $Key")) {
         Set-Content -LiteralPath $EnvFilePath -Value $updated -Encoding UTF8
     }
@@ -207,24 +137,12 @@ function Set-OpenClawEnvEntry {
 
 # --- Main flow -------------------------------------------------------------
 
-Assert-OpenClawDockerAvailable -DockerPath $DockerPath
-
 $existing = Get-OpenClawEnvEntryMap -EnvFilePath $EnvFilePath
 if ($existing.ContainsKey('OPENCLAW_GATEWAY_TOKEN') -and -not [string]::IsNullOrWhiteSpace($existing['OPENCLAW_GATEWAY_TOKEN']) -and -not $Force) {
     Write-Verbose "OPENCLAW_GATEWAY_TOKEN already present in '$EnvFilePath'. Use -Force to overwrite."
     return
 }
 
-if (-not $AnthropicApiKey) {
-    $AnthropicApiKey = Read-Host -Prompt 'Enter Anthropic API key' -AsSecureString
-}
-$apiKeyPlain = ConvertFrom-OpenClawSecureString -SecureValue $AnthropicApiKey
-try {
-    $output = Invoke-OpenClawOnboardCommand -DockerPath $DockerPath -ComposeFiles $ComposeFiles -AnthropicApiKeyPlaintext $apiKeyPlain -OnboardBinaryPath $OnboardBinaryPath
-    $token = Get-OpenClawTokenFromOnboardOutput -Output $output
-    Set-OpenClawEnvEntry -EnvFilePath $EnvFilePath -Key 'OPENCLAW_GATEWAY_TOKEN' -Value $token
-    Write-Verbose "Wrote OPENCLAW_GATEWAY_TOKEN to '$EnvFilePath'."
-} finally {
-    # Overwrite the plaintext key reference eagerly even though .NET will GC it.
-    $apiKeyPlain = $null
-}
+$token = New-OpenClawGatewayToken -ByteLength $TokenByteLength
+Set-OpenClawEnvEntry -EnvFilePath $EnvFilePath -Key 'OPENCLAW_GATEWAY_TOKEN' -Value $token
+Write-Verbose "Wrote OPENCLAW_GATEWAY_TOKEN to '$EnvFilePath'."

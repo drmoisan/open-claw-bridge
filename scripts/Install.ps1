@@ -164,6 +164,26 @@ function Assert-DockerRuntimeInput {
     }
 }
 
+function Assert-StagedGatewayTokenPresent {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$DestDockerDir
+    )
+
+    $envFilePath = Join-Path $DestDockerDir '.env'
+    if (-not (Test-Path -LiteralPath $envFilePath)) {
+        throw "Staged Docker .env was not found at '$envFilePath'. Expected Initialize-DotEnv or -DockerEnvFilePath to place it there. Investigate the staging step before retrying."
+    }
+
+    $envMap = Get-InstallEnvFileMap -EnvFilePath $envFilePath
+    $hasKey = $envMap.ContainsKey('OPENCLAW_GATEWAY_TOKEN')
+    $value = if ($hasKey) { [string]$envMap['OPENCLAW_GATEWAY_TOKEN'] } else { '' }
+    if (-not $hasKey -or [string]::IsNullOrWhiteSpace($value)) {
+        throw "Staged Docker .env at '$envFilePath' is missing a non-empty OPENCLAW_GATEWAY_TOKEN. The openclaw-agent container reads this value via SecretRef from the baked workspace config and will crash-loop at start if it is empty. Populate it by running scripts/Invoke-OpenClawAgentOnboarding.ps1 -EnvFilePath <operator-config>\.env before Install.ps1, or pass -SkipDocker to skip the container stage."
+    }
+}
+
 function Get-InstallEnvFileMap {
     [CmdletBinding()]
     [OutputType([hashtable])]
@@ -217,7 +237,8 @@ function Get-InstallEndpointUri {
     $relativePath = $Path.TrimStart('/')
     $builder.Path = if ([string]::IsNullOrWhiteSpace($basePath)) {
         $relativePath
-    } else {
+    }
+    else {
         '{0}/{1}' -f $basePath, $relativePath
     }
 
@@ -238,7 +259,8 @@ function Get-HostAdapterPreflightUri {
 
     try {
         $builder = [UriBuilder]::new([uri]$baseUrl)
-    } catch {
+    }
+    catch {
         throw "OpenClaw__HostAdapter__BaseUrl in the installed docker .env is not a valid URI: '$baseUrl'."
     }
 
@@ -281,7 +303,8 @@ function Assert-HostAdapterRuntimePreflight {
             -UseBasicParsing `
             -SkipHttpErrorCheck `
             -TimeoutSec 10
-    } catch {
+    }
+    catch {
         throw "HostAdapter preflight failed before starting Docker. GET $statusUri was unreachable: $($_.Exception.Message). Start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage."
     }
 
@@ -373,6 +396,8 @@ if ($MyInvocation.InvocationName -ne '.') {
     Copy-OperatorDockerConfiguration -DestDockerDir $DestDockerDir -DockerEnvFilePath $DockerEnvFilePath -AnthropicEnvFilePath $AnthropicEnvFilePath
     if (-not $SkipDocker) {
         Assert-DockerRuntimeInput -DestDockerDir $DestDockerDir
+        Write-Information '[install:env-guard] Verifying OPENCLAW_GATEWAY_TOKEN is present in staged .env' -InformationAction Continue
+        Assert-StagedGatewayTokenPresent -DestDockerDir $DestDockerDir
     }
 
     # Stage 7: MSIX install + capture.
