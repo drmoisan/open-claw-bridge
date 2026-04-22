@@ -48,7 +48,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"lastSuccessfulPollUtc":"2026-04-20T12:00:00Z","cacheItemCounts":{"messages":1,"meetingRequests":0,"events":2},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { throw "Unexpected URI: $Uri" }
             }
 
@@ -90,7 +89,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         $result.IsExpected | Should -BeTrue
         $result.DockerEngine.IsExpected | Should -BeTrue
         @($result.ContainerDiagnostics).Count | Should -Be 6
-        @($result.EndpointDiagnostics).Count | Should -Be 7
+        @($result.EndpointDiagnostics).Count | Should -Be 6
         $result.Live.IsExpected | Should -BeTrue
         $result.Ready.IsExpected | Should -BeTrue
         $result.CoreStatus.IsExpected | Should -BeTrue
@@ -98,8 +97,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         $result.AgentReadyz.IsExpected | Should -BeTrue
         $result.HostAdapterInContainer.IsExpected | Should -BeTrue
         $result.GatewayTokenPresence.IsExpected | Should -BeTrue
-        $result.DashboardAuth.IsExpected | Should -BeTrue
-        @($result.SupportingDiagnostics).Count | Should -Be 15
+        @($result.SupportingDiagnostics).Count | Should -Be 14
         @($script:DockerRequests) | Should -Contain 'container inspect openclaw-core'
         @($script:DockerRequests) | Should -Contain 'container inspect openclaw-agent'
     }
@@ -127,7 +125,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                 '/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 '/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 '/readyz' { 'ready' }
-                '/auth/verify' { '{"ok":true}' }
                 default { throw "Unexpected URI: $Uri" }
             }
 
@@ -186,7 +183,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":false,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":true,"staleReason":"HostAdapter unreachable"}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { throw "Unexpected URI: $Uri" }
             }
 
@@ -261,7 +257,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { throw "Unexpected URI: $Uri" }
             }
 
@@ -304,9 +299,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         $result.IsExpected | Should -BeFalse
         $result.Live.IsExpected | Should -BeFalse
         $result.Live.ErrorMessage | Should -Be 'Connection refused'
-        # Now 6 endpoint-backed probes will fail: Live, Ready, CoreStatus, AgentDashboard, AgentReadyz, DashboardAuth.
+        # Now 5 endpoint-backed probes will fail: Live, Ready, CoreStatus, AgentDashboard, AgentReadyz.
         # GatewayTokenPresence is still expected because Get-Content is mocked to return a token.
-        @($result.SupportingDiagnostics | Where-Object { -not $_.IsExpected }).Count | Should -BeGreaterOrEqual 6
+        @($result.SupportingDiagnostics | Where-Object { -not $_.IsExpected }).Count | Should -BeGreaterOrEqual 5
     }
 
     It 'emits JSON when requested' {
@@ -332,8 +327,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                 '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}'
             } elseif ([string]$Uri -like '*/readyz') {
                 'ready'
-            } elseif ([string]$Uri -like '*/auth/verify') {
-                '{"ok":true}'
             } else {
                 '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}'
             }
@@ -364,6 +357,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         $result = $json | ConvertFrom-Json
 
         $result.OverallResult | Should -Be 'Expected'
-        $result.SupportingDiagnostics.Count | Should -Be 15
+        $result.SupportingDiagnostics.Count | Should -Be 14
     }
 }

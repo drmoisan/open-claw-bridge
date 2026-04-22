@@ -32,7 +32,8 @@ function Get-OpenClawEndpointUri {
     $relativePath = $Path.TrimStart('/')
     $builder.Path = if ([string]::IsNullOrWhiteSpace($basePath)) {
         $relativePath
-    } else {
+    }
+    else {
         '{0}/{1}' -f $basePath, $relativePath
     }
     return $builder.Uri
@@ -81,7 +82,8 @@ function ConvertFrom-OpenClawJsonContent {
     if ([string]::IsNullOrWhiteSpace($Content)) { return $null }
     try {
         return $Content | ConvertFrom-Json -ErrorAction Stop
-    } catch {
+    }
+    catch {
         return $null
     }
 }
@@ -116,7 +118,8 @@ function Invoke-OpenClawEndpointRequest {
         $content = [string]$response.Content
         $contentType = if ($response.Headers.ContainsKey('Content-Type')) {
             [string]($response.Headers['Content-Type'] -join '; ')
-        } else { '' }
+        }
+        else { '' }
         return [pscustomobject]@{
             RequestSucceeded = $true
             HttpStatusCode   = [int]$response.StatusCode
@@ -125,7 +128,8 @@ function Invoke-OpenClawEndpointRequest {
             BodyPreview      = Get-OpenClawContentPreview -Content $content
             ErrorMessage     = $null
         }
-    } catch {
+    }
+    catch {
         return [pscustomobject]@{
             RequestSucceeded = $false
             HttpStatusCode   = $null
@@ -193,7 +197,8 @@ function Invoke-OpenClawDockerCommand {
             Output       = $output
             ErrorMessage = $null
         }
-    } catch {
+    }
+    catch {
         return [pscustomobject]@{
             Succeeded    = $false
             ExitCode     = $null
@@ -245,9 +250,11 @@ function Invoke-OpenClawReadyzProbe {
     $isExpected = $request.RequestSucceeded -and $request.HttpStatusCode -eq 200
     $summary = if ($isExpected) {
         'Expected: agent readyz returned HTTP 200.'
-    } elseif (-not $request.RequestSucceeded) {
+    }
+    elseif (-not $request.RequestSucceeded) {
         "Unexpected: agent readyz unreachable ($($request.ErrorMessage))."
-    } else {
+    }
+    else {
         "Unexpected: agent readyz returned HTTP $($request.HttpStatusCode)."
     }
     return Get-OpenClawValidationResult `
@@ -282,9 +289,11 @@ function Invoke-OpenClawHostAdapterInContainerProbe {
     $isExpected = $command.Succeeded -and $code -eq 200
     $summary = if ($isExpected) {
         'Expected: in-container HostAdapter probe returned HTTP 200.'
-    } elseif (-not $command.Succeeded) {
+    }
+    elseif (-not $command.Succeeded) {
         "Unexpected: docker exec failed with exit code $($command.ExitCode)."
-    } else {
+    }
+    else {
         "Unexpected: in-container HostAdapter returned HTTP $code."
     }
     return Get-OpenClawValidationResult `
@@ -316,9 +325,11 @@ function Test-OpenClawGatewayTokenPresence {
     $isExpected = $hasKey -and -not [string]::IsNullOrWhiteSpace($value)
     $summary = if ($isExpected) {
         "Expected: OPENCLAW_GATEWAY_TOKEN is present in '$EnvFilePath'."
-    } elseif (-not $hasKey) {
+    }
+    elseif (-not $hasKey) {
         "Unexpected: OPENCLAW_GATEWAY_TOKEN is missing from '$EnvFilePath'. Run scripts/Invoke-OpenClawAgentOnboarding.ps1."
-    } else {
+    }
+    else {
         "Unexpected: OPENCLAW_GATEWAY_TOKEN is present but empty in '$EnvFilePath'."
     }
     return Get-OpenClawValidationResult `
@@ -335,66 +346,6 @@ function Test-OpenClawGatewayTokenPresence {
     }
 }
 
-<#
-.SYNOPSIS
-Probe the dashboard auth endpoint by POSTing the stored gateway token and
-inspecting the HTTP status and JSON body. Returns a probe result named
-`DashboardAuth`.
-#>
-function Invoke-OpenClawDashboardAuthProbe {
-    [CmdletBinding()]
-    [OutputType([pscustomobject])]
-    param(
-        [Parameter(Mandatory = $true)][uri]$AgentBaseUrl,
-        [Parameter(Mandatory = $true)][int]$TimeoutSeconds,
-        [Parameter(Mandatory = $true)][string]$EnvFilePath,
-        # Default '/auth/verify' is unverified against upstream config; tracked as a manual pre-release verification gate in docs/features/active/2026-04-20-cannot-access-agent-in-docker-38/followups.md
-        [string]$AuthPath = '/auth/verify'
-    )
-    $map = Get-OpenClawEnvFileMap -EnvFilePath $EnvFilePath
-    $token = if ($map.ContainsKey('OPENCLAW_GATEWAY_TOKEN')) { [string]$map['OPENCLAW_GATEWAY_TOKEN'] } else { '' }
-    if ([string]::IsNullOrWhiteSpace($token)) {
-        # No token to attempt with; the probe cannot succeed.
-        return Get-OpenClawValidationResult `
-            -Category 'Endpoint' `
-            -Name 'DashboardAuth' `
-            -Target $EnvFilePath `
-            -ExpectedCondition 'Dashboard auth endpoint accepts OPENCLAW_GATEWAY_TOKEN with HTTP 200 and JSON body' `
-            -IsExpected $false `
-            -Summary "Unexpected: OPENCLAW_GATEWAY_TOKEN is absent or empty in '$EnvFilePath'; skipped live auth attempt." `
-            -Details @{ reason = 'no-token-available'; envFilePath = $EnvFilePath }
-    }
-    $uri = Get-OpenClawEndpointUri -BaseUri $AgentBaseUrl -Path $AuthPath
-    $body = @{ token = $token } | ConvertTo-Json -Compress
-    $headers = @{
-        'Content-Type'  = 'application/json'
-        'Authorization' = "Bearer $token"
-    }
-    $request = Invoke-OpenClawEndpointRequest -Uri $uri -TimeoutSeconds $TimeoutSeconds -Method 'Post' -Headers $headers -Body $body
-    $jsonOk = $null -ne $request.Json
-    $isExpected = $request.RequestSucceeded -and $request.HttpStatusCode -eq 200 -and $jsonOk
-    $summary = if ($isExpected) {
-        'Expected: dashboard auth endpoint returned HTTP 200 with a JSON body.'
-    } elseif (-not $request.RequestSucceeded) {
-        "Unexpected: dashboard auth unreachable ($($request.ErrorMessage))."
-    } elseif ($request.HttpStatusCode -ne 200) {
-        "Unexpected: dashboard auth returned HTTP $($request.HttpStatusCode)."
-    } else {
-        'Unexpected: dashboard auth returned HTTP 200 but the response body was not parseable JSON.'
-    }
-    return Get-OpenClawValidationResult `
-        -Name 'DashboardAuth' `
-        -Uri $uri `
-        -ExpectedCondition 'Dashboard auth endpoint accepts OPENCLAW_GATEWAY_TOKEN with HTTP 200 and JSON body' `
-        -Request $request `
-        -IsExpected $isExpected `
-        -Summary $summary `
-        -Details @{
-        envFilePath = $EnvFilePath
-        jsonParsed  = $jsonOk
-    }
-}
-
 Export-ModuleMember -Function @(
     'Get-OpenClawEndpointUri',
     'Get-OpenClawPropertyValue',
@@ -406,6 +357,5 @@ Export-ModuleMember -Function @(
     'Get-OpenClawEnvFileMap',
     'Invoke-OpenClawReadyzProbe',
     'Invoke-OpenClawHostAdapterInContainerProbe',
-    'Test-OpenClawGatewayTokenPresence',
-    'Invoke-OpenClawDashboardAuthProbe'
+    'Test-OpenClawGatewayTokenPresence'
 )

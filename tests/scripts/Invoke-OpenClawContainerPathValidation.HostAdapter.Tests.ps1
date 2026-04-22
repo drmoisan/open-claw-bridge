@@ -35,7 +35,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { '{}' }
             }
             return [pscustomobject]@{ StatusCode = 200; Headers = @{ 'Content-Type' = 'application/json' }; Content = $content }
@@ -89,7 +88,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { '{}' }
             }
             return [pscustomobject]@{ StatusCode = 200; Headers = @{ 'Content-Type' = 'application/json' }; Content = $content }
@@ -136,7 +134,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { '{}' }
             }
             return [pscustomobject]@{ StatusCode = 200; Headers = @{ 'Content-Type' = 'application/json' }; Content = $content }

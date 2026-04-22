@@ -18,8 +18,7 @@
         'Get-OpenClawEnvFileMap',
         'Invoke-OpenClawReadyzProbe',
         'Invoke-OpenClawHostAdapterInContainerProbe',
-        'Test-OpenClawGatewayTokenPresence',
-        'Invoke-OpenClawDashboardAuthProbe'
+        'Test-OpenClawGatewayTokenPresence'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()

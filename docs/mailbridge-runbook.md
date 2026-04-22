@@ -156,7 +156,30 @@ Implementation note:
 - The task command currently passes `--config "<caller LOCALAPPDATA>\OpenClaw\MailBridge\bridge.settings.json"`.
 - If you register the task from an elevated shell without first aligning `%LOCALAPPDATA%` to the target user's profile, the task can be created successfully but still start the bridge with the wrong settings path.
 
-### 5. Remove the scheduled-task deployment
+### 5. Temporarily stop or restart the bridge
+
+End the currently running bridge instance without removing the scheduled task, settings, cache, or logs:
+
+```powershell
+schtasks /end /tn "OpenClaw MailBridge"
+```
+
+Prevent the bridge from starting automatically at the next interactive logon:
+
+```powershell
+Disable-ScheduledTask -TaskName "OpenClaw MailBridge"
+```
+
+Re-enable the task and start it immediately when resuming operation:
+
+```powershell
+Enable-ScheduledTask -TaskName "OpenClaw MailBridge"
+schtasks /run /tn "OpenClaw MailBridge"
+```
+
+`schtasks /end` terminates only the running instance; the task remains registered and will start again on the next interactive logon unless it has also been disabled. `Disable-ScheduledTask` suppresses the logon trigger without removing the task. Neither command removes settings, cache, or logs.
+
+### 6. Remove the scheduled-task deployment
 
 ```powershell
 .\scripts\uninstall-mailbridge.ps1
@@ -469,7 +492,6 @@ Expected behavior:
 - `AgentReadyz` is expected when `/readyz` returns `200`.
 - `HostAdapterInContainer` is expected when `docker compose exec openclaw-agent` returns HTTP `200` from `http://host.docker.internal:4319/v1/status` with the bind-mounted bearer token.
 - `GatewayTokenPresence` is expected when `OPENCLAW_GATEWAY_TOKEN` is present and non-empty in the target `.env`.
-- `DashboardAuth` is expected when a POST to the dashboard auth endpoint with the stored token returns HTTP `200` and a JSON body.
 - If `OverallResult` is `Unexpected`, inspect the diagnostics table. For structured details, rerun the script with `-PassThru` and inspect `SupportingDiagnostics`.
 
 The default stack command also starts `openclaw-agent`. Use `docker compose ps openclaw-agent`, `docker compose logs openclaw-agent`, or `docker compose stop openclaw-agent` only when you need to inspect or control the assistant independently.
@@ -496,7 +518,7 @@ Prepare version-neutral operator configuration outside the publish bundle:
 ```powershell
 $operatorConfig = Join-Path $env:LOCALAPPDATA 'OpenClaw\operator-config'
 New-Item -ItemType Directory -Force -Path (Join-Path $operatorConfig 'secrets') | Out-Null
-Copy-Item .\artifacts\publish\1.0.0.3\docker\.env.example (Join-Path $operatorConfig '.env') -Force
+Copy-Item .\artifacts\publish\1.0.0.6\docker\.env.example (Join-Path $operatorConfig '.env') -Force
 notepad (Join-Path $operatorConfig '.env')
 notepad (Join-Path $operatorConfig 'secrets\.env.anthropic')
 ```
@@ -524,7 +546,7 @@ the missing file before running `Install.ps1`.
 Run the installer from the bundle directory and pass the operator-managed files:
 
 ```powershell
-$bundle = 'C:\Users\DanMoisan\repos\open-claw-bridge\artifacts\publish\1.0.0.5'
+$bundle = 'C:\Users\DanMoisan\repos\open-claw-bridge\artifacts\publish\1.0.0.6'
 Set-Location $bundle
 .\Install.ps1 `
   -DockerEnvFilePath (Join-Path $operatorConfig '.env') `
@@ -573,7 +595,25 @@ Stop the assistant without affecting `openclaw-core`:
 docker compose stop openclaw-agent
 ```
 
-Stopping `openclaw-agent` does not affect `openclaw-core`, and vice versa. Both services independently consume the HostAdapter API.
+Stop `openclaw-core` without affecting the assistant:
+
+```powershell
+docker compose stop openclaw-core
+```
+
+Temporarily stop the full container stack without removing containers, volumes, or networks:
+
+```powershell
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml stop
+```
+
+Restart the stopped services in place:
+
+```powershell
+docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.yml start
+```
+
+`docker compose stop` preserves containers, volumes, and networks, so configuration and the `/workspace` volume persist across restarts. Use `docker compose down` only when intentionally tearing down the deployment. Stopping `openclaw-agent` does not affect `openclaw-core`, and vice versa. Both services independently consume the HostAdapter API.
 
 The assistant configuration workspace is no longer bind-mounted from the host. The compose build bakes `deploy/docker/openclaw-assistant/` into a local wrapper image and Docker populates a managed `/workspace` volume from that image on first start.
 
@@ -598,10 +638,6 @@ The page served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` is the Open
 #### Onboarding parameter overrides
 
 `scripts/Invoke-OpenClawAgentOnboarding.ps1` exposes an optional `-OnboardBinaryPath` parameter (default `dist/index.js`). The default matches the upstream onboarding binary location in the GitHub Container Registry image at the time of this release. Supply an override only when an upstream release renames or relocates the entry-point binary (for example, `-OnboardBinaryPath 'openclaw.mjs'`). No other invocation change is required; the new value substitutes directly into the `docker compose run` argument list.
-
-#### Validation-script dashboard-auth overrides
-
-`scripts/Invoke-OpenClawContainerPathValidation.ps1` exposes an optional `-DashboardAuthPath` parameter (default `/auth/verify`). The default matches the OpenClaw gateway auth-verify endpoint path referenced by `deploy/docker/openclaw-assistant/openclaw.json`. Supply an override when the upstream gateway exposes auth-verify at a non-default path (for example, `-DashboardAuthPath '/api/auth/verify'`). The value is threaded through to the module's `Invoke-OpenClawDashboardAuthProbe -AuthPath` argument and used only for the DashboardAuth probe URI; all other probes are unaffected. The default path is tracked as a manual pre-release verification gate in the feature followups list.
 
 ### Troubleshooting
 
