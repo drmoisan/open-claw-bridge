@@ -108,7 +108,8 @@ public sealed record EventDto(
     string? ResourcesJson,
     string? BodyPreview,
     bool ProtectedFieldsAvailable,
-    bool IsRedacted
+    bool IsRedacted,
+    int? ResponseStatus = null
 );
 
 public sealed record BridgeSettings(
