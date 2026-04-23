@@ -72,10 +72,22 @@ Describe 'scripts/Install.ps1' {
 
         # Filesystem shims. Test-Path default: MSIX exists; prior-install does NOT.
         Mock New-Item { [void]$global:InstallTestCalls.Add('New-Item') }
+        Mock Copy-Item { [void]$global:InstallTestCalls.Add('Copy-Item') }
         Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') }
+        Mock Get-Content {
+            param($LiteralPath)
+            if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
+                return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
+            }
+            return 'test-hostadapter-token'
+        }
+        Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' } }
         Mock Test-Path {
             param($LiteralPath)
             if ($LiteralPath -like '*install-record.json') { return $false }
+            if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
+            if ($LiteralPath -like '*TestAppData*OpenClaw*docker*.env') { return $true }
+            if ($LiteralPath -like '*TestAppData*OpenClaw*docker/.env') { return $true }
             # Any destination under LOCALAPPDATA\OpenClaw\<leaf> must default to absent so
             # tests that supply -SourcePath or -Version do not trip the prior-install guard.
             if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
@@ -90,11 +102,22 @@ Describe 'scripts/Install.ps1' {
 
     AfterEach {
         Remove-Item -Path 'Function:\global:Test-IsElevatedAdmin' -ErrorAction SilentlyContinue
+        Remove-Variable -Name CapturedHostAdapterPreflightUri -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name CapturedHostAdapterPreflightAuthorization -Scope Global -ErrorAction SilentlyContinue
     }
 
     Context 'parameter binding' {
         It 'accepts the refinement parameter set with defaults' {
             { & $script:ScriptPath -WhatIf } | Should -Not -Throw
+        }
+
+        It 'accepts operator Docker env file parameters' {
+            {
+                & $script:ScriptPath `
+                    -DockerEnvFilePath 'C:\operator\.env' `
+                    -AnthropicEnvFilePath 'C:\operator\secrets\.env.anthropic' `
+                    -WhatIf
+            } | Should -Not -Throw
         }
 
         It '-SourcePath overrides the default $PSScriptRoot' {
@@ -154,6 +177,170 @@ Describe 'scripts/Install.ps1' {
                 'Write-InstallRecord'
             )
             ($helperOrder -join ',') | Should -Be ($expected -join ',')
+        }
+    }
+
+    Context 'operator Docker env file staging' {
+        It 'copies supplied operator env files after .env initialization and before MSIX install' {
+            & $script:ScriptPath `
+                -DockerEnvFilePath 'C:\operator\.env' `
+                -AnthropicEnvFilePath 'C:\operator\secrets\.env.anthropic' | Out-Null
+
+            $idxInitialize = $global:InstallTestCalls.IndexOf('Initialize-DotEnv')
+            $idxCopy = $global:InstallTestCalls.IndexOf('Copy-Item')
+            $idxMsix = $global:InstallTestCalls.IndexOf('Invoke-MsixInstall')
+
+            $idxInitialize | Should -BeGreaterOrEqual 0
+            $idxCopy | Should -BeGreaterThan $idxInitialize
+            $idxMsix | Should -BeGreaterThan $idxCopy
+            Should -Invoke -CommandName Copy-Item -Times 1 -Exactly -ParameterFilter { $LiteralPath -eq 'C:\operator\.env' -and $Destination -like '*\docker\.env' -and $Force }
+            Should -Invoke -CommandName Copy-Item -Times 1 -Exactly -ParameterFilter { $LiteralPath -eq 'C:\operator\secrets\.env.anthropic' -and $Destination -like '*\docker\secrets\.env.anthropic' -and $Force }
+        }
+
+        It 'throws before manifest validation when a supplied operator env file is absent' {
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -eq 'C:\missing\.env') { return $false }
+                if ($LiteralPath -like '*install-record.json') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
+                if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw/*') { return $false }
+                $true
+            }
+
+            { & $script:ScriptPath -DockerEnvFilePath 'C:\missing\.env' } |
+                Should -Throw -ExpectedMessage '*-DockerEnvFilePath*not found*outside artifacts/publish*'
+
+            $global:InstallTestCalls -contains 'Get-ManifestVersion' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
+        }
+    }
+
+    Context 'OPENCLAW_GATEWAY_TOKEN guard' {
+        It 'throws before MSIX install when the staged .env has an empty OPENCLAW_GATEWAY_TOKEN' {
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=')
+                }
+                return 'test-hostadapter-token'
+            }
+
+            { & $script:ScriptPath } |
+                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Wait-ComposeHealthy' | Should -BeFalse
+        }
+
+        It 'throws before MSIX install when the staged .env is missing OPENCLAW_GATEWAY_TOKEN entirely' {
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @('OPENCLAW_AGENT_PORT=18789')
+                }
+                return 'test-hostadapter-token'
+            }
+
+            { & $script:ScriptPath } |
+                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
+        }
+
+        It 'does not run the gateway token guard when -SkipDocker is supplied' {
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=')
+                }
+                return 'test-hostadapter-token'
+            }
+
+            { & $script:ScriptPath -SkipDocker } | Should -Not -Throw
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeTrue
+        }
+    }
+
+    Context 'Docker runtime input preflight' {
+        It 'throws before MSIX install when Docker is enabled and the Anthropic env file is absent' {
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -like '*install-record.json') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw/*') { return $false }
+                $true
+            }
+
+            { & $script:ScriptPath } |
+                Should -Throw -ExpectedMessage '*Required Docker secret file not found*-AnthropicEnvFilePath*-SkipDocker*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
+        }
+
+        It 'throws before compose up when the HostAdapter status probe is not ready' {
+            Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 503; Headers = @{}; Content = '{}' } }
+
+            { & $script:ScriptPath } |
+                Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*HTTP 503*OpenClaw.MailBridge*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeTrue
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Wait-ComposeHealthy' | Should -BeFalse
+        }
+
+        It 'probes the host-loopback HostAdapter status URI before compose up' {
+            $global:CapturedHostAdapterPreflightUri = $null
+            Mock Invoke-WebRequest {
+                param([uri]$Uri)
+                $global:CapturedHostAdapterPreflightUri = [string]$Uri
+                [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' }
+            }
+
+            & $script:ScriptPath | Out-Null
+
+            $global:CapturedHostAdapterPreflightUri | Should -Be 'http://127.0.0.1:4319/v1/status'
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeTrue
+        }
+
+        It 'uses installed docker env HostAdapter settings for the preflight' {
+            $global:CapturedHostAdapterPreflightUri = $null
+            $global:CapturedHostAdapterPreflightAuthorization = $null
+            Mock Test-Path {
+                param($LiteralPath)
+                if ($LiteralPath -like '*install-record.json') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw*docker*.env') { return $true }
+                if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
+                if ($LiteralPath -eq 'C:\tokens\adapter.token') { return $true }
+                if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
+                if ($LiteralPath -like '*TestAppData*OpenClaw/*') { return $false }
+                $true
+            }
+            Mock Get-Content {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env') {
+                    return @(
+                        'OpenClaw__HostAdapter__BaseUrl=http://host.docker.internal:5319/v1',
+                        'HOSTADAPTER_TOKEN_FILE=C:\tokens\adapter.token',
+                        'OPENCLAW_GATEWAY_TOKEN=custom-gateway-token'
+                    )
+                }
+                return 'custom-token'
+            }
+            Mock Invoke-WebRequest {
+                param([uri]$Uri, [hashtable]$Headers)
+                $global:CapturedHostAdapterPreflightUri = [string]$Uri
+                $global:CapturedHostAdapterPreflightAuthorization = [string]$Headers.Authorization
+                [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' }
+            }
+
+            & $script:ScriptPath | Out-Null
+
+            $global:CapturedHostAdapterPreflightUri | Should -Be 'http://127.0.0.1:5319/v1/status'
+            $global:CapturedHostAdapterPreflightAuthorization | Should -Be 'Bearer custom-token'
         }
     }
 
@@ -219,13 +406,14 @@ Describe 'scripts/Install.ps1' {
             $global:InstallTestCalls -contains 'Copy-BundleContents' | Should -BeTrue
         }
 
-        It '-Force with destination-only (no record file) removes the destination' {
+        It '-Force with destination-only (no record file) removes MSIX and destination' {
             Mock Test-Path {
                 param($LiteralPath)
                 if ($LiteralPath -like '*install-record.json') { return $false }
                 $true
             }
             & $script:ScriptPath -Force | Out-Null
+            $global:InstallTestCalls -contains 'Invoke-MsixRemove' | Should -BeTrue
             $global:InstallTestCalls -contains 'Remove-Item' | Should -BeTrue
         }
     }

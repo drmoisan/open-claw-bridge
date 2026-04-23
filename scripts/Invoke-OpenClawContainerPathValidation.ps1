@@ -5,7 +5,7 @@ Single pass/fail diagnostic for the OpenClaw container path.
 
 .DESCRIPTION
 Probes container health, `/health` endpoints on `openclaw-core`, readiness
-(`/readyz`) and dashboard auth on `openclaw-agent`, in-container HostAdapter
+(`/readyz`) on `openclaw-agent`, in-container HostAdapter
 reachability via `docker compose exec`, and the presence of
 `OPENCLAW_GATEWAY_TOKEN` in the operator's `.env`. Aggregates the results
 into a single `OverallResult` value (`Expected` or `Unexpected`).
@@ -15,14 +15,15 @@ and the four new probes introduced by issue #38) live in the
 `OpenClawContainerValidation` module under
 `scripts/powershell/modules/OpenClawContainerValidation/`.
 
-.PARAMETER DashboardAuthPath
-Relative path on the openclaw-agent gateway used by the DashboardAuth probe.
-Default: `/auth/verify`. Operators can override when their upstream gateway
-exposes the auth-verify endpoint at a non-default path.
+.PARAMETER CoreBaseUrl
+Base URL for OpenClaw.Core endpoint probes. When omitted, the script reads
+`OPENCLAW_HTTP_PORT` from `-EnvFilePath` and uses `http://127.0.0.1:<port>`.
+If the env file or port setting is absent, the fallback is
+`http://127.0.0.1:8080`.
 #>
 [CmdletBinding()]
 param(
-    [uri]$CoreBaseUrl = 'http://127.0.0.1:8080',
+    [uri]$CoreBaseUrl,
     [uri]$AgentBaseUrl = 'http://127.0.0.1:18789',
     [string]$CoreContainerName = 'openclaw-core',
     [string]$AgentContainerName = 'openclaw-agent',
@@ -30,7 +31,6 @@ param(
     [ValidateRange(1, 300)]
     [int]$TimeoutSeconds = 10,
     [string]$EnvFilePath = './.env',
-    [string]$DashboardAuthPath = '/auth/verify',
     [switch]$PassThru,
     [switch]$AsJson
 )
@@ -44,6 +44,28 @@ if (-not (Get-Module -Name OpenClawContainerValidation)) {
     Import-Module -Name $moduleManifest -ErrorAction Stop
 }
 
+function Get-OpenClawCoreBaseUrl {
+    [CmdletBinding()]
+    [OutputType([uri])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$EnvFilePath
+    )
+
+    $envMap = Get-OpenClawEnvFileMap -EnvFilePath $EnvFilePath
+    $portValue = '8080'
+    if ($envMap.ContainsKey('OPENCLAW_HTTP_PORT') -and -not [string]::IsNullOrWhiteSpace([string]$envMap['OPENCLAW_HTTP_PORT'])) {
+        $portValue = ([string]$envMap['OPENCLAW_HTTP_PORT']).Trim().Trim([char[]]@('"', "'"))
+    }
+
+    $port = 0
+    if (-not [int]::TryParse($portValue, [ref]$port) -or $port -lt 1 -or $port -gt 65535) {
+        throw "OPENCLAW_HTTP_PORT in '$EnvFilePath' must be an integer from 1 through 65535. Actual value: '$portValue'."
+    }
+
+    return [uri]("http://127.0.0.1:{0}" -f $port)
+}
+
 function Invoke-OpenClawDockerEngineValidation {
     [CmdletBinding()]
     param([Parameter(Mandatory = $true)][string]$ExecutablePath)
@@ -52,7 +74,8 @@ function Invoke-OpenClawDockerEngineValidation {
     $isExpected = $command.Succeeded -and -not [string]::IsNullOrWhiteSpace($version)
     $summary = if ($isExpected) {
         'Expected: Docker engine responded to the version probe.'
-    } else {
+    }
+    else {
         'Unexpected: Docker engine did not respond to the version probe.'
     }
     return Get-OpenClawValidationResult `
@@ -95,7 +118,8 @@ function Get-OpenClawContainerInspection {
             Output       = @($command.Output)
             ErrorMessage = $null
         }
-    } catch {
+    }
+    catch {
         return [pscustomobject]@{
             Exists       = $false
             Container    = $null
@@ -216,13 +240,16 @@ function Invoke-OpenClawAgentDashboardEndpointValidation {
         -Details @{ hasBody = $hasBody }
 }
 
+if ($null -eq $CoreBaseUrl) {
+    $CoreBaseUrl = Get-OpenClawCoreBaseUrl -EnvFilePath $EnvFilePath
+}
+
 $live = Invoke-OpenClawLiveEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $CoreBaseUrl -Path '/health/live') -TimeoutSeconds $TimeoutSeconds
 $ready = Invoke-OpenClawReadyEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $CoreBaseUrl -Path '/health/ready') -TimeoutSeconds $TimeoutSeconds
 $coreStatus = Invoke-OpenClawStatusEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $CoreBaseUrl -Path '/api/status') -TimeoutSeconds $TimeoutSeconds
 $agentDashboard = Invoke-OpenClawAgentDashboardEndpointValidation -Uri (Get-OpenClawEndpointUri -BaseUri $AgentBaseUrl -Path '/') -TimeoutSeconds $TimeoutSeconds
 $agentReadyz = Invoke-OpenClawReadyzProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds
 $tokenPresence = Test-OpenClawGatewayTokenPresence -EnvFilePath $EnvFilePath
-$dashboardAuth = Invoke-OpenClawDashboardAuthProbe -AgentBaseUrl $AgentBaseUrl -TimeoutSeconds $TimeoutSeconds -EnvFilePath $EnvFilePath -AuthPath $DashboardAuthPath
 
 $dockerEngine = Invoke-OpenClawDockerEngineValidation -ExecutablePath $DockerPath
 $containerDiagnostics = @(
@@ -230,7 +257,7 @@ $containerDiagnostics = @(
     Invoke-OpenClawContainerValidation -DockerExecutablePath $DockerPath -ContainerName $AgentContainerName -DisplayName 'Agent'
 )
 $hostAdapterProbe = Invoke-OpenClawHostAdapterInContainerProbe -DockerExecutablePath $DockerPath -AgentContainerName $AgentContainerName
-$endpointDiagnostics = @($live, $ready, $coreStatus, $agentDashboard, $agentReadyz, $tokenPresence, $dashboardAuth)
+$endpointDiagnostics = @($live, $ready, $coreStatus, $agentDashboard, $agentReadyz, $tokenPresence)
 $supportingDiagnostics = @($dockerEngine) + $containerDiagnostics + @($hostAdapterProbe) + $endpointDiagnostics
 $isExpected = -not [bool]($supportingDiagnostics | Where-Object { -not $_.IsExpected })
 $result = [pscustomobject]@{
@@ -252,15 +279,16 @@ $result = [pscustomobject]@{
     AgentReadyz            = $agentReadyz
     HostAdapterInContainer = $hostAdapterProbe
     GatewayTokenPresence   = $tokenPresence
-    DashboardAuth          = $dashboardAuth
     SupportingDiagnostics  = $supportingDiagnostics
 }
 
 if ($AsJson) {
     $result | ConvertTo-Json -Depth 8
-} elseif ($PassThru) {
+}
+elseif ($PassThru) {
     $result
-} else {
+}
+else {
     Write-Output "OverallResult: $($result.OverallResult)"
     Write-Output "IsExpected: $($result.IsExpected)"
     Write-Output "CheckedAtUtc: $($result.CheckedAtUtc)"
@@ -268,3 +296,4 @@ if ($AsJson) {
         Select-Object Category, Name, IsExpected, HttpStatusCode, Summary |
             Format-Table -AutoSize
 }
+

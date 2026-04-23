@@ -12,7 +12,7 @@
     "dmScope": "per-channel-peer"
   },
   "tools": {
-    "profile": "minimal"
+    "profile": "coding"
   },
   "agents": {
     "defaults": {

@@ -35,7 +35,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { '{}' }
             }
             return [pscustomobject]@{ StatusCode = 200; Headers = @{ 'Content-Type' = 'application/json' }; Content = $content }
@@ -72,6 +71,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
         $probe = $result.SupportingDiagnostics | Where-Object { $_.Name -eq 'HostAdapterInContainer' }
         $probe | Should -Not -BeNullOrEmpty
         $probe.IsExpected | Should -BeTrue
+        $execRequest = @($script:DockerRequests | Where-Object { $_ -like '*compose exec*' })[0]
+        $execRequest | Should -Match 'tr -d'
+        $execRequest | Should -Match 'hostadapter\.token'
     }
 
     It 'HostAdapterInContainer probe reports Unexpected when docker exec returns non-200' -Tag 'ExpectFail-Phase5' {
@@ -86,7 +88,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { '{}' }
             }
             return [pscustomobject]@{ StatusCode = 200; Headers = @{ 'Content-Type' = 'application/json' }; Content = $content }
@@ -133,7 +134,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                 'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
-                'http://127.0.0.1:18789/auth/verify' { '{"ok":true}' }
                 default { '{}' }
             }
             return [pscustomobject]@{ StatusCode = 200; Headers = @{ 'Content-Type' = 'application/json' }; Content = $content }

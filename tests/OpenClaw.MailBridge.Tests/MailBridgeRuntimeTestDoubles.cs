@@ -113,6 +113,7 @@ internal sealed class FakeAppointmentItem
     public bool IsRecurring { get; init; }
     public string? Organizer { get; init; }
     public string? Body { get; init; }
+    public int? ResponseStatus { get; init; }
     public FakeOutlookParent Parent { get; init; } = new();
 }
 

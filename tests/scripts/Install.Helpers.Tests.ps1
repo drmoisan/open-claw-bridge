@@ -251,6 +251,12 @@ Describe 'Install.Helpers.psm1' {
             Should -Invoke -ModuleName Install.Helpers -CommandName Remove-AppxPackage -Times 0 -Exactly
         }
 
+        It 'uses the installed package full name when the supplied package full name is empty' {
+            Mock -ModuleName Install.Helpers Get-AppxPackage { [pscustomobject]@{ PackageFullName = 'OpenClaw.MailBridge_1.2.3.0_x64__abc' } }
+            Invoke-MsixRemove -PackageFullName ''
+            Should -Invoke -ModuleName Install.Helpers -CommandName Remove-AppxPackage -Times 1 -Exactly -ParameterFilter { $Package -eq 'OpenClaw.MailBridge_1.2.3.0_x64__abc' }
+        }
+
         It '-WhatIf produces no Remove-AppxPackage call' {
             Mock -ModuleName Install.Helpers Get-AppxPackage { [pscustomobject]@{ PackageFullName = 'x' } }
             Invoke-MsixRemove -PackageFullName 'x' -WhatIf

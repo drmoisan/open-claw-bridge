@@ -27,6 +27,8 @@ The repository also contains the local-only HTTP and Docker components required 
     installs the MSIX, starts the `openclaw-core` and `openclaw-agent`
     compose stack, and writes a single-record install manifest for later
     rollback
+  - operator-managed Docker env files stay outside `artifacts/publish/<version>`
+    and can be supplied with `-DockerEnvFilePath` and `-AnthropicEnvFilePath`
   - `Uninstall.ps1` reads the install record and reverses the install
 - Supports a complete local solution path beyond the bridge transport:
   - `OpenClaw.HostAdapter` on Windows, `OpenClaw.Core` in Docker Desktop, and the `openclaw-agent` assistant service
@@ -317,6 +319,10 @@ Validate the full container path (container health, endpoints, HostAdapter reach
 ```powershell
 pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassThru
 ```
+
+When `-CoreBaseUrl` is omitted, the validation script reads
+`OPENCLAW_HTTP_PORT` from `-EnvFilePath` (default `./.env`). For example,
+`OPENCLAW_HTTP_PORT=8081` validates Core at `http://127.0.0.1:8081`.
 
 The dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` authenticates against the `OPENCLAW_GATEWAY_TOKEN` in `.env` produced by the onboarding script. Open the URL after the container is healthy; the dashboard reads the token without an operator paste step.
 

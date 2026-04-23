@@ -43,7 +43,7 @@ internal sealed record ScanStateSnapshot(
 /// <summary>
 /// Persists cached bridge metadata in a local SQLite database under the user's profile.
 /// </summary>
-internal sealed class CacheRepository : IBridgeRepository, IDisposable
+internal sealed partial class CacheRepository : IBridgeRepository, IDisposable
 {
     private readonly string _connectionString;
     private readonly SqliteConnection? _anchor;
@@ -90,9 +90,45 @@ internal sealed class CacheRepository : IBridgeRepository, IDisposable
         var sql =
             @"
 CREATE TABLE IF NOT EXISTS messages(bridge_id TEXT PRIMARY KEY,entry_id TEXT NOT NULL,store_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,received_utc TEXT NULL,sent_utc TEXT NULL,importance INTEGER NULL,sensitivity INTEGER NULL,unread INTEGER NOT NULL,has_attachments INTEGER NOT NULL,message_class TEXT NULL,sender_name TEXT NULL,sender_email TEXT NULL,to_json TEXT NULL,cc_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_seen_utc TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS events(bridge_id TEXT PRIMARY KEY,entry_id TEXT NULL,store_id TEXT NULL,global_appointment_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,start_utc TEXT NOT NULL,end_utc TEXT NOT NULL,location TEXT NULL,busy_status INTEGER NULL,meeting_status INTEGER NULL,is_recurring INTEGER NOT NULL,sensitivity INTEGER NULL,organizer TEXT NULL,required_attendees_json TEXT NULL,optional_attendees_json TEXT NULL,resources_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_modified_utc TEXT NULL,last_seen_utc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS events(bridge_id TEXT PRIMARY KEY,entry_id TEXT NULL,store_id TEXT NULL,global_appointment_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,start_utc TEXT NOT NULL,end_utc TEXT NOT NULL,location TEXT NULL,busy_status INTEGER NULL,meeting_status INTEGER NULL,is_recurring INTEGER NOT NULL,sensitivity INTEGER NULL,organizer TEXT NULL,required_attendees_json TEXT NULL,optional_attendees_json TEXT NULL,resources_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_modified_utc TEXT NULL,last_seen_utc TEXT NOT NULL,response_status INTEGER NULL);
 CREATE TABLE IF NOT EXISTS scan_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);";
         await new SqliteCommand(sql, conn).ExecuteNonQueryAsync();
+
+        await MigrateEventsSchemaAsync(conn);
+    }
+
+    /// <summary>
+    /// Idempotent schema migration for the <c>events</c> table. Adds the <c>response_status</c>
+    /// column when it is absent on an existing database. Running this twice is safe: the
+    /// <c>PRAGMA table_info</c> check guards the ALTER so no "duplicate column" error occurs.
+    /// </summary>
+    private static async Task MigrateEventsSchemaAsync(SqliteConnection conn)
+    {
+        if (await EventsColumnExistsAsync(conn, "response_status"))
+        {
+            return;
+        }
+
+        var alter = conn.CreateCommand();
+        alter.CommandText = "ALTER TABLE events ADD COLUMN response_status INTEGER NULL;";
+        await alter.ExecuteNonQueryAsync();
+    }
+
+    private static async Task<bool> EventsColumnExistsAsync(SqliteConnection conn, string column)
+    {
+        var cmd = conn.CreateCommand();
+        cmd.CommandText = "PRAGMA table_info(events);";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            // table_info column index 1 is the column name.
+            var name = reader.GetString(1);
+            if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     public async Task TouchScanStateAsync(string key, DateTimeOffset value)
@@ -229,12 +265,12 @@ INSERT INTO events(
     bridge_id, entry_id, store_id, global_appointment_id, item_kind, subject, start_utc, end_utc,
     location, busy_status, meeting_status, is_recurring, sensitivity, organizer,
     required_attendees_json, optional_attendees_json, resources_json, body_preview,
-    protected_fields_available, is_redacted, last_modified_utc, last_seen_utc
+    protected_fields_available, is_redacted, last_modified_utc, last_seen_utc, response_status
 ) VALUES(
     $bridge_id, $entry_id, $store_id, $global_appointment_id, $item_kind, $subject, $start_utc, $end_utc,
     $location, $busy_status, $meeting_status, $is_recurring, $sensitivity, $organizer,
     $required_attendees_json, $optional_attendees_json, $resources_json, $body_preview,
-    $protected_fields_available, $is_redacted, $last_modified_utc, $last_seen_utc
+    $protected_fields_available, $is_redacted, $last_modified_utc, $last_seen_utc, $response_status
 )
 ON CONFLICT(bridge_id) DO UPDATE SET
     entry_id = excluded.entry_id,
@@ -257,7 +293,8 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     protected_fields_available = excluded.protected_fields_available,
     is_redacted = excluded.is_redacted,
     last_modified_utc = excluded.last_modified_utc,
-    last_seen_utc = excluded.last_seen_utc;";
+    last_seen_utc = excluded.last_seen_utc,
+    response_status = excluded.response_status;";
 
         AddEventParameters(cmd, entryId, storeId, globalAppointmentId, evt);
         await cmd.ExecuteNonQueryAsync();
@@ -423,76 +460,6 @@ LIMIT $limit;";
             "$last_seen_utc",
             DateTimeOffset.UtcNow.UtcDateTime.ToString("O")
         );
-    }
-
-    private static MessageDto ReadMessage(SqliteDataReader reader) =>
-        new(
-            GetString(reader, "bridge_id")!,
-            GetString(reader, "item_kind")!,
-            GetString(reader, "subject"),
-            GetDateTimeOffset(reader, "received_utc"),
-            GetDateTimeOffset(reader, "sent_utc"),
-            GetNullableInt(reader, "importance"),
-            GetNullableInt(reader, "sensitivity"),
-            GetBoolean(reader, "unread"),
-            GetBoolean(reader, "has_attachments"),
-            GetString(reader, "message_class"),
-            GetString(reader, "sender_name"),
-            GetString(reader, "sender_email"),
-            GetString(reader, "to_json"),
-            GetString(reader, "cc_json"),
-            GetString(reader, "body_preview"),
-            GetBoolean(reader, "protected_fields_available"),
-            GetBoolean(reader, "is_redacted")
-        );
-
-    private static EventDto ReadEvent(SqliteDataReader reader) =>
-        new(
-            GetString(reader, "bridge_id")!,
-            GetString(reader, "global_appointment_id"),
-            GetString(reader, "subject"),
-            GetDateTimeOffset(reader, "start_utc") ?? DateTimeOffset.MinValue,
-            GetDateTimeOffset(reader, "end_utc") ?? DateTimeOffset.MinValue,
-            GetString(reader, "location"),
-            GetNullableInt(reader, "busy_status"),
-            GetNullableInt(reader, "meeting_status"),
-            GetBoolean(reader, "is_recurring"),
-            GetNullableInt(reader, "sensitivity"),
-            GetString(reader, "organizer"),
-            GetString(reader, "required_attendees_json"),
-            GetString(reader, "optional_attendees_json"),
-            GetString(reader, "resources_json"),
-            GetString(reader, "body_preview"),
-            GetBoolean(reader, "protected_fields_available"),
-            GetBoolean(reader, "is_redacted")
-        );
-
-    private static object ToDbValue(DateTimeOffset? value) =>
-        value is null ? DBNull.Value : value.Value.UtcDateTime.ToString("O");
-
-    private static object ToDbValue(int? value) => value is null ? DBNull.Value : value.Value;
-
-    private static string? GetString(SqliteDataReader reader, string name)
-    {
-        var ordinal = reader.GetOrdinal(name);
-        return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
-    }
-
-    private static DateTimeOffset? GetDateTimeOffset(SqliteDataReader reader, string name)
-    {
-        var value = GetString(reader, name);
-        return DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
-    }
-
-    private static int? GetNullableInt(SqliteDataReader reader, string name)
-    {
-        var ordinal = reader.GetOrdinal(name);
-        return reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
-    }
-
-    private static bool GetBoolean(SqliteDataReader reader, string name)
-    {
-        var ordinal = reader.GetOrdinal(name);
-        return !reader.IsDBNull(ordinal) && reader.GetInt32(ordinal) != 0;
+        cmd.Parameters.AddWithValue("$response_status", ToDbValue(evt.ResponseStatus));
     }
 }

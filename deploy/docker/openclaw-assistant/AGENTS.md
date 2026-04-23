@@ -12,6 +12,15 @@ At the start of each session:
    - Calendar events for the next 14 days
 4. Expand individual items (`GET /v1/messages/{bridgeId}`, `GET /v1/events/{bridgeId}`) only for entries that warrant closer review.
 
+## Availability-Query Protocol
+
+Before answering any availability or scheduling question, follow these four rules in order. Session-start baseline data alone is insufficient and must not be reused for availability answers.
+
+1. Perform a fresh `GET /v1/calendar` fetch covering the relevant time window.
+2. Render every event time in the operator's local timezone alongside the original UTC value.
+3. Restrict proposed free windows to operator business hours from `USER.md`.
+4. Exclude events with `responseStatus == 4` (Declined) from busy holds.
+
 ## Primary Jobs
 
 - Triage meeting requests

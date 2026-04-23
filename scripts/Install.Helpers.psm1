@@ -242,6 +242,7 @@ function Invoke-MsixRemove {
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
         [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
         [string]$PackageFullName
     )
 
@@ -250,8 +251,9 @@ function Invoke-MsixRemove {
         return
     }
 
-    if ($PSCmdlet.ShouldProcess($PackageFullName, 'Remove-AppxPackage')) {
-        Remove-AppxPackage -Package $PackageFullName
+    $targetPackageFullName = if ([string]::IsNullOrWhiteSpace($PackageFullName)) { $pkg.PackageFullName } else { $PackageFullName }
+    if ($PSCmdlet.ShouldProcess($targetPackageFullName, 'Remove-AppxPackage')) {
+        Remove-AppxPackage -Package $targetPackageFullName
     }
 }
 
@@ -367,7 +369,7 @@ function Wait-ComposeHealthy {
     }
     $failing = $lastState.Keys |
         Where-Object { $lastState[$_].State -ne 'running' -or (-not [string]::IsNullOrEmpty($lastState[$_].Health) -and $lastState[$_].Health -ne 'healthy') } |
-        Select-Object -First 1
+            Select-Object -First 1
     if (-not $failing) {
         $failing = 'openclaw-core'
     }
