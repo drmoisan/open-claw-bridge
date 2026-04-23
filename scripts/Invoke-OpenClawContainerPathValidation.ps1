@@ -294,5 +294,6 @@ else {
     Write-Output "CheckedAtUtc: $($result.CheckedAtUtc)"
     $result.SupportingDiagnostics |
         Select-Object Category, Name, IsExpected, HttpStatusCode, Summary |
-        Format-Table -AutoSize
+            Format-Table -AutoSize
 }
+
