@@ -39,8 +39,8 @@ function Find-WindowsSdkTool {
     if (Test-Path $sdkBinRoot) {
         $found = Get-ChildItem $sdkBinRoot -Recurse -Filter $ToolName -ErrorAction SilentlyContinue |
             Where-Object { $_.FullName -like '*\x64\*' } |
-            Sort-Object FullName -Descending |
-            Select-Object -First 1
+                Sort-Object FullName -Descending |
+                    Select-Object -First 1
         if ($found) {
             return $found.FullName
         }
@@ -493,3 +493,4 @@ Export-ModuleMember -Function @(
     'New-ManifestEntry'
     'Write-PublishManifest'
 )
+

@@ -73,11 +73,7 @@ secrets/
 *.tmp
 *.temp
 *.cache
-.github/*
-!.github/workflows/
-.github/workflows/*
-!.github/workflows/ci.yml
-!.github/workflows/publish.yml
+.github/
 .tmp-tools/
 .tool-wrappers/
 .claude
