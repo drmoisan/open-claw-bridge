@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+  workflow_dispatch:
+
+jobs:
+  dotnet-build-test:
+    name: .NET Build + Test
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore OpenClaw.MailBridge.sln
+
+      - name: Build (Release, warnings-as-errors)
+        run: dotnet build OpenClaw.MailBridge.sln -c Release --no-restore /warnaserror
+
+      - name: Test with coverage
+        run: dotnet test OpenClaw.MailBridge.sln --no-build -c Release --collect:"XPlat Code Coverage" --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: TestResults/**
+          if-no-files-found: warn
+
+  powershell-quality:
+    name: PowerShell QC
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install PowerShell QC modules
+        shell: pwsh
+        run: |
+          Install-Module -Name Pester -RequiredVersion 5.7.1 -Scope CurrentUser -Force -SkipPublisherCheck
+          Install-Module -Name PSScriptAnalyzer -Scope CurrentUser -Force
+
+      - name: Analyze PowerShell (Invoke-ScriptAnalyzer)
+        shell: pwsh
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path scripts, tests/scripts -Recurse -Severity Warning,Error
+          if ($results) {
+            $results | Format-Table -AutoSize | Out-String | Write-Host
+            Write-Error "PSScriptAnalyzer reported $($results.Count) issue(s)."
+            exit 1
+          }
+
+      - name: Test PowerShell (Invoke-Pester)
+        shell: pwsh
+        run: |
+          Invoke-Pester -Path tests/scripts -Output Detailed -CI
+
+      - name: Upload Pester artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pester-results
+          path: artifacts/pester/**
+          if-no-files-found: ignore
+
+  actionlint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install actionlint
+        run: |
+          bash <(curl -s https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash)
+          echo "$PWD" >> "$GITHUB_PATH"
+
+      - name: Run actionlint
+        run: ./actionlint -color

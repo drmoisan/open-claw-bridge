@@ -1,0 +1,318 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+  workflow_dispatch:
+
+jobs:
+  quality-checks7:
+    name: Code Quality & Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Verify poetry.lock is in sync
+        run: |
+          poetry check --lock
+          if ! git diff --exit-code poetry.lock; then
+            echo "ERROR: poetry.lock is out of sync with pyproject.toml"
+            echo "Run 'poetry lock --no-update' locally and commit the changes"
+            exit 1
+          fi
+
+      - name: Check formatting with Black
+        run: |
+          poetry run black --check .
+        continue-on-error: false
+
+      - name: Lint with Ruff
+        run: |
+          poetry run ruff check
+        continue-on-error: false
+
+      - name: Type check with Pyright
+        run: |
+          poetry run pyright
+        continue-on-error: false
+
+      - name: Run tests with Pytest
+        run: |
+          poetry run pytest --cov=src/lexile_corpus_tuner --cov-report=xml --cov-report=term-missing
+        continue-on-error: false
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.13'
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+
+      - name: Check for security vulnerabilities
+        run: |
+          poetry run pip install safety
+          poetry export -f requirements.txt --without-hashes | poetry run safety check --stdin
+        continue-on-error: true
+
+  docs-validation:
+    name: Documentation Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate README exists and is not empty
+        run: |
+          if [ ! -f README.md ] || [ ! -s README.md ]; then
+            echo "ERROR: README.md is missing or empty"
+            exit 1
+          fi
+
+      - name: Check for LICENSE file
+        run: |
+          if [ ! -f LICENSE ]; then
+            echo "ERROR: LICENSE file is missing"
+            exit 1
+          fi
+
+      - name: Validate instruction documents exist
+        run: |
+          if [ ! -f .github/copilot-instructions.md ]; then
+            echo "WARNING: .github/copilot-instructions.md is missing"
+          fi
+          if [ ! -f docs/code-change.instructions.md ]; then
+            echo "WARNING: docs/code-change.instructions.md is missing"
+          fi
+
+  build-check:
+    name: Build Package
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+
+      - name: Build package
+        run: poetry build
+
+      - name: Verify package can be installed
+        run: |
+          python -m venv test-venv
+          source test-venv/bin/activate
+          pip install dist/*.whl
+          atomic-executor --help
+          shell-qc --help
+
+  poshqc:
+    name: PowerShell QC
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install PoshQC tooling
+        shell: pwsh
+        run: |
+          Import-Module "${{ github.workspace }}/scripts/powershell/PoshQC/PoshQC.psm1"
+          Install-PoshQCTools
+
+      - name: Format PowerShell
+        shell: pwsh
+        run: |
+          Import-Module "${{ github.workspace }}/scripts/powershell/PoshQC/PoshQC.psm1"
+          Invoke-PoshQCFormat -Root "${{ github.workspace }}"
+          $diff = git status --porcelain
+          if ($diff) {
+            Write-Error "PowerShell files were reformatted. Run Invoke-PoshQCFormat locally and commit the changes."
+          }
+
+      - name: Analyze PowerShell
+        shell: pwsh
+        run: |
+          Import-Module "${{ github.workspace }}/scripts/powershell/PoshQC/PoshQC.psm1"
+          Invoke-PoshQCAnalyze -Root "${{ github.workspace }}"
+
+      - name: Test PowerShell
+        shell: pwsh
+        run: |
+          Import-Module "${{ github.workspace }}/scripts/powershell/PoshQC/PoshQC.psm1"
+          Invoke-PoshQCTest -Root "${{ github.workspace }}"
+
+      - name: Upload PowerShell test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: poshqc-test-results
+          path: |
+            artifacts/pester/pester-junit.xml
+            artifacts/pester/powershell-coverage.xml
+            artifacts/pester/powershell-coverage.koverage.xml
+          if-no-files-found: ignore
+
+  shell-coverage:
+    name: Shell Coverage (Bats + kcov)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: latest
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Load cached venv
+        id: cached-poetry-dependencies
+        uses: actions/cache@v4
+        with:
+          path: .venv
+          key: venv-${{ runner.os }}-3.13-${{ hashFiles('**/poetry.lock') }}
+
+      - name: Install dependencies
+        if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+        run: poetry install --no-interaction --no-root
+
+      - name: Install project
+        run: poetry install --no-interaction
+
+      - name: Install shell tooling (shellcheck, shfmt, bats)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck bats
+          # shfmt is not available in apt; install via go or from binary
+          SHFMT_VERSION="3.8.0"
+          curl -sL "https://github.com/mvdan/sh/releases/download/v${SHFMT_VERSION}/shfmt_v${SHFMT_VERSION}_linux_amd64" -o /tmp/shfmt
+          chmod +x /tmp/shfmt
+          sudo mv /tmp/shfmt /usr/local/bin/shfmt
+
+      - name: Cache kcov build
+        id: cache-kcov
+        uses: actions/cache@v4
+        with:
+          path: /tmp/kcov-install
+          key: kcov-v43-ubuntu-latest
+
+      - name: Build kcov from source
+        if: steps.cache-kcov.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get install -y binutils-dev build-essential cmake \
+            libssl-dev libcurl4-openssl-dev libelf-dev libstdc++-12-dev \
+            zlib1g-dev libdw-dev libiberty-dev
+          KCOV_VERSION="v43"
+          git clone --depth 1 --branch "${KCOV_VERSION}" https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
+          mkdir /tmp/kcov-src/build && cd /tmp/kcov-src/build
+          cmake -DCMAKE_INSTALL_PREFIX=/tmp/kcov-install ..
+          make -j"$(nproc)"
+          make install
+
+      - name: Install kcov from cache
+        run: |
+          sudo cp -r /tmp/kcov-install/bin/* /usr/local/bin/
+          kcov --version
+
+      - name: Run shell-qc test with coverage
+        run: poetry run shell-qc test --coverage
+
+      - name: Upload shell coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: shell-coverage
+          path: artifacts/pester/kcov/**
+          if-no-files-found: error
+
+  drm-copilot-extension-tests:
+    name: drm-copilot Extension Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: extensions/drm-copilot/package-lock.json
+
+      - name: Install extension dependencies
+        run: npm --prefix extensions/drm-copilot ci
+
+      - name: Run extension unit/integration tests
+        run: npm --prefix extensions/drm-copilot run test
+
