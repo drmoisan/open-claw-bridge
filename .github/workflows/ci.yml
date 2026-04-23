@@ -53,7 +53,10 @@ jobs:
       - name: Analyze PowerShell (Invoke-ScriptAnalyzer)
         shell: pwsh
         run: |
-          $results = Invoke-ScriptAnalyzer -Path scripts, tests/scripts -Recurse -Severity Warning,Error
+          $paths = @('scripts', 'tests/scripts') | Where-Object { Test-Path -LiteralPath $_ }
+          $results = foreach ($path in $paths) {
+            Invoke-ScriptAnalyzer -Path $path -Recurse -Severity Warning, Error
+          }
           if ($results) {
             $results | Format-Table -AutoSize | Out-String | Write-Host
             Write-Error "PSScriptAnalyzer reported $($results.Count) issue(s)."
