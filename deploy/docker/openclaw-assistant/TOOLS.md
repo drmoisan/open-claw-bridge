@@ -111,7 +111,7 @@ Read the token from the file at `/run/openclaw/hostadapter.token`.
 - **Headers:** `Authorization: Bearer <token>` (read from `/run/openclaw/hostadapter.token`)
 - **Path parameters:**
   - `bridgeId` (required): The unique bridge identifier for the calendar event.
-- **Expected response:** `200 OK` with JSON body containing the full event detail (e.g., `{ "bridgeId": "...", "subject": "...", "start": "...", "end": "...", "responseStatus": <int or null>, ... } }`)
+- **Expected response:** `200 OK` with JSON body containing the full event detail (e.g., `{ "bridgeId": "...", "subject": "...", "start": "...", "end": "...", "responseStatus": <int or null>, ... }`)
   - `responseStatus` (optional, nullable integer): same OlResponseStatus value table as the list endpoint. Items with `responseStatus == 4` (Declined) are filtered by the scheduling skill.
 - **Error responses:** `401 Unauthorized` if the token is missing or invalid; `404 Not Found` if the bridge ID does not match a known event
 
