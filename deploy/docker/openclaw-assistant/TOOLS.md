@@ -84,10 +84,22 @@ Read the token from the file at `/run/openclaw/hostadapter.token`.
   - `start` (required): ISO-8601 UTC datetime. Start of the calendar window.
   - `end` (required): ISO-8601 UTC datetime. End of the calendar window.
   - `limit` (optional): Positive integer, maximum 250. Defaults to the HostAdapter configured default.
-- **Expected response:** `200 OK` with JSON body `{ "items": [ { "bridgeId": "...", "subject": "...", "start": "...", "end": "...", ... } ] }`
+- **Expected response:** `200 OK` with JSON body `{ "items": [ { "bridgeId": "...", "subject": "...", "start": "...", "end": "...", "responseStatus": <int or null>, ... } ] }`
+  - `responseStatus` (optional, nullable integer): the operator's response to a meeting invite for that event. See the OlResponseStatus table below. Items with `responseStatus == 4` (Declined) are filtered out of busy holds by the scheduling skill and must not be treated as busy.
 - **Error responses:** `401 Unauthorized` if the token is missing or invalid
 
 **Purpose:** Retrieve calendar events within a specified time window for scheduling conflict analysis.
+
+### OlResponseStatus values
+
+| Value | Name | Meaning |
+|---|---|---|
+| 0 | None | No response status recorded (typical for operator-owned appointments) |
+| 1 | Organized | Operator is the meeting organizer |
+| 2 | Tentative | Operator responded tentatively |
+| 3 | Accepted | Operator accepted the meeting |
+| 4 | Declined | Operator declined the meeting; the skill filters these from busy holds |
+| 5 | NotResponded | Operator has not responded yet |
 
 ---
 
@@ -99,7 +111,19 @@ Read the token from the file at `/run/openclaw/hostadapter.token`.
 - **Headers:** `Authorization: Bearer <token>` (read from `/run/openclaw/hostadapter.token`)
 - **Path parameters:**
   - `bridgeId` (required): The unique bridge identifier for the calendar event.
-- **Expected response:** `200 OK` with JSON body containing the full event detail (e.g., `{ "bridgeId": "...", "subject": "...", "start": "...", "end": "...", ... }`)
+- **Expected response:** `200 OK` with JSON body containing the full event detail (e.g., `{ "bridgeId": "...", "subject": "...", "start": "...", "end": "...", "responseStatus": <int or null>, ... }`)
+  - `responseStatus` (optional, nullable integer): same OlResponseStatus value table as the list endpoint. Items with `responseStatus == 4` (Declined) are filtered by the scheduling skill.
 - **Error responses:** `401 Unauthorized` if the token is missing or invalid; `404 Not Found` if the bridge ID does not match a known event
 
 **Purpose:** Retrieve the full detail of a specific calendar event by its bridge ID.
+
+### OlResponseStatus values
+
+| Value | Name | Meaning |
+|---|---|---|
+| 0 | None | No response status recorded (typical for operator-owned appointments) |
+| 1 | Organized | Operator is the meeting organizer |
+| 2 | Tentative | Operator responded tentatively |
+| 3 | Accepted | Operator accepted the meeting |
+| 4 | Declined | Operator declined the meeting; the skill filters these from busy holds |
+| 5 | NotResponded | Operator has not responded yet |

@@ -15,7 +15,7 @@ internal interface IOutlookScanner
 /// <summary>
 /// Coordinates Outlook discovery and updates the cache metadata that signals scan freshness.
 /// </summary>
-internal sealed class OutlookScanner : IOutlookScanner
+internal sealed partial class OutlookScanner : IOutlookScanner
 {
     private readonly BridgeSettings _settings;
     private readonly BridgeStateStore _state;
@@ -452,7 +452,8 @@ internal sealed class OutlookScanner : IOutlookScanner
                 _settings
             ),
             !string.IsNullOrWhiteSpace(OutlookComHelpers.GetOptionalString(item, "Body")),
-            false
+            false,
+            OutlookComHelpers.GetOptionalInt(item, "ResponseStatus")
         );
 
         return new NormalizedEvent(entryId, GetStoreId(item), globalAppointmentId, dto);
@@ -491,13 +492,4 @@ internal sealed class OutlookScanner : IOutlookScanner
             _com.ReleaseAll(store, parent);
         }
     }
-
-    private sealed record NormalizedMessage(string EntryId, string? StoreId, MessageDto Dto);
-
-    private sealed record NormalizedEvent(
-        string EntryId,
-        string? StoreId,
-        string? GlobalAppointmentId,
-        EventDto Dto
-    );
 }
