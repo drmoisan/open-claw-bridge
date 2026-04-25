@@ -9,7 +9,9 @@
 .DESCRIPTION
     The uninstall sequence runs every step regardless of individual step
     failures. Per-step failures are collected and reported as a single
-    terminating error at the end of the run. User configuration under
+    terminating error at the end of the run. The install record is deleted
+    only after the earlier cleanup stages succeed so a failed uninstall keeps
+    enough state for a later retry. User configuration under
     %LOCALAPPDATA%\OpenClaw\MailBridge\ is preserved because it lives under a
     sibling directory and is never touched by this script.
 
@@ -65,17 +67,24 @@ if ($MyInvocation.InvocationName -ne '.') {
         $failures += [pscustomobject]@{ Step = 'remove-destination'; Error = $_.Exception.Message }
     }
 
-    # Stage 5: remove the install record file.
-    try {
-        Write-Information "[uninstall:record] Remove-Item $InstallRecordPath" -InformationAction Continue
-        if (Test-Path -LiteralPath $InstallRecordPath) {
-            if ($PSCmdlet.ShouldProcess($InstallRecordPath, 'Remove install record')) {
-                Remove-Item -LiteralPath $InstallRecordPath -Force
+    # Stage 5: remove the install record file only when the earlier uninstall
+    # stages succeeded. Preserving the record after a partial failure lets a
+    # later retry keep using the recorded package and compose metadata.
+    if ($failures.Count -eq 0) {
+        try {
+            Write-Information "[uninstall:record] Remove-Item $InstallRecordPath" -InformationAction Continue
+            if (Test-Path -LiteralPath $InstallRecordPath) {
+                if ($PSCmdlet.ShouldProcess($InstallRecordPath, 'Remove install record')) {
+                    Remove-Item -LiteralPath $InstallRecordPath -Force
+                }
             }
         }
+        catch {
+            $failures += [pscustomobject]@{ Step = 'remove-record'; Error = $_.Exception.Message }
+        }
     }
-    catch {
-        $failures += [pscustomobject]@{ Step = 'remove-record'; Error = $_.Exception.Message }
+    else {
+        Write-Information '[uninstall:record] Preserving install record because earlier uninstall steps failed' -InformationAction Continue
     }
 
     # Stage 6: terminal report. Throw a single terminating error enumerating
