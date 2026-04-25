@@ -196,6 +196,7 @@ This path installs the bridge and client together and uses an MSIX `windows.star
 ```powershell
 $repoRoot = '<repo-root>'
 $pwdText = 'your-password'
+$versionNum = '1.0.1.3`
 ```
 
 Step 1 notes:
@@ -236,7 +237,7 @@ installer, and a top-level `manifest.json`.
 
 ```powershell
 Set-Location $repoRoot
-.\scripts\Publish.ps1 -Version '1.0.0.0' -CertThumbprint $thumbprint
+.\scripts\Publish.ps1 -Version $versionNum -CertThumbprint $thumbprint
 Remove-Variable thumbprint -ErrorAction SilentlyContinue
 ```
 
@@ -518,7 +519,7 @@ Prepare version-neutral operator configuration outside the publish bundle:
 ```powershell
 $operatorConfig = Join-Path $env:LOCALAPPDATA 'OpenClaw\operator-config'
 New-Item -ItemType Directory -Force -Path (Join-Path $operatorConfig 'secrets') | Out-Null
-Copy-Item .\artifacts\publish\1.0.0.6\docker\.env.example (Join-Path $operatorConfig '.env') -Force
+Copy-Item (Join-Path $repoRoot ("artifacts\publish\{0}\docker\.env.example" -f $versionNum)) (Join-Path $operatorConfig '.env') -Force
 notepad (Join-Path $operatorConfig '.env')
 notepad (Join-Path $operatorConfig 'secrets\.env.anthropic')
 ```
@@ -543,12 +544,11 @@ Test-Path (Join-Path $operatorConfig 'secrets\.env.anthropic')
 Both commands must return `True`. If either returns `False`, create or correct
 the missing file before running `Install.ps1`.
 
-Run the installer from the bundle directory and pass the operator-managed files:
+Run the installer via its full path and pass the operator-managed files:
 
 ```powershell
-$bundle = 'C:\Users\DanMoisan\repos\open-claw-bridge\artifacts\publish\1.0.0.6'
-Set-Location $bundle
-.\Install.ps1 `
+$bundle = Join-Path $repoRoot ("artifacts\publish\{0}" -f $versionNum)
+& (Join-Path $bundle 'Install.ps1') `
   -DockerEnvFilePath (Join-Path $operatorConfig '.env') `
   -AnthropicEnvFilePath (Join-Path $operatorConfig 'secrets\.env.anthropic')
 ```
@@ -557,7 +557,7 @@ If a prior attempt failed after creating `%LOCALAPPDATA%\OpenClaw\<version>\`,
 rerun the installer with `-Force` and the same env-file parameters:
 
 ```powershell
-.\Install.ps1 -Force `
+& (Join-Path $bundle 'Install.ps1') -Force `
   -DockerEnvFilePath (Join-Path $operatorConfig '.env') `
   -AnthropicEnvFilePath (Join-Path $operatorConfig 'secrets\.env.anthropic')
 ```
@@ -565,7 +565,7 @@ rerun the installer with `-Force` and the same env-file parameters:
 If the Docker stage is intentionally deferred, run:
 
 ```powershell
-.\Install.ps1 -SkipDocker
+& (Join-Path $bundle 'Install.ps1') -SkipDocker
 ```
 
 Then place the operator env files under
