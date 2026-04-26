@@ -58,3 +58,9 @@ After the split, re-run the full PoshQC toolchain (format → analyze → test) 
 | REM-01 | High | Yes — must be resolved before merge | Extract context block(s) from `Install.Tests.ps1` to reach <= 500 lines |
 | REM-02 | Medium | No — recommended before next change to these files | Move three functions to `Install.Helpers.psm1`; update tests |
 | REM-03 | Informational | No | Ensure `powershell-coverage.xml` captures Install files in future runs |
+
+## Remediation Closure Status
+
+- REM-01 — Closed at HEAD 73d8fc5f038632b25b7c78d33345ecfafa90afc0; validated by evidence/regression-testing/rem-01-targeted-verification and evidence/other/post-remediation-validation artifacts.
+- REM-02 — Remains open as a context item and was not executed under this closure plan.
+- REM-03 — Remains open as a context item and was not executed under this closure plan.
