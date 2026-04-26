@@ -132,11 +132,14 @@ Describe 'scripts/Uninstall.ps1' {
             $thrown = { & $script:ScriptPath } | Should -Throw -PassThru
             $thrown.Exception.Message | Should -Match 'compose-down'
             $thrown.Exception.Message | Should -Match 'msix-remove'
-            # Remove-Item for both destination and record still ran.
-            $global:UninstallRemoveItemPaths.Count | Should -BeGreaterOrEqual 2
+            # The destination cleanup still runs, but the install record must be
+            # preserved so a retry can continue uninstalling any remaining
+            # components.
+            ($global:UninstallRemoveItemPaths | Where-Object { $_ -notlike '*install-record.json' }).Count | Should -BeGreaterOrEqual 1
+            ($global:UninstallRemoveItemPaths | Where-Object { $_ -like '*install-record.json' }).Count | Should -Be 0
         }
 
-        It 'runs the install-record-remove step even when destination-remove fails' {
+        It 'preserves the install record when destination-remove fails' {
             Mock Remove-Item {
                 param($LiteralPath)
                 [void]$global:UninstallTestCalls.Add('Remove-Item')
@@ -147,8 +150,9 @@ Describe 'scripts/Uninstall.ps1' {
             }
             $thrown = { & $script:ScriptPath } | Should -Throw -PassThru
             $thrown.Exception.Message | Should -Match 'remove-destination'
-            # Both destination and install-record were attempted.
-            ($global:UninstallRemoveItemPaths | Where-Object { $_ -like '*install-record.json' }).Count | Should -BeGreaterThan 0
+            # The install record must remain so a later retry can finish the
+            # partially completed uninstall.
+            ($global:UninstallRemoveItemPaths | Where-Object { $_ -like '*install-record.json' }).Count | Should -Be 0
         }
     }
 

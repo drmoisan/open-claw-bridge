@@ -101,4 +101,33 @@ internal static class OutlookComHelpers
             return null;
         }
     }
+
+    /// <summary>
+    /// Retrieves an optional UTC <see cref="DateTimeOffset"/> from a COM object member,
+    /// treating <see cref="DateTimeKind.Unspecified"/> as already UTC to avoid double-shifting
+    /// when Outlook's <c>StartUTC</c>/<c>EndUTC</c> properties return unspecified-kind values
+    /// that already carry a UTC timestamp.
+    /// </summary>
+    internal static DateTimeOffset? GetOptionalUtcDateTimeOffset(object target, string memberName)
+    {
+        try
+        {
+            var value = GetMemberValue(target, memberName);
+            return value switch
+            {
+                DateTimeOffset dto => dto.ToUniversalTime(),
+                DateTime { Kind: DateTimeKind.Utc } dateTime => new DateTimeOffset(dateTime),
+                DateTime { Kind: DateTimeKind.Local } dateTime => new DateTimeOffset(
+                    dateTime.ToUniversalTime()
+                ),
+                DateTime dateTime => new DateTimeOffset(dateTime, TimeSpan.Zero),
+                _ when DateTimeOffset.TryParse(value?.ToString(), out var parsed) => parsed,
+                _ => null,
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
