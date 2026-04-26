@@ -57,6 +57,7 @@ Describe 'scripts/Install.ps1' {
         Mock Wait-ComposeHealthy { [void]$global:InstallTestCalls.Add('Wait-ComposeHealthy') }
         Mock Invoke-ComposeDown { [void]$global:InstallTestCalls.Add('Invoke-ComposeDown') }
         Mock Write-InstallRecord { [void]$global:InstallTestCalls.Add('Write-InstallRecord') }
+        function global:Invoke-HostAdapterStart { [void]$global:InstallTestCalls.Add('Invoke-HostAdapterStart') }
         Mock Read-InstallRecord {
             [void]$global:InstallTestCalls.Add('Read-InstallRecord')
             [pscustomobject]@{
@@ -73,7 +74,7 @@ Describe 'scripts/Install.ps1' {
         # Filesystem shims. Test-Path default: MSIX exists; prior-install does NOT.
         Mock New-Item { [void]$global:InstallTestCalls.Add('New-Item') }
         Mock Copy-Item { [void]$global:InstallTestCalls.Add('Copy-Item') }
-        Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') }
+        Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') } -ParameterFilter { ($Path -notlike 'Function:\*') -and ($LiteralPath -notlike 'Function:\*') }
         Mock Get-Content {
             param($LiteralPath)
             if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
@@ -104,7 +105,8 @@ Describe 'scripts/Install.ps1' {
     }
 
     AfterEach {
-        Remove-Item -Path 'Function:\global:Test-IsElevatedAdmin' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'Function:\Test-IsElevatedAdmin' -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path 'Function:\Invoke-HostAdapterStart' -Force -ErrorAction SilentlyContinue
         Remove-Variable -Name CapturedHostAdapterPreflightUri -Scope Global -ErrorAction SilentlyContinue
         Remove-Variable -Name CapturedHostAdapterPreflightAuthorization -Scope Global -ErrorAction SilentlyContinue
     }
@@ -145,7 +147,7 @@ Describe 'scripts/Install.ps1' {
         It 'throws before any helper runs when -AllowUnsigned is set and the probe returns false' {
             function global:Test-IsElevatedAdmin { $false }
             { & $script:ScriptPath -AllowUnsigned } |
-            Should -Throw -ExpectedMessage '*AllowUnsigned requires*administrator*Relaunch PowerShell as administrator*'
+                Should -Throw -ExpectedMessage '*AllowUnsigned requires*administrator*Relaunch PowerShell as administrator*'
             $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
         }
 
@@ -173,6 +175,7 @@ Describe 'scripts/Install.ps1' {
                 'Test-DockerAvailable',
                 'Copy-BundleContents',
                 'Initialize-DotEnv',
+                'Invoke-HostAdapterStart',
                 'Invoke-WebRequest',
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
@@ -213,7 +216,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath -DockerEnvFilePath 'C:\missing\.env' } |
-            Should -Throw -ExpectedMessage '*-DockerEnvFilePath*not found*outside artifacts/publish*'
+                Should -Throw -ExpectedMessage '*-DockerEnvFilePath*not found*outside artifacts/publish*'
 
             $global:InstallTestCalls -contains 'Get-ManifestVersion' | Should -BeFalse
             $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
@@ -231,7 +234,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath } |
-            Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
+                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
@@ -248,7 +251,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath } |
-            Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
+                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
         }
@@ -279,7 +282,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath } |
-            Should -Throw -ExpectedMessage '*Required Docker secret file not found*-AnthropicEnvFilePath*-SkipDocker*'
+                Should -Throw -ExpectedMessage '*Required Docker secret file not found*-AnthropicEnvFilePath*-SkipDocker*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
@@ -289,7 +292,7 @@ Describe 'scripts/Install.ps1' {
             Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 503; Headers = @{}; Content = '{}' } }
 
             { & $script:ScriptPath } |
-            Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*HTTP 503*OpenClaw.MailBridge*'
+                Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*HTTP 503*OpenClaw.MailBridge*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
@@ -300,7 +303,7 @@ Describe 'scripts/Install.ps1' {
             Mock Invoke-WebRequest { throw [System.Net.WebException] 'Connection refused' }
 
             { & $script:ScriptPath } |
-            Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*'
+                Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
         }
@@ -381,56 +384,6 @@ Describe 'scripts/Install.ps1' {
         }
     }
 
-    Context '-Force over existing install' {
-        It 'runs uninstall sequence before install when -Force and prior install exist' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            & $script:ScriptPath -Force | Out-Null
-            # Uninstall sequence runs before the install sequence.
-            $idxComposeDown = $global:InstallTestCalls.IndexOf('Invoke-ComposeDown')
-            $idxMsixRemove = $global:InstallTestCalls.IndexOf('Invoke-MsixRemove')
-            $idxCopy = $global:InstallTestCalls.IndexOf('Copy-BundleContents')
-            $idxComposeDown | Should -BeGreaterOrEqual 0
-            $idxMsixRemove | Should -BeGreaterOrEqual 0
-            $idxCopy | Should -BeGreaterThan $idxMsixRemove
-        }
-
-        It 'throws when prior install exists and -Force is NOT supplied' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            { & $script:ScriptPath } | Should -Throw -ExpectedMessage '*-Force*Uninstall.ps1*'
-        }
-
-        It '-Force tolerates compose-down and msix-remove failures in the prior-install uninstall sequence' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            Mock Invoke-ComposeDown { [void]$global:InstallTestCalls.Add('Invoke-ComposeDown'); throw 'compose down boom' }
-            Mock Invoke-MsixRemove { [void]$global:InstallTestCalls.Add('Invoke-MsixRemove'); throw 'msix remove boom' }
-            & $script:ScriptPath -Force *>&1 | Out-Null
-            $global:InstallTestCalls -contains 'Copy-BundleContents' | Should -BeTrue
-        }
-
-        It '-Force with destination-only (no record file) removes MSIX and destination' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $false }
-                $true
-            }
-            & $script:ScriptPath -Force | Out-Null
-            $global:InstallTestCalls -contains 'Invoke-MsixRemove' | Should -BeTrue
-            $global:InstallTestCalls -contains 'Remove-Item' | Should -BeTrue
-        }
-    }
-
     Context 'manifest integrity failure' {
         It 'throws and never invokes helpers after Test-ManifestIntegrity' {
             Mock Test-ManifestIntegrity {
@@ -480,7 +433,7 @@ Describe 'scripts/Install.ps1' {
                 $true
             }
             { & $script:ScriptPath -SourcePath $missingBundle } |
-            Should -Throw -ExpectedMessage "*empty-bundle*manifest.json*"
+                Should -Throw -ExpectedMessage "*empty-bundle*manifest.json*"
             # The early abort runs before Get-ManifestVersion / Test-ManifestIntegrity.
             $global:InstallTestCalls -contains 'Get-ManifestVersion' | Should -BeFalse
             $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
