@@ -1,4 +1,4 @@
-# Remediation Inputs — Issue #45: Calendar Windows Wrong (UTC Double-Shift)
+# Remediation Inputs — Issue #55: Calendar Windows Wrong (UTC Double-Shift)
 
 Timestamp: 2026-04-25T17-00
 Reviewer: feature-review-agent

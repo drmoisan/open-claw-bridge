@@ -1,4 +1,4 @@
-# Plan — Issue #45: Calendar Windows Wrong (UTC Double-Shift)
+# Plan — Issue #55: Calendar Windows Wrong (UTC Double-Shift)
 
 - Work Mode: full-bug
 - Feature Folder: docs/features/active/2026-04-25-calendar-windows-wrong-45/
