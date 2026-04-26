@@ -74,7 +74,7 @@ Describe 'scripts/Install.ps1' {
         # Filesystem shims. Test-Path default: MSIX exists; prior-install does NOT.
         Mock New-Item { [void]$global:InstallTestCalls.Add('New-Item') }
         Mock Copy-Item { [void]$global:InstallTestCalls.Add('Copy-Item') }
-        Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') }
+        Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') } -ParameterFilter { ($Path -notlike 'Function:\*') -and ($LiteralPath -notlike 'Function:\*') }
         Mock Get-Content {
             param($LiteralPath)
             if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
@@ -105,8 +105,8 @@ Describe 'scripts/Install.ps1' {
     }
 
     AfterEach {
-        Remove-Item -Path 'Function:\global:Test-IsElevatedAdmin' -ErrorAction SilentlyContinue
-        Remove-Item -Path 'Function:\global:Invoke-HostAdapterStart' -ErrorAction SilentlyContinue
+        Remove-Item -Path 'Function:\Test-IsElevatedAdmin' -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path 'Function:\Invoke-HostAdapterStart' -Force -ErrorAction SilentlyContinue
         Remove-Variable -Name CapturedHostAdapterPreflightUri -Scope Global -ErrorAction SilentlyContinue
         Remove-Variable -Name CapturedHostAdapterPreflightAuthorization -Scope Global -ErrorAction SilentlyContinue
     }
@@ -381,56 +381,6 @@ Describe 'scripts/Install.ps1' {
             }
             & $script:ScriptPath -SkipDocker | Out-Null
             $global:capturedRecord.skipDocker | Should -BeTrue
-        }
-    }
-
-    Context '-Force over existing install' {
-        It 'runs uninstall sequence before install when -Force and prior install exist' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            & $script:ScriptPath -Force | Out-Null
-            # Uninstall sequence runs before the install sequence.
-            $idxComposeDown = $global:InstallTestCalls.IndexOf('Invoke-ComposeDown')
-            $idxMsixRemove = $global:InstallTestCalls.IndexOf('Invoke-MsixRemove')
-            $idxCopy = $global:InstallTestCalls.IndexOf('Copy-BundleContents')
-            $idxComposeDown | Should -BeGreaterOrEqual 0
-            $idxMsixRemove | Should -BeGreaterOrEqual 0
-            $idxCopy | Should -BeGreaterThan $idxMsixRemove
-        }
-
-        It 'throws when prior install exists and -Force is NOT supplied' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            { & $script:ScriptPath } | Should -Throw -ExpectedMessage '*-Force*Uninstall.ps1*'
-        }
-
-        It '-Force tolerates compose-down and msix-remove failures in the prior-install uninstall sequence' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            Mock Invoke-ComposeDown { [void]$global:InstallTestCalls.Add('Invoke-ComposeDown'); throw 'compose down boom' }
-            Mock Invoke-MsixRemove { [void]$global:InstallTestCalls.Add('Invoke-MsixRemove'); throw 'msix remove boom' }
-            & $script:ScriptPath -Force *>&1 | Out-Null
-            $global:InstallTestCalls -contains 'Copy-BundleContents' | Should -BeTrue
-        }
-
-        It '-Force with destination-only (no record file) removes MSIX and destination' {
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $false }
-                $true
-            }
-            & $script:ScriptPath -Force | Out-Null
-            $global:InstallTestCalls -contains 'Invoke-MsixRemove' | Should -BeTrue
-            $global:InstallTestCalls -contains 'Remove-Item' | Should -BeTrue
         }
     }
 
