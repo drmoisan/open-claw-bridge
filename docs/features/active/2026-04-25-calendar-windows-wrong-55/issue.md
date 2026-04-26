@@ -1,6 +1,11 @@
-- Work Mode: full-bug
+# Calendar Windows Wrong: UTC Double-Shift in OutlookComHelpers (Issue #55)
 
-# Issue #45 — Calendar Windows Wrong: UTC Double-Shift in OutlookComHelpers
+- Date captured: 2026-04-25
+- Author: drmoisan
+- Status: Promoted -> docs/features/active/Calendar_Windows_Wrong_UTC_Double-Shift_in_OutlookComHelpers/ (Issue #55)
+- Issue: #55
+- Issue URL: https://github.com/drmoisan/open-claw-bridge/issues/55
+- Last Updated: 2026-04-26
 
 ## Summary
 
