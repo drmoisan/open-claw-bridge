@@ -369,7 +369,7 @@ function Wait-ComposeHealthy {
     }
     $failing = $lastState.Keys |
         Where-Object { $lastState[$_].State -ne 'running' -or (-not [string]::IsNullOrEmpty($lastState[$_].Health) -and $lastState[$_].Health -ne 'healthy') } |
-            Select-Object -First 1
+        Select-Object -First 1
     if (-not $failing) {
         $failing = 'openclaw-core'
     }

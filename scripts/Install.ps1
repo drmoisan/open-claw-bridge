@@ -312,7 +312,55 @@ function Assert-HostAdapterRuntimePreflight {
         throw "HostAdapter preflight failed before starting Docker. GET $statusUri returned HTTP $($response.StatusCode). Confirm OpenClaw.HostAdapter is running, the token is valid, and OpenClaw.MailBridge is running, then retry; or pass -SkipDocker to skip the container stage."
     }
 }
-
+if (-not (Get-Command -Name 'Test-TcpPortOpen' -ErrorAction SilentlyContinue)) {
+    function Test-TcpPortOpen {
+        [CmdletBinding()]
+        [OutputType([bool])]
+        param(
+            [Parameter(Mandatory = $true)][string]$IpAddress,
+            [Parameter(Mandatory = $true)][int]$Port
+        )
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try { return $client.ConnectAsync($IpAddress, $Port).Wait(500) }
+        catch { return $false }
+        finally { $client.Dispose() }
+    }
+}
+if (-not (Get-Command -Name 'Invoke-HostAdapterProcess' -ErrorAction SilentlyContinue)) {
+    function Invoke-HostAdapterProcess {
+        [CmdletBinding(SupportsShouldProcess = $true)]
+        param([Parameter(Mandatory = $true)][System.Diagnostics.ProcessStartInfo]$ProcessStartInfo)
+        if ($PSCmdlet.ShouldProcess($ProcessStartInfo.FileName, 'Start-Process')) {
+            [System.Diagnostics.Process]::Start($ProcessStartInfo) | Out-Null
+        }
+    }
+}
+if (-not (Get-Command -Name 'Invoke-HostAdapterStart' -ErrorAction SilentlyContinue)) {
+    function Invoke-HostAdapterStart {
+        [CmdletBinding(SupportsShouldProcess = $true)]
+        param(
+            [Parameter(Mandatory = $true)][string]$HostAdapterExePath,
+            [Parameter(Mandatory = $true)][string]$AspNetCoreUrls
+        )
+        if (-not (Test-Path -LiteralPath $HostAdapterExePath)) {
+            throw "HostAdapter executable not found at '$HostAdapterExePath'. The bundle may be incomplete or the destination copy did not complete."
+        }
+        $port = [UriBuilder]::new($AspNetCoreUrls).Port
+        if (Test-TcpPortOpen -IpAddress '127.0.0.1' -Port $port) {
+            Write-Information "[install:hostadapter-start] HostAdapter already running on port $port; skipping start." -InformationAction Continue
+            return
+        }
+        $psi = [System.Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $HostAdapterExePath
+        $psi.UseShellExecute = $false
+        $psi.WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Hidden
+        $psi.EnvironmentVariables['ASPNETCORE_URLS'] = $AspNetCoreUrls
+        if ($PSCmdlet.ShouldProcess($HostAdapterExePath, 'Start-HostAdapter')) {
+            Invoke-HostAdapterProcess -ProcessStartInfo $psi
+        }
+        Write-Information "[install:hostadapter-start] HostAdapter process launched from '$HostAdapterExePath'." -InformationAction Continue
+    }
+}
 # --- Main (only runs when executed directly, not when dot-sourced for tests) ---
 if ($MyInvocation.InvocationName -ne '.') {
 
@@ -400,6 +448,13 @@ if ($MyInvocation.InvocationName -ne '.') {
         Assert-StagedGatewayTokenPresent -DestDockerDir $DestDockerDir
     }
 
+    # Stage 7a: launch HostAdapter from bundle if not already running.
+    if (-not $SkipDocker) {
+        Write-Information '[install:hostadapter-start] Ensuring HostAdapter is running' -InformationAction Continue
+        $HostAdapterExePath = Join-Path $DestinationPath 'executables\OpenClaw.HostAdapter\OpenClaw.HostAdapter.exe'
+        $hostAdapterUri = Get-HostAdapterPreflightUri -EnvMap (Get-InstallEnvFileMap -EnvFilePath (Join-Path $DestDockerDir '.env'))
+        Invoke-HostAdapterStart -HostAdapterExePath $HostAdapterExePath -AspNetCoreUrls "$($hostAdapterUri.Scheme)://$($hostAdapterUri.Host):$($hostAdapterUri.Port)"
+    }
     # Stage 7 preflight: HostAdapter readiness guard runs before any state-changing
     # operations so that a failed preflight leaves nothing installed. This follows
     # the same pattern as the Stage 4 Docker readiness guard and Stage 6 gateway
