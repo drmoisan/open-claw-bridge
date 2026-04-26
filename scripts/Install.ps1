@@ -400,7 +400,16 @@ if ($MyInvocation.InvocationName -ne '.') {
         Assert-StagedGatewayTokenPresent -DestDockerDir $DestDockerDir
     }
 
-    # Stage 7: MSIX install + capture.
+    # Stage 7 preflight: HostAdapter readiness guard runs before any state-changing
+    # operations so that a failed preflight leaves nothing installed. This follows
+    # the same pattern as the Stage 4 Docker readiness guard and Stage 6 gateway
+    # token guard.
+    if (-not $SkipDocker) {
+        Write-Information '[install:hostadapter-check] Verifying HostAdapter and MailBridge readiness before MSIX install' -InformationAction Continue
+        Assert-HostAdapterRuntimePreflight -DestDockerDir $DestDockerDir
+    }
+
+    # Stage 8: MSIX install + capture.
     $MsixPath = Join-Path $BundleRoot "msix/OpenClaw.MailBridge_${ResolvedVersion}_x64.msix"
     if (-not (Test-Path -LiteralPath $MsixPath)) {
         throw "MSIX not found at expected path '$MsixPath'. The bundle may be incomplete."
@@ -410,17 +419,15 @@ if ($MyInvocation.InvocationName -ne '.') {
     $PackageFullName = Invoke-MsixCapture
     Write-Information "[install:msix] PackageFullName $PackageFullName" -InformationAction Continue
 
-    # Stage 8: compose up + health poll (skipped when -SkipDocker).
+    # Stage 9: compose up + health poll (skipped when -SkipDocker).
     $ComposeFilePath = Join-Path $DestDockerDir 'docker-compose.yml'
     if (-not $SkipDocker) {
-        Write-Information '[install:hostadapter-check] Verifying HostAdapter and MailBridge readiness before compose up' -InformationAction Continue
-        Assert-HostAdapterRuntimePreflight -DestDockerDir $DestDockerDir
         Write-Information '[install:docker] Starting compose stack' -InformationAction Continue
         Invoke-ComposeUp -DestDockerDir $DestDockerDir -ComposeFilePath $ComposeFilePath
         Wait-ComposeHealthy -ComposeFilePath $ComposeFilePath
     }
 
-    # Stage 9: install record.
+    # Stage 10: install record.
     Write-Information '[install:record] Writing install record' -InformationAction Continue
     $record = [pscustomobject]@{
         installedAt        = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')

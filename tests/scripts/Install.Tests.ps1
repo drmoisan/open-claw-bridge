@@ -81,7 +81,10 @@ Describe 'scripts/Install.ps1' {
             }
             return 'test-hostadapter-token'
         }
-        Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' } }
+        Mock Invoke-WebRequest {
+            [void]$global:InstallTestCalls.Add('Invoke-WebRequest')
+            [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' }
+        }
         Mock Test-Path {
             param($LiteralPath)
             if ($LiteralPath -like '*install-record.json') { return $false }
@@ -142,7 +145,7 @@ Describe 'scripts/Install.ps1' {
         It 'throws before any helper runs when -AllowUnsigned is set and the probe returns false' {
             function global:Test-IsElevatedAdmin { $false }
             { & $script:ScriptPath -AllowUnsigned } |
-                Should -Throw -ExpectedMessage '*AllowUnsigned requires*administrator*Relaunch PowerShell as administrator*'
+            Should -Throw -ExpectedMessage '*AllowUnsigned requires*administrator*Relaunch PowerShell as administrator*'
             $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
         }
 
@@ -170,6 +173,7 @@ Describe 'scripts/Install.ps1' {
                 'Test-DockerAvailable',
                 'Copy-BundleContents',
                 'Initialize-DotEnv',
+                'Invoke-WebRequest',
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
                 'Invoke-ComposeUp',
@@ -209,7 +213,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath -DockerEnvFilePath 'C:\missing\.env' } |
-                Should -Throw -ExpectedMessage '*-DockerEnvFilePath*not found*outside artifacts/publish*'
+            Should -Throw -ExpectedMessage '*-DockerEnvFilePath*not found*outside artifacts/publish*'
 
             $global:InstallTestCalls -contains 'Get-ManifestVersion' | Should -BeFalse
             $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
@@ -227,7 +231,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath } |
-                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
+            Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
@@ -244,7 +248,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath } |
-                Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
+            Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
         }
@@ -275,7 +279,7 @@ Describe 'scripts/Install.ps1' {
             }
 
             { & $script:ScriptPath } |
-                Should -Throw -ExpectedMessage '*Required Docker secret file not found*-AnthropicEnvFilePath*-SkipDocker*'
+            Should -Throw -ExpectedMessage '*Required Docker secret file not found*-AnthropicEnvFilePath*-SkipDocker*'
 
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
@@ -285,11 +289,20 @@ Describe 'scripts/Install.ps1' {
             Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 503; Headers = @{}; Content = '{}' } }
 
             { & $script:ScriptPath } |
-                Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*HTTP 503*OpenClaw.MailBridge*'
+            Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*HTTP 503*OpenClaw.MailBridge*'
 
-            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeTrue
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
             $global:InstallTestCalls -contains 'Wait-ComposeHealthy' | Should -BeFalse
+        }
+
+        It 'does not install MSIX when the HostAdapter status probe throws on unreachable endpoint' {
+            Mock Invoke-WebRequest { throw [System.Net.WebException] 'Connection refused' }
+
+            { & $script:ScriptPath } |
+            Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*'
+
+            $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
         }
 
         It 'probes the host-loopback HostAdapter status URI before compose up' {
@@ -467,7 +480,7 @@ Describe 'scripts/Install.ps1' {
                 $true
             }
             { & $script:ScriptPath -SourcePath $missingBundle } |
-                Should -Throw -ExpectedMessage "*empty-bundle*manifest.json*"
+            Should -Throw -ExpectedMessage "*empty-bundle*manifest.json*"
             # The early abort runs before Get-ManifestVersion / Test-ManifestIntegrity.
             $global:InstallTestCalls -contains 'Get-ManifestVersion' | Should -BeFalse
             $global:InstallTestCalls -contains 'Test-ManifestIntegrity' | Should -BeFalse
