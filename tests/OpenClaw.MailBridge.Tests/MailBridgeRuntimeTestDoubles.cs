@@ -109,6 +109,8 @@ internal sealed class FakeAppointmentItem
     public required string Subject { get; init; }
     public DateTimeOffset Start { get; init; }
     public DateTimeOffset End { get; init; }
+    public DateTime? StartUTC { get; init; }
+    public DateTime? EndUTC { get; init; }
     public string? Location { get; init; }
     public bool IsRecurring { get; init; }
     public string? Organizer { get; init; }

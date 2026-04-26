@@ -420,10 +420,10 @@ internal sealed partial class OutlookScanner : IOutlookScanner
     {
         var entryId = OutlookComHelpers.GetOptionalString(item, "EntryID");
         var startUtc =
-            OutlookComHelpers.GetOptionalDateTimeOffset(item, "StartUTC")
+            OutlookComHelpers.GetOptionalUtcDateTimeOffset(item, "StartUTC")
             ?? OutlookComHelpers.GetOptionalDateTimeOffset(item, "Start");
         var endUtc =
-            OutlookComHelpers.GetOptionalDateTimeOffset(item, "EndUTC")
+            OutlookComHelpers.GetOptionalUtcDateTimeOffset(item, "EndUTC")
             ?? OutlookComHelpers.GetOptionalDateTimeOffset(item, "End");
         if (string.IsNullOrWhiteSpace(entryId) || startUtc is null || endUtc is null)
         {

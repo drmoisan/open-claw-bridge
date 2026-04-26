@@ -196,7 +196,7 @@ This path installs the bridge and client together and uses an MSIX `windows.star
 ```powershell
 $repoRoot = '<repo-root>'
 $pwdText = 'your-password'
-$versionNum = '1.0.1.3`
+$versionNum = '1.0.1.3'
 ```
 
 Step 1 notes:
