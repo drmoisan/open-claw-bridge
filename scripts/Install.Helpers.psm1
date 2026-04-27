@@ -1,10 +1,8 @@
-# Install.Helpers.psm1
-# Shared helper module for scripts/Install.ps1 and scripts/Uninstall.ps1.
-# Centralizes newest-version discovery, manifest integrity, bundle copy, .env
-# guard, MSIX shims, docker readiness + compose shims, and install-record I/O.
-# PowerShell 7+, stays under 500 lines. Planner decision Q1 is captured in
-# Wait-ComposeHealthy defaults (-TimeoutSeconds 90, -PollIntervalSeconds 3).
-# Every state-changing helper uses SupportsShouldProcess for -WhatIf.
+﻿# Install.Helpers.psm1 — shared helper module for scripts/Install.ps1 and
+# scripts/Uninstall.ps1. Manifest integrity, bundle copy, MSIX shims, docker
+# readiness + compose shims, install-record I/O, and Stage 7a wrapper seams.
+# PowerShell 7+. Planner decision Q1: Wait-ComposeHealthy defaults
+# -TimeoutSeconds 90, -PollIntervalSeconds 3. State-changing helpers support -WhatIf.
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -450,18 +448,52 @@ function Read-InstallRecord {
     return Get-Content -LiteralPath $RecordPath -Raw | ConvertFrom-Json
 }
 
-Export-ModuleMember -Function `
-    'Get-ManifestVersion', `
-    'Test-ManifestIntegrity', `
-    'Copy-BundleContents', `
-    'Initialize-DotEnv', `
-    'Invoke-MsixInstall', `
-    'Invoke-MsixCapture', `
-    'Invoke-MsixRemove', `
-    'Test-DockerAvailable', `
-    'Invoke-ComposeUp', `
-    'Wait-ComposeHealthy', `
-    'Invoke-ComposeDown', `
-    'Write-InstallRecord', `
-    'Read-InstallRecord'
+function Get-ListeningProcessId {
+    <#
+    .SYNOPSIS
+        Wrapper seam: PID of the first TCP listener on $Port, or $null.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param([Parameter(Mandatory = $true)][int]$Port)
+    $connection = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if (-not $connection) { return $null }
+    return [int]$connection.OwningProcess
+}
+
+function Get-ProcessMainModulePath {
+    <#
+    .SYNOPSIS
+        Wrapper seam: MainModule.FileName of $ProcessId, or $null on access denied.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([Parameter(Mandatory = $true)][int]$ProcessId)
+    try {
+        $proc = Get-Process -Id $ProcessId -ErrorAction Stop
+        $mainModule = $proc.MainModule
+        if ($null -eq $mainModule) { return $null }
+        return [string]$mainModule.FileName
+    }
+    catch { return $null }
+}
+
+function Invoke-HostAdapterStatusRequest {
+    <#
+    .SYNOPSIS
+        Wrapper seam: GET HostAdapter /v1/status with Bearer token. Non-200
+        responses are returned via -SkipHttpErrorCheck; connection errors throw.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][uri]$StatusUri,
+        [Parameter(Mandatory = $true)][string]$Token
+    )
+    return Invoke-WebRequest -Uri $StatusUri -Method Get `
+        -Headers @{ Authorization = "Bearer $Token" } `
+        -UseBasicParsing -SkipHttpErrorCheck -TimeoutSec 10
+}
+
+Export-ModuleMember -Function 'Get-ManifestVersion', 'Test-ManifestIntegrity', 'Copy-BundleContents', 'Initialize-DotEnv', 'Invoke-MsixInstall', 'Invoke-MsixCapture', 'Invoke-MsixRemove', 'Test-DockerAvailable', 'Invoke-ComposeUp', 'Wait-ComposeHealthy', 'Invoke-ComposeDown', 'Write-InstallRecord', 'Read-InstallRecord', 'Get-ListeningProcessId', 'Get-ProcessMainModulePath', 'Invoke-HostAdapterStatusRequest'
 

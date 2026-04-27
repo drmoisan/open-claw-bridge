@@ -19,7 +19,9 @@ Describe 'scripts/Install.ps1' {
     BeforeAll {
         $script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Install.ps1'
         $script:HelpersPath = Join-Path $PSScriptRoot '..\..\scripts\Install.Helpers.psm1'
+        $script:PreflightPath = Join-Path $PSScriptRoot '..\..\scripts\Install.Preflight.psm1'
         Import-Module $script:HelpersPath -Force
+        Import-Module $script:PreflightPath -Force
         $global:InstallTestCalls = [System.Collections.ArrayList]::new()
 
         # Override LOCALAPPDATA so the script resolves stable test paths.
@@ -75,18 +77,39 @@ Describe 'scripts/Install.ps1' {
         Mock New-Item { [void]$global:InstallTestCalls.Add('New-Item') }
         Mock Copy-Item { [void]$global:InstallTestCalls.Add('Copy-Item') }
         Mock Remove-Item { [void]$global:InstallTestCalls.Add('Remove-Item') } -ParameterFilter { ($Path -notlike 'Function:\*') -and ($LiteralPath -notlike 'Function:\*') }
-        Mock Get-Content {
+        $script:GetContentMock = {
             param($LiteralPath)
             if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
                 return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
             }
             return 'test-hostadapter-token'
         }
-        Mock Invoke-WebRequest {
-            [void]$global:InstallTestCalls.Add('Invoke-WebRequest')
-            [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' }
+        Mock Get-Content $script:GetContentMock
+        Mock Get-Content $script:GetContentMock -ModuleName Install.Preflight
+        # Default env-map mock so Assert-StagedGatewayTokenPresent (called from Install.ps1
+        # script scope) and the Stage 7/8.5 preflight prelude both see the test token map
+        # without depending on in-module Get-Content interception.
+        $script:EnvMapMock = {
+            param($EnvFilePath)
+            $null = $EnvFilePath
+            @{ 'OPENCLAW_GATEWAY_TOKEN' = 'test-gateway-token' }
         }
-        Mock Test-Path {
+        Mock Get-InstallEnvFileMap $script:EnvMapMock
+        Mock Get-InstallEnvFileMap $script:EnvMapMock -ModuleName Install.Preflight
+        $script:DefaultStatusResponse = {
+            [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{"ok":true,"data":{"state":"running","mode":"x"},"meta":{"requestId":"r","adapterVersion":"1.0.0.0","bridge":null},"error":null}' }
+        }
+        Mock Invoke-WebRequest $script:DefaultStatusResponse
+        Mock Invoke-WebRequest $script:DefaultStatusResponse -ModuleName Install.Helpers
+        Mock Invoke-HostAdapterStatusRequest {
+            [void]$global:InstallTestCalls.Add('Invoke-HostAdapterStatusRequest')
+            [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{"ok":true,"data":{"state":"running","mode":"x"},"meta":{"requestId":"r","adapterVersion":"1.0.0.0","bridge":null},"error":null}' }
+        } -ModuleName Install.Preflight
+        # Default preflight stubs that no-op, so script-level happy-path tests run without
+        # relying on Invoke-WebRequest mock interception inside imported modules.
+        Mock Assert-HostAdapterRespondingPreflight { [void]$global:InstallTestCalls.Add('Assert-HostAdapterRespondingPreflight') }
+        Mock Assert-HostAdapterBridgeReadyPreflight { [void]$global:InstallTestCalls.Add('Assert-HostAdapterBridgeReadyPreflight') }
+        $script:TestPathMock = {
             param($LiteralPath)
             if ($LiteralPath -like '*install-record.json') { return $false }
             if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
@@ -98,6 +121,8 @@ Describe 'scripts/Install.ps1' {
             if ($LiteralPath -like '*TestAppData*OpenClaw/*') { return $false }
             $true
         }
+        Mock Test-Path $script:TestPathMock
+        Mock Test-Path $script:TestPathMock -ModuleName Install.Preflight
 
         # Elevation-probe default: treat test host as elevated so -AllowUnsigned paths
         # proceed through the precheck. Individual It blocks can override.
@@ -176,9 +201,10 @@ Describe 'scripts/Install.ps1' {
                 'Copy-BundleContents',
                 'Initialize-DotEnv',
                 'Invoke-HostAdapterStart',
-                'Invoke-WebRequest',
+                'Assert-HostAdapterRespondingPreflight',
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
+                'Assert-HostAdapterBridgeReadyPreflight',
                 'Invoke-ComposeUp',
                 'Wait-ComposeHealthy',
                 'Write-InstallRecord'
@@ -225,13 +251,9 @@ Describe 'scripts/Install.ps1' {
 
     Context 'OPENCLAW_GATEWAY_TOKEN guard' {
         It 'throws before MSIX install when the staged .env has an empty OPENCLAW_GATEWAY_TOKEN' {
-            Mock Get-Content {
-                param($LiteralPath)
-                if ($LiteralPath -like '*docker*.env') {
-                    return @('OPENCLAW_GATEWAY_TOKEN=')
-                }
-                return 'test-hostadapter-token'
-            }
+            $emptyTokenMap = { @{ 'OPENCLAW_GATEWAY_TOKEN' = '' } }
+            Mock Get-InstallEnvFileMap $emptyTokenMap
+            Mock Get-InstallEnvFileMap $emptyTokenMap -ModuleName Install.Preflight
 
             { & $script:ScriptPath } |
                 Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*SkipDocker*'
@@ -242,13 +264,9 @@ Describe 'scripts/Install.ps1' {
         }
 
         It 'throws before MSIX install when the staged .env is missing OPENCLAW_GATEWAY_TOKEN entirely' {
-            Mock Get-Content {
-                param($LiteralPath)
-                if ($LiteralPath -like '*docker*.env') {
-                    return @('OPENCLAW_AGENT_PORT=18789')
-                }
-                return 'test-hostadapter-token'
-            }
+            $missingTokenMap = { @{ 'OPENCLAW_AGENT_PORT' = '18789' } }
+            Mock Get-InstallEnvFileMap $missingTokenMap
+            Mock Get-InstallEnvFileMap $missingTokenMap -ModuleName Install.Preflight
 
             { & $script:ScriptPath } |
                 Should -Throw -ExpectedMessage '*OPENCLAW_GATEWAY_TOKEN*Invoke-OpenClawAgentOnboarding.ps1*'
@@ -257,13 +275,9 @@ Describe 'scripts/Install.ps1' {
         }
 
         It 'does not run the gateway token guard when -SkipDocker is supplied' {
-            Mock Get-Content {
-                param($LiteralPath)
-                if ($LiteralPath -like '*docker*.env') {
-                    return @('OPENCLAW_GATEWAY_TOKEN=')
-                }
-                return 'test-hostadapter-token'
-            }
+            $emptyTokenMap = { @{ 'OPENCLAW_GATEWAY_TOKEN' = '' } }
+            Mock Get-InstallEnvFileMap $emptyTokenMap
+            Mock Get-InstallEnvFileMap $emptyTokenMap -ModuleName Install.Preflight
 
             { & $script:ScriptPath -SkipDocker } | Should -Not -Throw
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeTrue
@@ -289,7 +303,10 @@ Describe 'scripts/Install.ps1' {
         }
 
         It 'throws before compose up when the HostAdapter status probe is not ready' {
-            Mock Invoke-WebRequest { [pscustomobject]@{ StatusCode = 503; Headers = @{}; Content = '{}' } }
+            $statusUri = [uri]'http://127.0.0.1:4319/v1/status'
+            Mock Assert-HostAdapterRespondingPreflight {
+                throw "HostAdapter preflight failed before starting Docker. GET $statusUri returned HTTP 503. Confirm OpenClaw.HostAdapter is running, the token is valid, and OpenClaw.MailBridge is running, then retry; or pass -SkipDocker to skip the container stage."
+            }
 
             { & $script:ScriptPath } |
                 Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*HTTP 503*OpenClaw.MailBridge*'
@@ -300,7 +317,9 @@ Describe 'scripts/Install.ps1' {
         }
 
         It 'does not install MSIX when the HostAdapter status probe throws on unreachable endpoint' {
-            Mock Invoke-WebRequest { throw [System.Net.WebException] 'Connection refused' }
+            Mock Assert-HostAdapterRespondingPreflight {
+                throw 'HostAdapter preflight failed before starting Docker. GET http://127.0.0.1:4319/v1/status was unreachable: Connection refused. Start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage.'
+            }
 
             { & $script:ScriptPath } |
                 Should -Throw -ExpectedMessage '*HostAdapter preflight failed before starting Docker*'
@@ -309,54 +328,25 @@ Describe 'scripts/Install.ps1' {
         }
 
         It 'probes the host-loopback HostAdapter status URI before compose up' {
-            $global:CapturedHostAdapterPreflightUri = $null
-            Mock Invoke-WebRequest {
-                param([uri]$Uri)
-                $global:CapturedHostAdapterPreflightUri = [string]$Uri
-                [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' }
+            $global:CapturedHostAdapterPreflightDir = $null
+            Mock Assert-HostAdapterRespondingPreflight {
+                param($DestDockerDir)
+                $global:CapturedHostAdapterPreflightDir = [string]$DestDockerDir
             }
 
             & $script:ScriptPath | Out-Null
 
-            $global:CapturedHostAdapterPreflightUri | Should -Be 'http://127.0.0.1:4319/v1/status'
+            $global:CapturedHostAdapterPreflightDir | Should -Match 'docker$'
             $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeTrue
         }
 
-        It 'uses installed docker env HostAdapter settings for the preflight' {
-            $global:CapturedHostAdapterPreflightUri = $null
-            $global:CapturedHostAdapterPreflightAuthorization = $null
-            Mock Test-Path {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $false }
-                if ($LiteralPath -like '*TestAppData*OpenClaw*docker*.env') { return $true }
-                if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
-                if ($LiteralPath -eq 'C:\tokens\adapter.token') { return $true }
-                if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
-                if ($LiteralPath -like '*TestAppData*OpenClaw/*') { return $false }
-                $true
-            }
-            Mock Get-Content {
-                param($LiteralPath)
-                if ($LiteralPath -like '*docker*.env') {
-                    return @(
-                        'OpenClaw__HostAdapter__BaseUrl=http://host.docker.internal:5319/v1',
-                        'HOSTADAPTER_TOKEN_FILE=C:\tokens\adapter.token',
-                        'OPENCLAW_GATEWAY_TOKEN=custom-gateway-token'
-                    )
-                }
-                return 'custom-token'
-            }
-            Mock Invoke-WebRequest {
-                param([uri]$Uri, [hashtable]$Headers)
-                $global:CapturedHostAdapterPreflightUri = [string]$Uri
-                $global:CapturedHostAdapterPreflightAuthorization = [string]$Headers.Authorization
-                [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{}' }
-            }
+        It 'invokes the HostAdapter responding preflight with the staged docker dir' {
+            Mock Assert-HostAdapterRespondingPreflight { [void]$global:InstallTestCalls.Add('Assert-HostAdapterRespondingPreflight') }
 
             & $script:ScriptPath | Out-Null
 
-            $global:CapturedHostAdapterPreflightUri | Should -Be 'http://127.0.0.1:5319/v1/status'
-            $global:CapturedHostAdapterPreflightAuthorization | Should -Be 'Bearer custom-token'
+            Should -Invoke Assert-HostAdapterRespondingPreflight -Times 1
+            $global:InstallTestCalls -contains 'Assert-HostAdapterRespondingPreflight' | Should -BeTrue
         }
     }
 
@@ -451,6 +441,16 @@ Describe 'scripts/Install.ps1' {
             }
             { & $script:ScriptPath } | Should -Throw -ExpectedMessage '*OpenClaw.MailBridge_1.2.3.0_x64.msix*'
             $global:InstallTestCalls -contains 'Invoke-MsixInstall' | Should -BeFalse
+        }
+    }
+
+    Context '-SkipDocker regression for new preflights' {
+        It 'does not invoke Assert-HostAdapterRespondingPreflight when -SkipDocker is supplied' {
+            Mock Assert-HostAdapterRespondingPreflight { [void]$global:InstallTestCalls.Add('Assert-HostAdapterRespondingPreflight') }
+            Mock Assert-HostAdapterBridgeReadyPreflight { [void]$global:InstallTestCalls.Add('Assert-HostAdapterBridgeReadyPreflight') }
+            & $script:ScriptPath -SkipDocker | Out-Null
+            Should -Invoke Assert-HostAdapterRespondingPreflight -Times 0
+            Should -Invoke Assert-HostAdapterBridgeReadyPreflight -Times 0
         }
     }
 }
