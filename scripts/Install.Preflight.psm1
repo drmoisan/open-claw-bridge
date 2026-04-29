@@ -9,7 +9,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-Import-Module (Join-Path $PSScriptRoot 'Install.Helpers.psm1') -Force
+Import-Module (Join-Path $PSScriptRoot 'Install.Helpers.psm1') -Force -Global -ErrorAction Stop
 
 function Get-InstallEnvFileMap {
     <#

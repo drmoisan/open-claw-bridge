@@ -79,9 +79,9 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Import without -Force so Pester mocks applied to the already-loaded module
-# are preserved across repeated script invocations within the same session.
-Import-Module (Join-Path $PSScriptRoot 'Publish.Helpers.psm1')
+# Force a reload so a reused PowerShell session does not keep executing an
+# older Publish.Helpers module after the file changes on disk.
+Import-Module (Join-Path $PSScriptRoot 'Publish.Helpers.psm1') -Force -ErrorAction Stop
 
 # --- Main (only runs when executed directly, not when dot-sourced for tests) ---
 if ($MyInvocation.InvocationName -ne '.') {
@@ -176,7 +176,7 @@ if ($MyInvocation.InvocationName -ne '.') {
 
     # Stage 5: stage install scripts into the bundle root so the bundle is
     # self-installing (operator cd's into the bundle and runs .\Install.ps1).
-    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1 into $BundleRoot" -InformationAction Continue
+    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and Install.Preflight.psm1 into $BundleRoot" -InformationAction Continue
     Copy-InstallScriptsIntoBundle -RepoRoot $RepoRoot -BundleRoot $BundleRoot
 
     # Stage 6: manifest (runs AFTER install-script staging so the manifest

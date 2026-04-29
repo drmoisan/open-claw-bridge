@@ -88,8 +88,23 @@ param(
     [switch]$Force
 )
 
-Import-Module (Join-Path $PSScriptRoot 'Install.Helpers.psm1') -Force
-Import-Module (Join-Path $PSScriptRoot 'Install.Preflight.psm1') -Force
+$helperModulePath = Join-Path $PSScriptRoot 'Install.Helpers.psm1'
+$preflightModulePath = Join-Path $PSScriptRoot 'Install.Preflight.psm1'
+
+try {
+    Import-Module $helperModulePath -Force -Global -ErrorAction Stop
+}
+catch {
+    throw "Failed to load bundled install helper module '$helperModulePath'. Ensure Install.ps1 is being run from a bundle produced by Publish.ps1 and that the bundle contents are intact. Original error: $($_.Exception.Message)"
+}
+
+try {
+    Import-Module $preflightModulePath -Force -Global -ErrorAction Stop
+}
+catch {
+    throw "Failed to load bundled install preflight module '$preflightModulePath'. Ensure Install.ps1 is being run from a bundle produced by Publish.ps1 and that the bundle contents are intact. Original error: $($_.Exception.Message)"
+}
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
