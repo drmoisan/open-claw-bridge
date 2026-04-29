@@ -38,6 +38,10 @@ Describe 'Install.ps1 — Invoke-HostAdapterStart' {
         It 'does NOT call Invoke-HostAdapterProcess when port is already listening' {
             Mock Test-Path { return $true } -ParameterFilter { $LiteralPath -like '*OpenClaw.HostAdapter.exe' }
             Mock Test-TcpPortOpen { return $true }
+            # Simulate the stale-detection seams returning a matching PID and path so the
+            # legitimate-already-running branch is taken rather than the stale-detection throw.
+            Mock Get-ListeningProcessId { return 9999 }
+            Mock Get-ProcessMainModulePath { return 'C:\fake\OpenClaw.HostAdapter.exe' }
             Mock Invoke-HostAdapterProcess { }
 
             Invoke-HostAdapterStart `

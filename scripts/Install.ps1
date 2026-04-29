@@ -228,7 +228,8 @@ if (-not (Get-Command -Name 'Invoke-HostAdapterStart' -ErrorAction SilentlyConti
         [CmdletBinding(SupportsShouldProcess = $true)]
         param(
             [Parameter(Mandatory = $true)][string]$HostAdapterExePath,
-            [Parameter(Mandatory = $true)][string]$AspNetCoreUrls
+            [Parameter(Mandatory = $true)][string]$AspNetCoreUrls,
+            [switch]$Force
         )
         if (-not (Test-Path -LiteralPath $HostAdapterExePath)) {
             throw "HostAdapter executable not found at '$HostAdapterExePath'. The bundle may be incomplete or the destination copy did not complete."
@@ -236,6 +237,7 @@ if (-not (Get-Command -Name 'Invoke-HostAdapterStart' -ErrorAction SilentlyConti
         $port = [UriBuilder]::new($AspNetCoreUrls).Port
         if (Test-TcpPortOpen -IpAddress '127.0.0.1' -Port $port) {
             $listenerPid = Get-ListeningProcessId -Port $port
+            $staleAutoStopped = $false
             if ($null -ne $listenerPid) {
                 $observedPath = Get-ProcessMainModulePath -ProcessId $listenerPid
                 $pathsMatch = $false
@@ -244,11 +246,21 @@ if (-not (Get-Command -Name 'Invoke-HostAdapterStart' -ErrorAction SilentlyConti
                 }
                 if (-not $pathsMatch) {
                     $observedDisplay = if ([string]::IsNullOrWhiteSpace($observedPath)) { '(unavailable)' } else { $observedPath }
-                    throw "Stale HostAdapter detected on port $port`: PID $listenerPid at '$observedDisplay' does not match the bundle's HostAdapter at '$HostAdapterExePath'. Stop the stale process (Stop-Process -Id $listenerPid) and rerun Install.ps1."
+                    if ($Force) {
+                        # -Force auto-stop: terminate the stale process and fall through to launch the bundle's HostAdapter.
+                        Write-Information "[install:hostadapter-start] Stale HostAdapter detected on port $port`: PID $listenerPid at '$observedDisplay'. -Force auto-stop applied; stopping stale process." -InformationAction Continue
+                        Stop-Process -Id $listenerPid -Force
+                        $staleAutoStopped = $true
+                    }
+                    else {
+                        throw "Stale HostAdapter detected on port $port`: PID $listenerPid at '$observedDisplay' does not match the bundle's HostAdapter at '$HostAdapterExePath'. Stop the stale process (Stop-Process -Id $listenerPid) and rerun Install.ps1."
+                    }
                 }
             }
-            Write-Information "[install:hostadapter-start] HostAdapter already running on port $port; skipping start." -InformationAction Continue
-            return
+            if (-not $staleAutoStopped) {
+                Write-Information "[install:hostadapter-start] HostAdapter already running on port $port; skipping start." -InformationAction Continue
+                return
+            }
         }
         $psi = [System.Diagnostics.ProcessStartInfo]::new()
         $psi.FileName = $HostAdapterExePath
@@ -350,7 +362,7 @@ if ($MyInvocation.InvocationName -ne '.') {
         Write-Information '[install:hostadapter-start] Ensuring HostAdapter is running' -InformationAction Continue
         $HostAdapterExePath = Join-Path $DestinationPath 'executables\OpenClaw.HostAdapter\OpenClaw.HostAdapter.exe'
         $hostAdapterUri = Get-HostAdapterPreflightUri -EnvMap (Get-InstallEnvFileMap -EnvFilePath (Join-Path $DestDockerDir '.env'))
-        Invoke-HostAdapterStart -HostAdapterExePath $HostAdapterExePath -AspNetCoreUrls "$($hostAdapterUri.Scheme)://$($hostAdapterUri.Host):$($hostAdapterUri.Port)"
+        Invoke-HostAdapterStart -HostAdapterExePath $HostAdapterExePath -AspNetCoreUrls "$($hostAdapterUri.Scheme)://$($hostAdapterUri.Host):$($hostAdapterUri.Port)" -Force:$Force
     }
     # Stage 7 preflight: HostAdapter readiness guard runs before any state-changing
     # operations so that a failed preflight leaves nothing installed. This follows

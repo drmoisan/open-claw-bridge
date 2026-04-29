@@ -98,7 +98,7 @@ Describe 'Publish.Helpers.psm1' {
                 [pscustomobject]@{ FullName = 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22000.0\x64\makeappx.exe' }
             }
             Find-WindowsSdkTool -ToolName 'makeappx.exe' |
-            Should -Be 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22000.0\x64\makeappx.exe'
+                Should -Be 'C:\Program Files (x86)\Windows Kits\10\bin\10.0.22000.0\x64\makeappx.exe'
         }
         It 'falls back to Get-Command when the SDK bin root is missing' {
             Mock -ModuleName Publish.Helpers Test-Path { $false }
@@ -106,20 +106,20 @@ Describe 'Publish.Helpers.psm1' {
                 [pscustomobject]@{ Source = 'C:\fake\on-path\makeappx.exe' }
             }
             Find-WindowsSdkTool -ToolName 'makeappx.exe' |
-            Should -Be 'C:\fake\on-path\makeappx.exe'
+                Should -Be 'C:\fake\on-path\makeappx.exe'
         }
         It 'throws when the tool cannot be located anywhere' {
             Mock -ModuleName Publish.Helpers Test-Path { $false }
             Mock -ModuleName Publish.Helpers Get-Command { $null }
             { Find-WindowsSdkTool -ToolName 'nope.exe' } |
-            Should -Throw -ExpectedMessage '*Cannot locate nope.exe*'
+                Should -Throw -ExpectedMessage '*Cannot locate nope.exe*'
         }
     }
 
     Context 'Get-StampedAppxManifestXml' {
         It 'stamps the 4-part version into Package.Identity.Version' {
             (Get-StampedAppxManifestXml -ManifestXml $script:SampleManifestXml -Version '1.2.3.4').Package.Identity.Version |
-            Should -Be '1.2.3.4'
+                Should -Be '1.2.3.4'
         }
         It 'preserves other Identity attributes unchanged' {
             $r = Get-StampedAppxManifestXml -ManifestXml $script:SampleManifestXml -Version '9.8.7.6'
@@ -129,7 +129,7 @@ Describe 'Publish.Helpers.psm1' {
         }
         It 'rejects a 3-part version via ValidatePattern' {
             { Get-StampedAppxManifestXml -ManifestXml $script:SampleManifestXml -Version '1.2.3' } |
-            Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
+                Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
         }
     }
 
@@ -162,14 +162,14 @@ Describe 'Publish.Helpers.psm1' {
             Mock -ModuleName Publish.Helpers Test-Path { $false } -ParameterFilter { $Path -eq 'C:\missing\bridge' }
             Mock -ModuleName Publish.Helpers Test-Path { $true } -ParameterFilter { $Path -ne 'C:\missing\bridge' }
             { Invoke-LayoutAssembly -BridgePublishDir 'C:\missing\bridge' -ClientPublishDir 'C:\fake\client' -AssetsDir 'C:\fake\assets' -StagingDir 'C:\fake\staging' } |
-            Should -Throw -ExpectedMessage '*Bridge publish directory not found*'
+                Should -Throw -ExpectedMessage '*Bridge publish directory not found*'
         }
         It 'throws when client publish dir is missing' {
             Mock -ModuleName Publish.Helpers Test-Path { $true } -ParameterFilter { $Path -eq 'C:\fake\bridge' }
             Mock -ModuleName Publish.Helpers Test-Path { $false } -ParameterFilter { $Path -eq 'C:\missing\client' }
             Mock -ModuleName Publish.Helpers Test-Path { $true } -ParameterFilter { $Path -ne 'C:\fake\bridge' -and $Path -ne 'C:\missing\client' }
             { Invoke-LayoutAssembly -BridgePublishDir 'C:\fake\bridge' -ClientPublishDir 'C:\missing\client' -AssetsDir 'C:\fake\assets' -StagingDir 'C:\fake\staging' } |
-            Should -Throw -ExpectedMessage '*Client publish directory not found*'
+                Should -Throw -ExpectedMessage '*Client publish directory not found*'
         }
         It 'calls Copy-Item for bridge, client, and assets on success' {
             Mock -ModuleName Publish.Helpers Test-Path { $true }
@@ -198,7 +198,7 @@ Describe 'Publish.Helpers.psm1' {
         It 'throws on non-zero exit' {
             $script:MakePriExitCode = 1
             { Invoke-MakePri -StagingDir 'C:\fake\staging' } |
-            Should -Throw -ExpectedMessage '*makepri createconfig failed*'
+                Should -Throw -ExpectedMessage '*makepri createconfig failed*'
         }
         It '-WhatIf does not invoke the tool' {
             Invoke-MakePri -StagingDir 'C:\fake\staging' -WhatIf
@@ -227,7 +227,7 @@ Describe 'Publish.Helpers.psm1' {
         It 'throws on non-zero exit' {
             $script:MakeAppxExitCode = 3
             { Invoke-MakeAppx -StagingDir 'C:\fake\staging' -OutputMsixPath 'C:\fake\out\x.msix' } |
-            Should -Throw -ExpectedMessage '*makeappx pack failed*'
+                Should -Throw -ExpectedMessage '*makeappx pack failed*'
         }
         It '-WhatIf does not invoke the tool' {
             Invoke-MakeAppx -StagingDir 'C:\fake\staging' -OutputMsixPath 'C:\fake\out\x.msix' -WhatIf
@@ -255,7 +255,7 @@ Describe 'Publish.Helpers.psm1' {
         It 'throws on non-zero exit' {
             $script:SignToolExitCode = 5
             { Invoke-SignTool -MsixPath 'C:\fake\out\x.msix' -CertThumbprint 'ABCDEF' } |
-            Should -Throw -ExpectedMessage '*signtool sign failed*'
+                Should -Throw -ExpectedMessage '*signtool sign failed*'
         }
         It '-WhatIf does not invoke the tool' {
             Invoke-SignTool -MsixPath 'C:\fake\out\x.msix' -CertThumbprint 'ABCDEF' -WhatIf
@@ -286,7 +286,7 @@ Describe 'Publish.Helpers.psm1' {
         It 'throws on non-zero exit' {
             $script:DotnetExitCode = 2
             { Invoke-DotnetPublish -ProjectPath 'src/Z/Z.csproj' -OutputDir 'out/Z' -Configuration 'Release' } |
-            Should -Throw -ExpectedMessage '*dotnet publish failed*'
+                Should -Throw -ExpectedMessage '*dotnet publish failed*'
         }
     }
 
@@ -352,7 +352,7 @@ Describe 'Publish.Helpers.psm1' {
             Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\executables\X\file.dll'; Length = 42 } }
             Mock -ModuleName Publish.Helpers Get-FileHash { [pscustomobject]@{ Hash = $script:FakeHashLower.ToUpper() } }
             (New-ManifestEntry -FilePath 'C:\bundle\executables\X\file.dll' -BundleRoot 'C:\bundle').path |
-            Should -Be 'executables/X/file.dll'
+                Should -Be 'executables/X/file.dll'
         }
         It 'returns size as non-negative integer' {
             Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\a.bin'; Length = 1024 } }
@@ -366,7 +366,7 @@ Describe 'Publish.Helpers.psm1' {
             Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\b.bin'; Length = 7 } }
             Mock -ModuleName Publish.Helpers Get-FileHash { [pscustomobject]@{ Hash = $script:FakeHashLower.ToUpper() } }
             (New-ManifestEntry -FilePath 'C:\bundle\b.bin' -BundleRoot 'C:\bundle').sha256 |
-            Should -Match '^[0-9a-f]{64}$'
+                Should -Match '^[0-9a-f]{64}$'
         }
         It 'calls Get-FileHash with -Algorithm SHA256' {
             Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\c.bin'; Length = 8 } }
@@ -468,7 +468,7 @@ Describe 'Publish.Helpers.psm1' {
                 if ($LiteralPath -eq $missing) { $false } else { $true }
             }
             { Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle' } |
-            Should -Throw "*$missing*"
+                Should -Throw "*$missing*"
         }
         It 'produces zero Copy-Item invocations under -WhatIf' {
             Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle' -WhatIf
@@ -476,3 +476,4 @@ Describe 'Publish.Helpers.psm1' {
         }
     }
 }
+

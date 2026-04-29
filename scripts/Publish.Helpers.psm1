@@ -38,9 +38,9 @@ function Find-WindowsSdkTool {
     $sdkBinRoot = "${env:ProgramFiles(x86)}\Windows Kits\10\bin"
     if (Test-Path $sdkBinRoot) {
         $found = Get-ChildItem $sdkBinRoot -Recurse -Filter $ToolName -ErrorAction SilentlyContinue |
-        Where-Object { $_.FullName -like '*\x64\*' } |
-        Sort-Object FullName -Descending |
-        Select-Object -First 1
+            Where-Object { $_.FullName -like '*\x64\*' } |
+                Sort-Object FullName -Descending |
+                    Select-Object -First 1
         if ($found) {
             return $found.FullName
         }
@@ -457,7 +457,7 @@ function Write-PublishManifest {
     $manifestPath = Join-Path $BundleRoot 'manifest.json'
 
     $allFiles = Get-ChildItem -LiteralPath $BundleRoot -Recurse -File |
-    Where-Object { $_.FullName -ne (Join-Path $BundleRoot 'manifest.json') }
+        Where-Object { $_.FullName -ne (Join-Path $BundleRoot 'manifest.json') }
 
     $entries = foreach ($f in $allFiles) {
         New-ManifestEntry -FilePath $f.FullName -BundleRoot $BundleRoot
@@ -494,5 +494,6 @@ Export-ModuleMember -Function @(
     'New-ManifestEntry'
     'Write-PublishManifest'
 )
+
 
 

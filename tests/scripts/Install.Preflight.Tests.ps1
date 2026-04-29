@@ -83,6 +83,35 @@ Describe 'Invoke-HostAdapterStart identity check' {
             $global:installTestInvokeProcessCount | Should -Be 0
         }
     }
+
+    Context '-Force stops stale process and proceeds with bundle HostAdapter launch' {
+        It 'calls Stop-Process with the stale PID and then calls Invoke-HostAdapterProcess exactly once' {
+            # Arrange: port is bound by a process whose path does not match the bundle exe.
+            $bundleExe = 'C:\Bundle\executables\OpenClaw.HostAdapter\OpenClaw.HostAdapter.exe'
+            Mock Get-ListeningProcessId { 32948 }
+            Mock Get-ProcessMainModulePath {
+                param($ProcessId)
+                $null = $ProcessId
+                'C:\src\OpenClaw.HostAdapter\bin\Release\net10.0\OpenClaw.HostAdapter.exe'
+            }
+            # Stop-Process is a built-in cmdlet; mock without a typed param block to avoid
+            # Int32[] coercion failure (Pester passes -Id as the cmdlet's actual [int[]] type).
+            Mock Stop-Process { }
+            Mock Invoke-HostAdapterProcess { }
+
+            # Act: -Force must not throw.
+            { Invoke-HostAdapterStart -HostAdapterExePath $bundleExe -AspNetCoreUrls 'http://127.0.0.1:4319/' -Force } |
+                Should -Not -Throw
+
+            # Assert: Stop-Process was called exactly once with the stale PID (32948).
+            Should -Invoke Stop-Process -Times 1 -Exactly -ParameterFilter { $Id -eq 32948 }
+            # Assert: the bundle HostAdapter was subsequently launched via Invoke-HostAdapterProcess
+            # with the bundle exe path.
+            Should -Invoke Invoke-HostAdapterProcess -Times 1 -Exactly -ParameterFilter {
+                $ProcessStartInfo.FileName -eq 'C:\Bundle\executables\OpenClaw.HostAdapter\OpenClaw.HostAdapter.exe'
+            }
+        }
+    }
 }
 
 Describe 'Format-HostAdapterPreflightFailure' {
