@@ -382,6 +382,24 @@ if ($MyInvocation.InvocationName -ne '.') {
     Invoke-MsixInstall -MsixPath $MsixPath -AllowUnsigned:$AllowUnsigned
     $PackageFullName = Invoke-MsixCapture
 
+    # Stage 8b: first-launch protocol activation (issue #62). windows.startupTask only
+    # fires at logon, so the installer must explicitly activate MailBridge in the
+    # operator session before the Stage 8.5 readiness gate polls it. Skipped under
+    # -SkipDocker (mirrors Stage 7a/Stage 7/Stage 8.5). Activation failure triggers the
+    # same MSIX rollback as Stage 8.5 to preserve the no-orphan invariant (issue #52).
+    if (-not $SkipDocker) {
+        Write-Information '[install:msix-activate] Activating MailBridge via protocol handler' -InformationAction Continue
+        try {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun'
+        }
+        catch {
+            $activateError = $_.Exception.Message
+            try { Invoke-MsixRemove -PackageFullName $PackageFullName }
+            catch { Write-Information "[install:msix-activate] msix rollback tolerated failure: $($_.Exception.Message)" -InformationAction Continue }
+            throw $activateError
+        }
+    }
+
     # Stage 8.5: bridge-readiness preflight runs after MSIX install so MailBridge is
     # present, with rollback when bridge is not ready (preserves the no-orphan
     # invariant from issue #52).
