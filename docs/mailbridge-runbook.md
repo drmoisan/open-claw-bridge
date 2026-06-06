@@ -456,7 +456,7 @@ Copy `.env.example` to `.env` and confirm these values:
 
 - `OpenClaw__HostAdapter__BaseUrl=http://host.docker.internal:4319/v1`
 - `HOSTADAPTER_TOKEN_FILE=C:\ProgramData\OpenClaw\HostAdapter\adapter.token`
-- `OPENCLAW_HTTP_PORT=8080`
+- `OPENCLAW_HTTP_PORT=8081`
 
 Start the default local stack:
 

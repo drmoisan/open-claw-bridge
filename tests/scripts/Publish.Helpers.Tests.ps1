@@ -449,15 +449,17 @@ Describe 'Publish.Helpers.psm1' {
             }
             Mock -ModuleName Publish.Helpers Test-Path { $true }
         }
-        It 'copies Install.ps1, Uninstall.ps1, and Install.Helpers.psm1 in order' {
+        It 'copies Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and Install.Preflight.psm1 in order' {
             Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle'
-            $script:CopyCalls.Count | Should -Be 3
+            $script:CopyCalls.Count | Should -Be 4
             $script:CopyCalls[0].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.ps1')
             $script:CopyCalls[0].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.ps1')
             $script:CopyCalls[1].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Uninstall.ps1')
             $script:CopyCalls[1].Dst | Should -Be (Join-Path 'C:\bundle' 'Uninstall.ps1')
             $script:CopyCalls[2].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Helpers.psm1')
             $script:CopyCalls[2].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Helpers.psm1')
+            $script:CopyCalls[3].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Preflight.psm1')
+            $script:CopyCalls[3].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Preflight.psm1')
         }
         It 'throws with the missing path when a source file is absent' {
             $missing = Join-Path 'C:\repo\scripts' 'Uninstall.ps1'
@@ -474,3 +476,4 @@ Describe 'Publish.Helpers.psm1' {
         }
     }
 }
+
