@@ -268,6 +268,22 @@ Describe 'Install.Helpers.psm1' {
         }
     }
 
+    Context 'Invoke-MsixAppActivate' {
+        BeforeEach { Mock -ModuleName Install.Helpers Start-Process { } }
+
+        It 'invokes Start-Process with the supplied ActivationUri under ShouldProcess' {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun'
+            Should -Invoke -ModuleName Install.Helpers -CommandName Start-Process -Times 1 -Exactly -ParameterFilter {
+                $FilePath -eq 'openclaw-mailbridge:firstrun'
+            }
+        }
+
+        It 'is a no-op when ShouldProcess returns false (e.g., -WhatIf)' {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun' -WhatIf
+            Should -Invoke -ModuleName Install.Helpers -CommandName Start-Process -Times 0 -Exactly
+        }
+    }
+
     Context 'Write-InstallRecord' {
         It 'calls Set-Content with the serialized JSON at the supplied path' {
             $record = [pscustomobject]@{ version = '1.2.3.0'; destinationPath = 'C:\x' }

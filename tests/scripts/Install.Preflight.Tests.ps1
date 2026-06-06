@@ -266,3 +266,133 @@ Describe 'Format-HostAdapterPreflightFailure boundary cases' {
         $msg | Should -Match 'error\.code=\(missing\); error\.message=timed out'
     }
 }
+
+Describe 'Assert-HostAdapterBridgeReadyPreflight bounded polling' {
+    BeforeAll {
+        Import-Module (Join-Path $PSScriptRoot '..\..\scripts\Install.Preflight.psm1') -Force
+    }
+
+    BeforeEach {
+        Mock Get-PreflightTokenAndUri -ModuleName Install.Preflight -MockWith {
+            @{ Token = 'tkn'; StatusUri = [uri]'http://127.0.0.1:4319/v1/status' }
+        } -ParameterFilter { $DestDockerDir -eq 'TestDrive:\poll' }
+
+        # Spy delay seam: records each PollIntervalSec it is asked to wait, never sleeps.
+        $global:bridgePollDelays = [System.Collections.ArrayList]::new()
+        $script:DelaySpy = { param([int]$Seconds) [void]$global:bridgePollDelays.Add($Seconds) }
+
+        # Deterministic monotonic clock: each read advances 1 second of simulated time.
+        $global:bridgePollNowSeconds = 0
+        $script:NowSeq = {
+            $global:bridgePollNowSeconds++
+            ([datetime]::new(2026, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)).AddSeconds($global:bridgePollNowSeconds)
+        }
+    }
+
+    AfterEach {
+        Remove-Variable -Name bridgePollDelays -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name bridgePollNowSeconds -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name bridgePollResponses -Scope Global -ErrorAction SilentlyContinue
+    }
+
+    It 'returns on the first poll when status is 200 with data.state="ready"' {
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            [pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"ready"},"meta":{"adapterVersion":"x"}}' }
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Not -Throw
+        $global:bridgePollDelays.Count | Should -Be 0
+    }
+
+    It 'retries on HTTP 502 with TRANSPORT_FAILURE then succeeds on subsequent ready response' {
+        $global:bridgePollResponses = [System.Collections.Queue]::new()
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 502; Content = '{"error":{"code":"TRANSPORT_FAILURE","message":"timeout"}}' })
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 502; Content = '{"error":{"code":"TRANSPORT_FAILURE","message":"timeout"}}' })
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"ready"}}' })
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            $global:bridgePollResponses.Dequeue()
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -PollIntervalSec 2 -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Not -Throw
+        $global:bridgePollDelays.Count | Should -Be 2
+        $global:bridgePollDelays | ForEach-Object { $_ | Should -Be 2 }
+    }
+
+    It 'retries on HTTP 200 with data.state=starting then succeeds on ready' {
+        $global:bridgePollResponses = [System.Collections.Queue]::new()
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"starting"}}' })
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"ready"}}' })
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            $global:bridgePollResponses.Dequeue()
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -PollIntervalSec 2 -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Not -Throw
+        $global:bridgePollDelays.Count | Should -Be 1
+    }
+
+    It 'retries on HTTP 200 with data.state=waiting_for_outlook then succeeds on ready' {
+        $global:bridgePollResponses = [System.Collections.Queue]::new()
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"waiting_for_outlook"}}' })
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"ready"}}' })
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            $global:bridgePollResponses.Dequeue()
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -PollIntervalSec 2 -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Not -Throw
+        $global:bridgePollDelays.Count | Should -Be 1
+    }
+
+    It 'throws via Format-HostAdapterPreflightFailure on HTTP 401 immediately (terminal)' {
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            [pscustomobject]@{ StatusCode = 401; Content = '{"error":{"code":"UNAUTHORIZED","message":"x"}}' }
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Throw -ExpectedMessage '*error.code=UNAUTHORIZED*'
+        $global:bridgePollDelays.Count | Should -Be 0
+    }
+
+    It 'throws on a non-envelope body immediately (terminal)' {
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            [pscustomobject]@{ StatusCode = 200; Content = '<html>' }
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Throw
+        $global:bridgePollDelays.Count | Should -Be 0
+    }
+
+    It 'throws after timeout exhaustion when status remains TRANSPORT_FAILURE for the entire window' {
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            [pscustomobject]@{ StatusCode = 502; Content = '{"error":{"code":"TRANSPORT_FAILURE","message":"timeout"}}' }
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+
+        # NowSeq advances 1 simulated second per read; with TimeoutSec=3 the deadline is
+        # reached after a few retryable cycles. No real Start-Sleep is used.
+        $sw = [System.Diagnostics.Stopwatch]::StartNew()
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -TimeoutSec 3 -PollIntervalSec 2 -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Throw -ExpectedMessage '*error.code=TRANSPORT_FAILURE*'
+        $sw.Stop()
+        $sw.ElapsedMilliseconds | Should -BeLessThan 1000
+    }
+
+    It 'invokes DelayProvider with PollIntervalSec between retries and never calls Start-Sleep directly' {
+        $global:bridgePollResponses = [System.Collections.Queue]::new()
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 502; Content = '{"error":{"code":"TRANSPORT_FAILURE"}}' })
+        $global:bridgePollResponses.Enqueue([pscustomobject]@{ StatusCode = 200; Content = '{"data":{"state":"ready"}}' })
+        Mock Invoke-HostAdapterStatusRequest -ModuleName Install.Preflight -MockWith {
+            $global:bridgePollResponses.Dequeue()
+        } -ParameterFilter { $StatusUri -ne $null -and $Token -ne $null }
+        Mock Start-Sleep -ModuleName Install.Preflight { }
+
+        { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'TestDrive:\poll' -PollIntervalSec 5 -NowProvider $script:NowSeq -DelayProvider $script:DelaySpy } |
+            Should -Not -Throw
+        $global:bridgePollDelays.Count | Should -Be 1
+        $global:bridgePollDelays[0] | Should -Be 5
+        Should -Invoke Start-Sleep -ModuleName Install.Preflight -Times 0 -Exactly
+    }
+}
