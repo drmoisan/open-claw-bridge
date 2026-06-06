@@ -55,43 +55,43 @@ runs against a non-running process and fails.
 - Docker / compose stack readiness changes (Stage 9 is unaffected).
 - Changes to the operator-supplied `.env` files or the gateway-token contract.
 
-## Activation-Pattern Options (atomic-planner to evaluate and select)
+## Selected Activation Pattern
 
-The atomic-planner must evaluate the activation-pattern candidates against elevation /
-session correctness, signing/publish implications, and operator UX, then select one.
+**Selected: Option 3a — `windows.protocol` activation, retain `windows.startupTask`.**
 
-### Option 3a — `windows.protocol` activation, retain `windows.startupTask`
+Selection recorded by atomic-planner in
+`docs/features/active/2026-04-30-install-msix-firstlaunch-activation-62/plan.2026-04-30T00-00.md`
+(section "Activation-Pattern Selection"). This spec section is updated to record the
+chosen option and its rationale per the planning hand-off.
 
-Add a `<uap:Extension Category="windows.protocol">` with a custom scheme (for example,
-`openclaw-mailbridge:`) so the installer can activate the package by launching
-`Start-Process 'openclaw-mailbridge:firstrun'`. The protocol activation runs in the
-caller's interactive session.
+A `<uap:Extension Category="windows.protocol">` declaring `<uap:Protocol
+Name="openclaw-mailbridge"/>` is added as a sibling of the existing
+`<uap5:Extension Category="windows.startupTask">` element. The installer activates the
+package with `Start-Process 'openclaw-mailbridge:firstrun'`; the URI fragment `firstrun`
+is reserved for the install path.
 
-- Pros: Activation runs in the operator's session, not SYSTEM. Reusable for support /
-  diagnostics. Retains startup-at-logon via the existing startupTask.
-- Cons: New URI scheme is operator-visible and must be reserved across builds. Requires
-  manifest schema review.
+Rationale:
 
-### Option 3b — `windows.appExecutionAlias` plus startup task
+- **Cross-session correctness.** Protocol activation is performed by the shell broker,
+  which resolves the registered package identity and launches the executable in the
+  operator's interactive desktop session. It works from elevated PowerShell because the
+  broker (not the calling process) routes the session token. This avoids the cross-session
+  pitfalls of `Start-Process shell:AppsFolder\...` and the `IApplicationActivationManager`
+  COM seam.
+- **Additive manifest change.** The `windows.startupTask` element is retained verbatim;
+  steady-state startup at logon is unchanged. The protocol extension only fires on
+  explicit `Start-Process` invocation by the installer.
+- **Retained `windows.startupTask`.** The protocol extension is purely additive; no
+  re-thinking of the logon-startup story is required.
 
-Add a `<uap5:Extension Category="windows.appExecutionAlias">` so MailBridge can be
-launched by alias name from any console (e.g., `openclaw-mailbridge.exe`). Installer
-launches via the alias.
+### Options not selected
 
-- Pros: Discoverable for operator support. Aliases activate within the operator session.
-- Cons: Alias collisions possible. Manifest contract slightly more complex.
-
-### Option 3c — Replace `windows.startupTask` with `windows.fullTrustProcess` (or equivalent)
-
-Move the activation entry point so first-launch activation through the MSIX shell
-activation contract is well-defined, and reach steady-state startup through a
-companion mechanism.
-
-- Pros: Single activation contract.
-- Cons: Largest manifest change. Requires re-thinking the logon-startup story.
-
-The atomic-planner must record the chosen option and rationale in the plan and
-update this spec accordingly.
+- **Option 3b — `windows.appExecutionAlias`.** Rejected. Adds an alias to PATH for all
+  consoles (broader operator-visible side effect than required) with non-zero collision
+  risk and known inconsistencies when invoked from elevated PowerShell.
+- **Option 3c — replace `windows.startupTask` with `windows.fullTrustProcess` or
+  equivalent.** Rejected. Largest manifest change; loses logon-startup behavior; provides
+  no advantage over Option 3a for the install-time defect under repair.
 
 ## High-Level Design (post option-selection)
 
@@ -106,22 +106,25 @@ Regardless of which option is selected, the implementation includes:
 
 ### PowerShell changes
 
-- `scripts/Install.Helpers.psm1`: new wrapper seam for the launch step. Suggested
-  signature, subject to planner refinement:
+- `scripts/Install.Helpers.psm1`: new wrapper seam for the launch step. Final signature
+  (Option 3a — protocol activation; planner-selected):
 
   ```powershell
   function Invoke-MsixAppActivate {
-      [CmdletBinding()]
+      [CmdletBinding(SupportsShouldProcess = $true)]
+      [OutputType([void])]
       param(
-          [Parameter(Mandatory = $true)][string]$PackageFamilyName,
-          [Parameter(Mandatory = $true)][string]$AppId
+          [Parameter(Mandatory = $true)][string]$ActivationUri
       )
-      # Implementation depends on selected option (protocol launch, alias, or shell
-      # activation). Returns the launched process or activation receipt.
+      # Activates the registered protocol handler in the caller's interactive desktop
+      # session via Start-Process. Mocked at this seam in Pester.
   }
   ```
 
-  The wrapper is the seam for Pester mocking per `.claude/rules/powershell.md`.
+  The single `ActivationUri` parameter replaces the earlier suggested
+  `PackageFamilyName`/`AppId` parameters: protocol activation does not require a
+  package-family or app-id lookup, so those parameters are removed. The wrapper is the
+  seam for Pester mocking per `.claude/rules/powershell.md`.
 
 - `scripts/Install.ps1`: insert a launch step in Stage 8 (after `Invoke-MsixInstall`
   and `Invoke-MsixCapture`) that invokes the wrapper. The launch failure path must
@@ -182,14 +185,24 @@ Regardless of which option is selected, the implementation includes:
 - Operator smoke test on a representative Windows host. Smoke evidence under
   `evidence/regression-testing/`.
 
-## Open Questions
+## Open Questions (resolved)
 
 1. Does the chosen activation option require a manifest version bump or a publish
-   pipeline change? The atomic-planner must determine and document.
+   pipeline change?
+   **A1:** Yes for the manifest Identity Version: it is bumped from `1.0.0.0` to
+   `1.0.1.0` so `Add-AppxPackage` re-registers the protocol handler deterministically on
+   upgrade. The downstream bundle version produced by `Publish.ps1` (e.g., `1.0.1.9`) is
+   independent of the manifest's own Identity Version and is unchanged. No publish
+   pipeline change is required.
 2. Is there an existing `PackageFamilyName` lookup helper in the repo, or does
    `Invoke-MsixAppActivate` need to derive it from `Invoke-MsixCapture`'s result?
+   **A2:** Not needed. Protocol activation does not require a `PackageFamilyName` lookup;
+   `Invoke-MsixAppActivate` takes only an `ActivationUri`. No derivation from
+   `Invoke-MsixCapture` is performed.
 3. Should the launch step be skipped under `-SkipDocker`, mirroring Stage 7a / Stage 7
-   / Stage 8.5? Working assumption: yes — keep behavior consistent.
+   / Stage 8.5?
+   **A3:** Yes — skip when `-SkipDocker` is supplied, mirroring Stage 7a, Stage 7, and
+   Stage 8.5, to keep behavior consistent.
 
 ## References
 
