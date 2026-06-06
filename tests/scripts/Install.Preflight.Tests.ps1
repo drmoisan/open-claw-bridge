@@ -177,18 +177,26 @@ Describe 'Assert-HostAdapterRespondingPreflight and Assert-HostAdapterBridgeRead
             { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'C:\fake\docker' } | Should -Not -Throw
         }
 
-        It 'throws when data.state is waiting_for_outlook' {
+        It 'throws after the bounded deadline when data.state stays waiting_for_outlook (retryable -> timeout)' {
             Mock Invoke-HostAdapterStatusRequest {
                 [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{"ok":true,"data":{"state":"waiting_for_outlook"},"meta":{"adapterVersion":"1.0.0.0"},"error":null}' }
             } -ModuleName Install.Preflight
-            { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'C:\fake\docker' } | Should -Throw
+            # waiting_for_outlook is now a retryable state; inject deterministic clock/delay
+            # seams so the bounded poll exhausts immediately instead of sleeping for 60s.
+            $script:nowTicks = 0
+            $now = { $script:nowTicks++; ([datetime]::new(2026, 1, 1)).AddSeconds($script:nowTicks * 1000) }.GetNewClosure()
+            $delay = { param([int]$Seconds) $null = $Seconds }
+            { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'C:\fake\docker' -NowProvider $now -DelayProvider $delay } | Should -Throw
         }
 
-        It 'throws when data.state is starting' {
+        It 'throws after the bounded deadline when data.state stays starting (retryable -> timeout)' {
             Mock Invoke-HostAdapterStatusRequest {
                 [pscustomobject]@{ StatusCode = 200; Headers = @{}; Content = '{"ok":true,"data":{"state":"starting"},"meta":{"adapterVersion":"1.0.0.0"},"error":null}' }
             } -ModuleName Install.Preflight
-            { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'C:\fake\docker' } | Should -Throw
+            $script:nowTicks = 0
+            $now = { $script:nowTicks++; ([datetime]::new(2026, 1, 1)).AddSeconds($script:nowTicks * 1000) }.GetNewClosure()
+            $delay = { param([int]$Seconds) $null = $Seconds }
+            { Assert-HostAdapterBridgeReadyPreflight -DestDockerDir 'C:\fake\docker' -NowProvider $now -DelayProvider $delay } | Should -Throw
         }
     }
 }
