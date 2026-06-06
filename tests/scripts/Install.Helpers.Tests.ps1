@@ -38,6 +38,7 @@ Describe 'Install.Helpers.psm1' {
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
                 'Invoke-MsixRemove',
+                'Invoke-MsixAppActivate',
                 'Test-DockerAvailable',
                 'Invoke-ComposeUp',
                 'Wait-ComposeHealthy',
