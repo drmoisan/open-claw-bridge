@@ -255,6 +255,33 @@ function Invoke-MsixRemove {
     }
 }
 
+function Invoke-MsixAppActivate {
+    <#
+    .SYNOPSIS
+        Activates a registered MSIX protocol handler by launching its URI in the
+        caller's interactive desktop session.
+    .DESCRIPTION
+        Wrapper seam for the issue #62 first-launch activation step. Invokes
+        Start-Process against the supplied activation URI (for example
+        'openclaw-mailbridge:firstrun'); the shell broker resolves the registered
+        package identity and starts the executable in the operator session, which
+        works from elevated PowerShell. The parameter is named ActivationUri (not
+        Args) to satisfy the wrapper-seam rule in .claude/rules/powershell.md and
+        to avoid the $Args automatic-variable collision. Mocked at this seam in
+        Pester unit tests; never invoked against a real MSIX in unit tests.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    [OutputType([void])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ActivationUri
+    )
+
+    if ($PSCmdlet.ShouldProcess($ActivationUri, 'Start-Process protocol activation')) {
+        Start-Process -FilePath $ActivationUri | Out-Null
+    }
+}
+
 function Test-DockerAvailable {
     <#
     .SYNOPSIS
@@ -495,5 +522,5 @@ function Invoke-HostAdapterStatusRequest {
         -UseBasicParsing -SkipHttpErrorCheck -TimeoutSec 10
 }
 
-Export-ModuleMember -Function 'Get-ManifestVersion', 'Test-ManifestIntegrity', 'Copy-BundleContents', 'Initialize-DotEnv', 'Invoke-MsixInstall', 'Invoke-MsixCapture', 'Invoke-MsixRemove', 'Test-DockerAvailable', 'Invoke-ComposeUp', 'Wait-ComposeHealthy', 'Invoke-ComposeDown', 'Write-InstallRecord', 'Read-InstallRecord', 'Get-ListeningProcessId', 'Get-ProcessMainModulePath', 'Invoke-HostAdapterStatusRequest'
+Export-ModuleMember -Function 'Get-ManifestVersion', 'Test-ManifestIntegrity', 'Copy-BundleContents', 'Initialize-DotEnv', 'Invoke-MsixInstall', 'Invoke-MsixCapture', 'Invoke-MsixRemove', 'Invoke-MsixAppActivate', 'Test-DockerAvailable', 'Invoke-ComposeUp', 'Wait-ComposeHealthy', 'Invoke-ComposeDown', 'Write-InstallRecord', 'Read-InstallRecord', 'Get-ListeningProcessId', 'Get-ProcessMainModulePath', 'Invoke-HostAdapterStatusRequest'
 

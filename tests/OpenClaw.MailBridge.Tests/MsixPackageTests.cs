@@ -18,6 +18,8 @@ public class MsixPackageTests
         "http://schemas.microsoft.com/appx/manifest/foundation/windows10";
     private static readonly XNamespace Uap5Ns =
         "http://schemas.microsoft.com/appx/manifest/uap/windows10/5";
+    private static readonly XNamespace UapNs =
+        "http://schemas.microsoft.com/appx/manifest/uap/windows10";
 
     private static readonly string RepoRoot = FindRepoRoot();
 
@@ -86,6 +88,97 @@ public class MsixPackageTests
         startupTaskEl.Should().NotBeNull("uap5:StartupTask element must be present");
         var taskId = (string?)startupTaskEl!.Attribute("TaskId");
         taskId.Should().Be("OpenClawMailBridge", "StartupTask TaskId must be 'OpenClawMailBridge'");
+    }
+
+    // ─── windows.protocol extension (first-launch activation, issue #62) ─────────
+
+    /// <summary>
+    /// Verifies that the manifest declares a <c>windows.protocol</c> extension whose child
+    /// <c>uap:Protocol</c> element registers the <c>openclaw-mailbridge</c> URI scheme. The
+    /// installer activates first launch via <c>Start-Process 'openclaw-mailbridge:firstrun'</c>.
+    /// </summary>
+    [TestMethod]
+    public void Manifest_ContainsProtocolExtension_WithOpenClawMailBridgeScheme()
+    {
+        var manifestPath = Path.Combine(RepoRoot, "installer", "Package.appxmanifest");
+        var xml = XDocument.Load(manifestPath);
+
+        // Locate the uap:Extension element whose Category is "windows.protocol".
+        var protocolExtensions = xml.Descendants(UapNs + "Extension")
+            .Where(e => (string?)e.Attribute("Category") == "windows.protocol")
+            .ToList();
+
+        protocolExtensions
+            .Should()
+            .ContainSingle("manifest must declare exactly one windows.protocol extension");
+
+        // The nested uap:Protocol element must register the openclaw-mailbridge scheme.
+        var protocolEls = protocolExtensions[0].Elements(UapNs + "Protocol").ToList();
+        protocolEls
+            .Should()
+            .ContainSingle("the windows.protocol extension must declare exactly one Protocol");
+
+        var name = (string?)protocolEls[0].Attribute("Name");
+        name.Should()
+            .Be(
+                "openclaw-mailbridge",
+                "the registered protocol scheme must be 'openclaw-mailbridge'"
+            );
+    }
+
+    /// <summary>
+    /// Verifies that the new <c>windows.protocol</c> extension and the existing
+    /// <c>windows.startupTask</c> extension both exist as descendants of the same
+    /// <c>Application</c> element. Option 3a is additive: the startup task is retained.
+    /// </summary>
+    [TestMethod]
+    public void Manifest_ProtocolExtension_DoesNotConflictWithStartupTask()
+    {
+        var manifestPath = Path.Combine(RepoRoot, "installer", "Package.appxmanifest");
+        var xml = XDocument.Load(manifestPath);
+
+        var applicationEl = xml.Descendants(ManifestNs + "Application").FirstOrDefault();
+        applicationEl.Should().NotBeNull("manifest must contain an Application element");
+
+        var startupTaskEl = applicationEl!
+            .Descendants(Uap5Ns + "Extension")
+            .FirstOrDefault(e => (string?)e.Attribute("Category") == "windows.startupTask");
+        startupTaskEl
+            .Should()
+            .NotBeNull("the windows.startupTask extension must be retained on the Application");
+
+        var protocolEl = applicationEl
+            .Descendants(UapNs + "Extension")
+            .FirstOrDefault(e => (string?)e.Attribute("Category") == "windows.protocol");
+        protocolEl
+            .Should()
+            .NotBeNull("the windows.protocol extension must be present on the same Application");
+    }
+
+    /// <summary>
+    /// Verifies that the manifest <c>Identity</c> version is at least <c>1.0.1.0</c>. Issue #62
+    /// bumps the manifest Identity Version so <c>Add-AppxPackage</c> re-registers the protocol
+    /// handler on upgrade.
+    /// </summary>
+    [TestMethod]
+    public void Manifest_IdentityVersion_IsAtLeast_1_0_1_0()
+    {
+        var manifestPath = Path.Combine(RepoRoot, "installer", "Package.appxmanifest");
+        var xml = XDocument.Load(manifestPath);
+
+        var identityEl = xml.Root?.Element(ManifestNs + "Identity");
+        identityEl.Should().NotBeNull("Package element must contain an Identity child");
+
+        var versionText = (string?)identityEl!.Attribute("Version");
+        versionText.Should().NotBeNullOrWhiteSpace("Identity Version attribute must be set");
+
+        var actual = Version.Parse(versionText!);
+        actual
+            .Should()
+            .BeGreaterThanOrEqualTo(
+                new Version(1, 0, 1, 0),
+                "the manifest Identity Version must be bumped to at least 1.0.1.0 for issue #62"
+            );
     }
 
     // ─── No windows.service ─────────────────────────────────────────────────────

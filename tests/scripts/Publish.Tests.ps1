@@ -86,6 +86,25 @@ Describe 'scripts/Publish.ps1' {
             $entry = [pscustomobject]@{ Name = 'Write-PublishManifest'; Args = [pscustomobject]@{ BundleRoot = $BundleRoot; Version = $Version } }
             [void]$global:PublishTestCalls.Add($entry)
         }
+        # Deterministically neutralize thumbprint resolution so the orchestrator's
+        # signing gate is exercised independently of this machine's dotnet user
+        # secret or OPENCLAW_CERT_THUMBPRINT env var (determinism rule: tests must
+        # not depend on mutable machine/profile state). The default mock returns an
+        # empty string, mirroring "no source supplied a thumbprint"; individual
+        # tests can override it. The mock signature matches the production
+        # named parameters exactly.
+        Mock Resolve-CertThumbprint {
+            param(
+                [string]$ExplicitThumbprint = '',
+                [string]$ProjectPath = '',
+                [string]$EnvThumbprint = ''
+            )
+            $null = $ProjectPath
+            $null = $EnvThumbprint
+            $entry = [pscustomobject]@{ Name = 'Resolve-CertThumbprint'; Args = [pscustomobject]@{ ExplicitThumbprint = $ExplicitThumbprint; ProjectPath = $ProjectPath; EnvThumbprint = $EnvThumbprint } }
+            [void]$global:PublishTestCalls.Add($entry)
+            return ''
+        }
 
         # Keep filesystem side-effects out of the way inside the script body.
         Mock New-Item { }
@@ -107,6 +126,24 @@ Describe 'scripts/Publish.ps1' {
         It 'rejects a 3-part version (Q1 strict validation)' {
             { & $script:ScriptPath -Version '1.2.3' -SkipSign } |
                 Should -Throw -ExceptionType ([System.Management.Automation.ParameterBindingException])
+        }
+        It 'passes the gate and signs with the resolved thumbprint when -CertThumbprint is empty but resolution yields a value' {
+            # Override the default empty-returning resolver mock for this case.
+            Mock Resolve-CertThumbprint { return 'RESOLVEDABC123' }
+            { & $script:ScriptPath -Version '1.2.3.0' } | Should -Not -Throw
+            $signCalls = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Invoke-SignTool' })
+            $signCalls.Count | Should -Be 1
+            $signCalls[0].Args.CertThumbprint | Should -Be 'RESOLVEDABC123'
+        }
+        It 'does not call Resolve-CertThumbprint when an explicit -CertThumbprint is supplied' {
+            & $script:ScriptPath -Version '1.2.3.0' -CertThumbprint 'EXPLICITONLY' | Out-Null
+            (@($global:PublishTestCalls | Where-Object { $_.Name -eq 'Resolve-CertThumbprint' })).Count | Should -Be 0
+            $signCalls = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Invoke-SignTool' })
+            $signCalls[0].Args.CertThumbprint | Should -Be 'EXPLICITONLY'
+        }
+        It 'does not call Resolve-CertThumbprint when -SkipSign is supplied' {
+            & $script:ScriptPath -Version '1.2.3.0' -SkipSign | Out-Null
+            (@($global:PublishTestCalls | Where-Object { $_.Name -eq 'Resolve-CertThumbprint' })).Count | Should -Be 0
         }
     }
 

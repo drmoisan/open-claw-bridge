@@ -38,6 +38,7 @@ Describe 'Install.Helpers.psm1' {
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
                 'Invoke-MsixRemove',
+                'Invoke-MsixAppActivate',
                 'Test-DockerAvailable',
                 'Invoke-ComposeUp',
                 'Wait-ComposeHealthy',
@@ -264,6 +265,22 @@ Describe 'Install.Helpers.psm1' {
             Mock -ModuleName Install.Helpers Get-AppxPackage { [pscustomobject]@{ PackageFullName = 'x' } }
             Invoke-MsixRemove -PackageFullName 'x' -WhatIf
             Should -Invoke -ModuleName Install.Helpers -CommandName Remove-AppxPackage -Times 0 -Exactly
+        }
+    }
+
+    Context 'Invoke-MsixAppActivate' {
+        BeforeEach { Mock -ModuleName Install.Helpers Start-Process { } }
+
+        It 'invokes Start-Process with the supplied ActivationUri under ShouldProcess' {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun'
+            Should -Invoke -ModuleName Install.Helpers -CommandName Start-Process -Times 1 -Exactly -ParameterFilter {
+                $FilePath -eq 'openclaw-mailbridge:firstrun'
+            }
+        }
+
+        It 'is a no-op when ShouldProcess returns false (e.g., -WhatIf)' {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun' -WhatIf
+            Should -Invoke -ModuleName Install.Helpers -CommandName Start-Process -Times 0 -Exactly
         }
     }
 

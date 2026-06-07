@@ -9,6 +9,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <UserSecretsId>3716a8f0-9bab-4f69-a7b9-4173cda73ff3</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.MailBridge.Contracts\OpenClaw.MailBridge.Contracts.csproj" />

@@ -215,64 +215,136 @@ function Assert-HostAdapterRespondingPreflight {
     throw (Format-HostAdapterPreflightFailure -StatusUri $statusUri -StatusCode $statusCode -Body $body)
 }
 
+function Get-HostAdapterBridgeReadyClassification {
+    <#
+    .SYNOPSIS
+        Internal classifier for the Stage 8.5 bounded-polling loop. Returns one of
+        'success', 'retryable', or 'terminal' for a single /v1/status response.
+    .DESCRIPTION
+        - 'retryable': HTTP 502 with parsed JSON error.code == TRANSPORT_FAILURE,
+          OR HTTP 200 with data.state in {starting, waiting_for_outlook}
+          (case-insensitive; matches IsBridgeNotReady in
+          src/OpenClaw.HostAdapter/Program.cs:444). MailBridge is not yet ready;
+          the caller should wait and re-poll.
+        - 'success': HTTP 200 with a non-empty data.state not in the not-ready set.
+        - 'terminal': anything else (any other non-200 such as 401, or any 200 with
+          a body that does not parse as JSON or lacks data.state).
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)][int]$StatusCode,
+        [Parameter(Mandatory = $true)][AllowEmptyString()][string]$Body
+    )
+
+    $notReadyStates = @('starting', 'waiting_for_outlook')
+
+    $parsed = $null
+    if (-not [string]::IsNullOrWhiteSpace($Body)) {
+        try { $parsed = $Body | ConvertFrom-Json -ErrorAction Stop }
+        catch { $parsed = $null }
+    }
+
+    if ($StatusCode -eq 200) {
+        # Success or not-ready-retry both require a parseable data.state.
+        if ($null -ne $parsed -and $parsed.PSObject.Properties.Name -contains 'data' -and $null -ne $parsed.data) {
+            $dataBlock = $parsed.data
+            if ($dataBlock.PSObject.Properties.Name -contains 'state') {
+                $stateValue = [string]$dataBlock.state
+                if (-not [string]::IsNullOrWhiteSpace($stateValue)) {
+                    foreach ($candidate in $notReadyStates) {
+                        if ([string]::Equals($stateValue, $candidate, [System.StringComparison]::OrdinalIgnoreCase)) {
+                            return 'retryable'
+                        }
+                    }
+                    return 'success'
+                }
+            }
+        }
+        # 200 with an unparseable body or no usable data.state is terminal.
+        return 'terminal'
+    }
+
+    if ($StatusCode -eq 502 -and $null -ne $parsed -and $parsed.PSObject.Properties.Name -contains 'error' -and $null -ne $parsed.error) {
+        $errBlock = $parsed.error
+        if ($errBlock.PSObject.Properties.Name -contains 'code') {
+            $code = [string]$errBlock.code
+            if ([string]::Equals($code, 'TRANSPORT_FAILURE', [System.StringComparison]::OrdinalIgnoreCase)) {
+                return 'retryable'
+            }
+        }
+    }
+
+    return 'terminal'
+}
+
 function Assert-HostAdapterBridgeReadyPreflight {
     <#
     .SYNOPSIS
-        Stage 8.5 preflight: verifies the bridge is ready after MSIX install.
-        Requires HTTP 200 with a non-empty `data.state` value that is neither
-        `starting` nor `waiting_for_outlook` (case-insensitive; matches the
-        IsBridgeNotReady contract in src/OpenClaw.HostAdapter/Program.cs:444).
-        Throws via Format-HostAdapterPreflightFailure on any failure path.
+        Stage 8.5 preflight: verifies the bridge is ready after MSIX install using a
+        bounded polling loop. Requires HTTP 200 with a non-empty `data.state` value
+        that is neither `starting` nor `waiting_for_outlook` (case-insensitive;
+        matches the IsBridgeNotReady contract in
+        src/OpenClaw.HostAdapter/Program.cs:444).
+    .DESCRIPTION
+        Polls Invoke-HostAdapterStatusRequest until the deadline computed from
+        $TimeoutSec elapses. Each response is classified (see
+        Get-HostAdapterBridgeReadyClassification):
+          - success  -> returns.
+          - terminal -> throws via Format-HostAdapterPreflightFailure immediately.
+          - retryable (HTTP 502 + TRANSPORT_FAILURE, or HTTP 200 +
+            state in {starting, waiting_for_outlook}) -> waits PollIntervalSec via
+            $DelayProvider and re-polls.
+        On timeout exhaustion the last observed status/body are formatted via
+        Format-HostAdapterPreflightFailure and thrown. Clock reads go through
+        $NowProvider and waits through $DelayProvider so Pester can drive the loop
+        deterministically without wall-clock sleeps.
     #>
     [CmdletBinding()]
-    param([Parameter(Mandatory = $true)][string]$DestDockerDir)
+    param(
+        [Parameter(Mandatory = $true)][string]$DestDockerDir,
+        [Parameter()][int]$TimeoutSec = 60,
+        [Parameter()][int]$PollIntervalSec = 2,
+        [Parameter()][scriptblock]$NowProvider = { [datetime]::UtcNow },
+        [Parameter()][scriptblock]$DelayProvider = { param([int]$Seconds) Start-Sleep -Seconds $Seconds }
+    )
 
     $resolved = Get-PreflightTokenAndUri -DestDockerDir $DestDockerDir
     $statusUri = $resolved.StatusUri
     $token = $resolved.Token
 
-    try {
-        $response = Invoke-HostAdapterStatusRequest -StatusUri $statusUri -Token $token
-    }
-    catch {
-        throw "HostAdapter preflight failed before starting Docker. GET $statusUri was unreachable: $($_.Exception.Message). Start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage."
-    }
+    $deadline = (& $NowProvider).AddSeconds($TimeoutSec)
+    $lastStatusCode = 0
+    $lastBody = ''
 
-    $statusCode = [int]$response.StatusCode
-    $body = [string]$response.Content
-    $notReadyStates = @('starting', 'waiting_for_outlook')
-    $bridgeReady = $false
-
-    if ($statusCode -eq 200 -and -not [string]::IsNullOrWhiteSpace($body)) {
+    while ($true) {
         try {
-            $parsed = $body | ConvertFrom-Json -ErrorAction Stop
-            if ($null -ne $parsed -and $parsed.PSObject.Properties.Name -contains 'data' -and $null -ne $parsed.data) {
-                $dataBlock = $parsed.data
-                if ($dataBlock.PSObject.Properties.Name -contains 'state') {
-                    $stateValue = [string]$dataBlock.state
-                    if (-not [string]::IsNullOrWhiteSpace($stateValue)) {
-                        $isNotReady = $false
-                        foreach ($candidate in $notReadyStates) {
-                            if ([string]::Equals($stateValue, $candidate, [System.StringComparison]::OrdinalIgnoreCase)) {
-                                $isNotReady = $true
-                                break
-                            }
-                        }
-                        if (-not $isNotReady) { $bridgeReady = $true }
-                    }
-                }
-            }
+            $response = Invoke-HostAdapterStatusRequest -StatusUri $statusUri -Token $token
         }
         catch {
-            $bridgeReady = $false
+            throw "HostAdapter preflight failed before starting Docker. GET $statusUri was unreachable: $($_.Exception.Message). Start OpenClaw.HostAdapter and OpenClaw.MailBridge, then retry; or pass -SkipDocker to skip the container stage."
+        }
+
+        $lastStatusCode = [int]$response.StatusCode
+        $lastBody = [string]$response.Content
+
+        $classification = Get-HostAdapterBridgeReadyClassification -StatusCode $lastStatusCode -Body $lastBody
+
+        if ($classification -eq 'success') {
+            return
+        }
+        if ($classification -eq 'terminal') {
+            throw (Format-HostAdapterPreflightFailure -StatusUri $statusUri -StatusCode $lastStatusCode -Body $lastBody)
+        }
+
+        # Retryable: wait PollIntervalSec, then re-check the deadline before polling again.
+        & $DelayProvider $PollIntervalSec
+        if ((& $NowProvider) -ge $deadline) {
+            break
         }
     }
 
-    if ($bridgeReady) {
-        return
-    }
-
-    throw (Format-HostAdapterPreflightFailure -StatusUri $statusUri -StatusCode $statusCode -Body $body)
+    throw (Format-HostAdapterPreflightFailure -StatusUri $statusUri -StatusCode $lastStatusCode -Body $lastBody)
 }
 
 function Invoke-Stage8Point5BridgeReadyOrRollback {

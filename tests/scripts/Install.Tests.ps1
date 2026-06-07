@@ -54,6 +54,7 @@ Describe 'scripts/Install.ps1' {
         Mock Initialize-DotEnv { [void]$global:InstallTestCalls.Add('Initialize-DotEnv') }
         Mock Invoke-MsixInstall { [void]$global:InstallTestCalls.Add('Invoke-MsixInstall') }
         Mock Invoke-MsixCapture { [void]$global:InstallTestCalls.Add('Invoke-MsixCapture'); 'OpenClaw.MailBridge_1.2.3.0_x64__abc' }
+        Mock Invoke-MsixAppActivate { [void]$global:InstallTestCalls.Add('Invoke-MsixAppActivate') }
         Mock Invoke-MsixRemove { [void]$global:InstallTestCalls.Add('Invoke-MsixRemove') }
         Mock Invoke-ComposeUp { [void]$global:InstallTestCalls.Add('Invoke-ComposeUp') }
         Mock Wait-ComposeHealthy { [void]$global:InstallTestCalls.Add('Wait-ComposeHealthy') }
@@ -204,6 +205,7 @@ Describe 'scripts/Install.ps1' {
                 'Assert-HostAdapterRespondingPreflight',
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
+                'Invoke-MsixAppActivate',
                 'Assert-HostAdapterBridgeReadyPreflight',
                 'Invoke-ComposeUp',
                 'Wait-ComposeHealthy',
@@ -451,6 +453,53 @@ Describe 'scripts/Install.ps1' {
             & $script:ScriptPath -SkipDocker | Out-Null
             Should -Invoke Assert-HostAdapterRespondingPreflight -Times 0
             Should -Invoke Assert-HostAdapterBridgeReadyPreflight -Times 0
+        }
+    }
+
+    Context 'Stage 8 protocol-activation launch' {
+        It 'invokes Invoke-MsixAppActivate with openclaw-mailbridge:firstrun after Invoke-MsixCapture' {
+            & $script:ScriptPath | Out-Null
+
+            Should -Invoke Invoke-MsixAppActivate -Times 1 -Exactly -ParameterFilter {
+                $ActivationUri -eq 'openclaw-mailbridge:firstrun'
+            }
+
+            $idxCapture = $global:InstallTestCalls.IndexOf('Invoke-MsixCapture')
+            $idxActivate = $global:InstallTestCalls.IndexOf('Invoke-MsixAppActivate')
+            $idxBridge = $global:InstallTestCalls.IndexOf('Assert-HostAdapterBridgeReadyPreflight')
+            $idxActivate | Should -BeGreaterThan $idxCapture
+            $idxBridge | Should -BeGreaterThan $idxActivate
+        }
+
+        It 'skips Invoke-MsixAppActivate when -SkipDocker is supplied' {
+            & $script:ScriptPath -SkipDocker | Out-Null
+            Should -Invoke Invoke-MsixAppActivate -Times 0 -Exactly
+            $global:InstallTestCalls -contains 'Invoke-MsixAppActivate' | Should -BeFalse
+        }
+
+        It 'calls Invoke-MsixRemove with the captured PackageFullName when Invoke-MsixAppActivate throws' {
+            Mock Invoke-MsixAppActivate {
+                [void]$global:InstallTestCalls.Add('Invoke-MsixAppActivate')
+                throw 'boom'
+            }
+
+            { & $script:ScriptPath } | Should -Throw -ExpectedMessage '*boom*'
+
+            Should -Invoke Invoke-MsixRemove -Times 1 -Exactly -ParameterFilter {
+                $PackageFullName -eq 'OpenClaw.MailBridge_1.2.3.0_x64__abc'
+            }
+            # The no-orphan invariant (issue #52) is preserved: the readiness gate and
+            # compose stage never run once activation fails.
+            $global:InstallTestCalls -contains 'Assert-HostAdapterBridgeReadyPreflight' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
+        }
+
+        It 'does not call Invoke-MsixAppActivate before Invoke-MsixCapture' {
+            & $script:ScriptPath | Out-Null
+            $idxCapture = $global:InstallTestCalls.IndexOf('Invoke-MsixCapture')
+            $idxActivate = $global:InstallTestCalls.IndexOf('Invoke-MsixAppActivate')
+            $idxCapture | Should -BeGreaterOrEqual 0
+            $idxActivate | Should -BeGreaterThan $idxCapture
         }
     }
 }
