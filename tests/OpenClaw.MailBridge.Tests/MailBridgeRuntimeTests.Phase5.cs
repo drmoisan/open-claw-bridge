@@ -32,13 +32,19 @@ public partial class MailBridgeRuntimeTests
     [TestMethod]
     public async Task OutlookScanner_ScanAsync_should_set_CacheStale_and_StaleReason_after_scan_failure()
     {
+        // Attach succeeds but the MAPI namespace is unavailable, so the scan throws after attach
+        // and the general scan-failure handler records the "scan_failure" stale reason.
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings);
+        var com = new FakeComActiveObject
+        {
+            RunningObject = new FakeOutlookApplicationWithNullNamespace(),
+        };
         var scanner = new OutlookScanner(
             settings,
             state,
             NullLogger<OutlookScanner>.Instance,
-            new FakeComActiveObject { ThrowOnCreate = true },
+            com,
             _ => 0,
             () => DateTimeOffset.UtcNow
         );

@@ -79,11 +79,12 @@ Describe 'Publish.Helpers.psm1' {
     }
 
     Context 'Module exports' {
-        It 'exports the expected 12 helper functions' {
+        It 'exports the expected 14 helper functions' {
             $expected = @(
                 'Find-WindowsSdkTool', 'Get-StampedAppxManifestXml', 'Invoke-VersionStamp',
                 'Invoke-LayoutAssembly', 'Invoke-MakePri', 'Invoke-MakeAppx',
-                'Invoke-SignTool', 'Invoke-DotnetPublish', 'Copy-DockerArtifact',
+                'Invoke-SignTool', 'Invoke-DotnetPublish', 'Invoke-DotnetExe',
+                'Resolve-CertThumbprint', 'Copy-DockerArtifact',
                 'Copy-InstallScriptsIntoBundle', 'New-ManifestEntry', 'Write-PublishManifest'
             ) | Sort-Object
             $actual = (Get-Command -Module Publish.Helpers).Name | Sort-Object
@@ -287,6 +288,67 @@ Describe 'Publish.Helpers.psm1' {
             $script:DotnetExitCode = 2
             { Invoke-DotnetPublish -ProjectPath 'src/Z/Z.csproj' -OutputDir 'out/Z' -Configuration 'Release' } |
                 Should -Throw -ExpectedMessage '*dotnet publish failed*'
+        }
+    }
+
+    Context 'Resolve-CertThumbprint' {
+        # All cases mock the Invoke-DotnetExe WRAPPER (never the dotnet executable
+        # directly), with a mock signature matching param([string[]]$DotnetArgs).
+        It 'explicit thumbprint wins over user secret and env' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = SECRETVALUE'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint 'EXPLICITVALUE' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint 'ENVVALUE'
+            $r | Should -Be 'EXPLICITVALUE'
+            Assert-MockCalled -ModuleName Publish.Helpers Invoke-DotnetExe -Times 0 -Scope It
+        }
+        It 'returns the user-secret value when explicit is empty' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                @('Some preamble line', 'Signing:CertThumbprint = ABC123DEF456', 'Trailing line')
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint 'ENVVALUE'
+            $r | Should -Be 'ABC123DEF456'
+        }
+        It 'returns the injected env value when explicit and user secret are absent' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'No secrets configured for this application.'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint 'ENVVALUE'
+            $r | Should -Be 'ENVVALUE'
+        }
+        It 'returns empty string when all sources are absent' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'No secrets configured for this application.'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint ''
+            $r | Should -Be ''
+        }
+        It 'whitespace-only explicit value does not win; falls through to user secret' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = FALLTHROUGH'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '   ' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint ''
+            $r | Should -Be 'FALLTHROUGH'
+        }
+        It 'skips the user-secret lookup when ProjectPath is empty' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = SHOULDNOTBEUSED'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath '' -EnvThumbprint 'ENVONLY'
+            $r | Should -Be 'ENVONLY'
+            Assert-MockCalled -ModuleName Publish.Helpers Invoke-DotnetExe -Times 0 -Scope It
         }
     }
 

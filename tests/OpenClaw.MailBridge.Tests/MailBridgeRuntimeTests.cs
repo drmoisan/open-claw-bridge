@@ -116,6 +116,117 @@ public partial class MailBridgeRuntimeTests
     }
 
     [TestMethod]
+    public void Bridge_application_load_settings_should_fill_absent_com_yield_fields_from_defaults_and_pass_validation()
+    {
+        // Arrange: a real-world older-schema file that predates the ComYield* fields.
+        // Every other field is present and valid; ComYieldBatchSize/ComYieldMilliseconds are absent.
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent =
+                """{"PipeName":"openclaw_mailbridge_v1","Mode":"safe","AutostartOutlook":true,"InboxPollSeconds":30,"CalendarPollSeconds":300,"InboxOverlapMinutes":5,"CalendarPastDays":14,"CalendarFutureDays":60,"MaxItemsPerScan":500,"BodyPreviewMaxChars":500,"LogLevel":"Information"}""",
+        };
+
+        // Act
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        // Assert: absent fields take Default values, and the merged settings validate cleanly.
+        settings.ComYieldBatchSize.Should().Be(25);
+        settings.ComYieldMilliseconds.Should().Be(15);
+        BridgeSettingsValidator.Validate(settings).Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void Bridge_application_load_settings_should_preserve_all_values_from_complete_store()
+    {
+        // Arrange: a complete settings document with every field present.
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent =
+                """{"PipeName":"custom_pipe","Mode":"enhanced","AutostartOutlook":false,"InboxPollSeconds":45,"CalendarPollSeconds":120,"InboxOverlapMinutes":7,"CalendarPastDays":3,"CalendarFutureDays":21,"MaxItemsPerScan":250,"BodyPreviewMaxChars":300,"ComYieldBatchSize":40,"ComYieldMilliseconds":8,"LogLevel":"Debug"}""",
+        };
+
+        // Act
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        // Assert: every value matches the stored document exactly (no regression).
+        settings
+            .Should()
+            .Be(
+                new BridgeSettings(
+                    "custom_pipe",
+                    "enhanced",
+                    false,
+                    45,
+                    120,
+                    7,
+                    3,
+                    21,
+                    250,
+                    300,
+                    40,
+                    8,
+                    "Debug"
+                )
+            );
+    }
+
+    [TestMethod]
+    public void Bridge_application_load_settings_should_honor_present_fields_that_override_defaults()
+    {
+        // Arrange: a partial document that overrides defaults for Mode and InboxPollSeconds.
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent = """{"PipeName":"x","Mode":"enhanced","InboxPollSeconds":45}""",
+        };
+
+        // Act
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        // Assert: present overrides are honored, not reset to Default.
+        settings.Mode.Should().Be("enhanced");
+        settings.InboxPollSeconds.Should().Be(45);
+        // Absent fields still take Default values.
+        settings.CalendarPollSeconds.Should().Be(BridgeSettings.Default.CalendarPollSeconds);
+        settings.ComYieldBatchSize.Should().Be(BridgeSettings.Default.ComYieldBatchSize);
+    }
+
+    [TestMethod]
+    public void Bridge_application_load_settings_should_return_defaults_when_store_content_is_json_null()
+    {
+        // Arrange: a store whose content is the JSON literal null, which parses to a non-object node.
+        var app = new InMemoryBridgeApplication { StoreExists = true, StoreContent = "null" };
+
+        // Act
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        // Assert: the loader falls back to Default rather than throwing.
+        settings.Should().Be(BridgeSettings.Default);
+    }
+
+    [TestMethod]
+    public void Bridge_application_load_settings_should_honor_a_present_field_explicitly_set_to_json_null()
+    {
+        // Arrange: a present field whose JSON value is the literal null. A present key wins over
+        // the default even when its value is null, exercising the null-value overlay path.
+        var app = new InMemoryBridgeApplication
+        {
+            StoreExists = true,
+            StoreContent = """{"PipeName":"x","Mode":"safe","LogLevel":null}""",
+        };
+
+        // Act
+        var settings = app.LoadSettings("memory://bridge.settings.json");
+
+        // Assert: the explicit null overrides the default LogLevel; other absent fields keep defaults.
+        settings.LogLevel.Should().BeNull();
+        settings.PipeName.Should().Be("x");
+        settings.ComYieldBatchSize.Should().Be(BridgeSettings.Default.ComYieldBatchSize);
+    }
+
+    [TestMethod]
     public void Bridge_state_store_should_track_mutable_state()
     {
         var settings = BridgeSettings.Default with { Mode = "enhanced" };
@@ -207,13 +318,19 @@ public partial class MailBridgeRuntimeTests
     [TestMethod]
     public async Task Outlook_scanner_should_degrade_when_scan_throws()
     {
+        // Attach succeeds but the MAPI namespace is unavailable, so the scan pipeline throws
+        // after attach and is caught by the general scan-failure handler in ExecuteScanAsync.
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings);
+        var com = new FakeComActiveObject
+        {
+            RunningObject = new FakeOutlookApplicationWithNullNamespace(),
+        };
         var scanner = new OutlookScanner(
             settings,
             state,
             NullLogger<OutlookScanner>.Instance,
-            new FakeComActiveObject { ThrowOnCreate = true },
+            com,
             _ => 0,
             () => DateTimeOffset.UtcNow
         );

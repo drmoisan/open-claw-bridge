@@ -37,6 +37,16 @@ internal sealed class FakeOutlookApplication
     public object GetNamespace(string name) => Namespace;
 }
 
+/// <summary>
+/// Attaches like a running Outlook instance but returns a null MAPI namespace so the
+/// scan pipeline throws after attach, exercising the general scan-failure catch in
+/// <see cref="OutlookScanner"/> (state degraded with reason "scan_failure").
+/// </summary>
+internal sealed class FakeOutlookApplicationWithNullNamespace
+{
+    public object? GetNamespace(string name) => null;
+}
+
 internal sealed class FakeOutlookNamespace
 {
     public Dictionary<int, object> DefaultFolders { get; } = new();

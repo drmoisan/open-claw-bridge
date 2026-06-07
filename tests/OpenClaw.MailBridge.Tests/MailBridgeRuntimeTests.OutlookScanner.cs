@@ -89,6 +89,83 @@ public partial class MailBridgeRuntimeTests
     }
 
     [TestMethod]
+    public void EnsureOutlook_should_wait_for_outlook_when_autostart_logon_fails_and_no_process_running()
+    {
+        // Reproduces the stuck-in-starting defect: autostart enabled, Outlook NOT running,
+        // and the headless CreateAndLogonOutlook throws. EnsureOutlook must not propagate and
+        // must leave a defined non-starting state.
+        var settings = BridgeSettings.Default with
+        {
+            AutostartOutlook = true,
+        };
+        var state = new BridgeStateStore(settings);
+        var com = new FakeComActiveObject { RunningObject = null, ThrowOnCreate = true };
+        var scanner = BuildScanner(
+            settings: settings,
+            state: state,
+            com: com,
+            processCount: _ => 0
+        );
+
+        var act = () => scanner.EnsureOutlook();
+
+        act.Should().NotThrow("autostart logon failure must be handled, not propagated");
+        com.CreateAndLogonCalls.Should().Be(1);
+        state.State.Should().Be(BridgeState.waiting_for_outlook);
+        state.OutlookConnected.Should().BeFalse();
+        state.State.Should().NotBe(BridgeState.starting);
+    }
+
+    [TestMethod]
+    public async Task ScanInboxAsync_should_not_throw_and_should_wait_when_autostart_logon_fails_without_running_process()
+    {
+        // End-to-end through ScanInboxAsync: the worker path must not fault and the bridge must
+        // leave the starting state when autostart logon fails with no running Outlook process.
+        var settings = BridgeSettings.Default with
+        {
+            AutostartOutlook = true,
+        };
+        var state = new BridgeStateStore(settings);
+        var com = new FakeComActiveObject { RunningObject = null, ThrowOnCreate = true };
+        var repo = new FakeScanStateRepository();
+        var scanner = BuildScanner(
+            settings: settings,
+            state: state,
+            com: com,
+            processCount: _ => 0
+        );
+
+        var act = () => scanner.ScanInboxAsync(repo);
+
+        await act.Should().NotThrowAsync();
+        state.State.Should().Be(BridgeState.waiting_for_outlook);
+        state.OutlookConnected.Should().BeFalse();
+        state.State.Should().NotBe(BridgeState.starting);
+    }
+
+    [TestMethod]
+    public void EnsureOutlook_should_attach_to_running_instance_without_create_and_logon()
+    {
+        // Regression: the happy attach path (TryGet returns a non-null instance) must connect and
+        // must never invoke CreateAndLogonOutlook, regardless of autostart.
+        var settings = BridgeSettings.Default with
+        {
+            AutostartOutlook = true,
+        };
+        var state = new BridgeStateStore(settings);
+        var outlook = new FakeOutlookApplication();
+        var com = new FakeComActiveObject { RunningObject = outlook };
+        var scanner = BuildScanner(settings: settings, state: state, com: com);
+
+        scanner.EnsureOutlook();
+
+        com.TryGetCalls.Should().Be(1);
+        com.CreateAndLogonCalls.Should().Be(0, "attach path must not create a new session");
+        state.CacheStale.Should().BeFalse();
+        state.StaleReason.Should().BeNull();
+    }
+
+    [TestMethod]
     public void EnsureOutlook_should_fall_back_to_create_and_logon_when_AutostartOutlook_is_true_and_rot_attachment_fails_for_a_running_process()
     {
         var settings = BridgeSettings.Default with { AutostartOutlook = true };
