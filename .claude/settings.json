@@ -1,0 +1,152 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "agent": "orchestrator",
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(poetry run *)",
+      "Bash(pwsh *)",
+      "Read",
+      "Edit(/docs/**)",
+      "Write(/docs/**)",
+      "Write(/artifacts/**)",
+      "mcp__drm-copilot__run_poshqc_format",
+      "mcp__drm-copilot__run_poshqc_analyze",
+      "mcp__drm-copilot__run_poshqc_test",
+      "mcp__drm-copilot__run_poshqc_analyze_autofix",
+      "mcp__drm-copilot__resolve_execute_hard_lock_prompt",
+      "mcp__drm-copilot__collect_pr_context",
+      "mcp__drm-copilot__new_potential_entry",
+      "mcp__drm-copilot__new_potential_bug_entry",
+      "mcp__drm-copilot__potential_to_issue",
+      "mcp__drm-copilot__new_active_feature_folder",
+      "mcp__drm-copilot__validate_orchestration_artifacts",
+      "mcp__drm-copilot__resolve_atomic_plan_prompt",
+      "Agent(atomic-planner)",
+      "Agent(atomic-executor)",
+      "Agent(feature-review)",
+      "Agent(task-researcher)",
+      "Agent(prd-feature)",
+      "Agent(staged-review)",
+      "Agent(epic-review)",
+      "Agent(status-updater)",
+      "Agent(powershell-typed-engineer)",
+      "Agent(csharp-typed-engineer)",
+      "Skill(orchestrate *)",
+      "Skill(commit-message *)",
+      "Skill(pr-author *)",
+      "Skill(research-issue *)",
+      "Skill(review-feature *)",
+      "Skill(review-staged *)",
+      "Skill(review-epic *)",
+      "Skill(update-status *)",
+      "Skill(fill-feature-docs *)",
+      "Skill(powershell-change-budget-router *)",
+      "Skill(powershell-qa-gate *)",
+      "Skill(invoke-powershell-engineer *)",
+      "Skill(translate-copilot-to-claude *)",
+      "Skill(execute-hard-lock *)",
+      "Edit(/.claude/skills/execute-hard-lock/**)",
+      "Edit(/.claude/skills/feature-review-workflow/**)",
+      "Edit(/.claude/skills/csharp-qa-gate/**)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Edit(./secrets/**)",
+      "Write(./secrets/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\DanMoisan\\repos\\drm-copilot\\.claude\\skills\\execute-hard-lock"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/validate-bash.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-promotion-mcp-only.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-pr-author-skill.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/check-powershell-test-purity.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-powershell-batch-budget.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-evidence-locations.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-feature-folder-order.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-checkpoint-monotonic.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-prd-feature-before-planner.ps1"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "atomic-planner|atomic-executor|feature-review|task-researcher|prd-feature|staged-review|epic-review|status-updater|powershell-typed-engineer|csharp-typed-engineer",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -Command \"$input = $env:CLAUDE_HOOK_INPUT | ConvertFrom-Json; $output = $input.output; if (-not ($output -match '(plan-path|research-path|review-artifact|PREFLIGHT|evidence/)')) { Write-Error 'Subagent stopped without required completion artifact path'; exit 1 }; exit 0\""
+          }
+        ]
+      },
+      {
+        "matcher": "feature-review",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/validate-feature-review-coverage.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "atomic-planner",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/validate-planner-output.ps1"
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
+  },
+  "defaultPermissionMode": "bypassPermissions"
+}

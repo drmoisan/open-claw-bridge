@@ -78,6 +78,11 @@ secrets/
 .github/workflows/*
 !.github/workflows/ci.yml
 !.github/workflows/publish.yml
+!.github/agents/
+!.github/instructions/
+!.github/prompts/
+!.github/skills/
 .tmp-tools/
 .tool-wrappers/
-.claude
+!.claude/
+.claude/settings.local.json
