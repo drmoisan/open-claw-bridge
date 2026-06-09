@@ -323,20 +323,22 @@ public partial class MailBridgeRuntimeTests
     {
         var settings = BridgeSettings.Default;
         var state = new BridgeStateStore(settings);
-        var com = new FakeComActiveObject { ThrowOnCreate = true };
+        // First attach succeeds but the namespace is unavailable, so the scan throws after attach.
+        var com = new FakeComActiveObject
+        {
+            RunningObject = new FakeOutlookApplicationWithNullNamespace(),
+        };
         var scanner = BuildScanner(settings: settings, state: state, com: com);
 
         // First scan fails
         await scanner.ScanAsync(new FakeScanStateRepository());
         state.CacheStale.Should().BeTrue();
 
-        // Provide a real outlook on retry
+        // Provide a working outlook on retry; _outlookApp must have been cleared after the failure.
         var inbox = new FakeOutlookFolder();
         var calendar = new FakeOutlookFolder();
         var outlook = BuildOutlookWithFolders(inbox: inbox, calendar: calendar);
-        com.ThrowOnCreate = false;
-        com.CreatedObject = outlook;
-        com.RunningObject = null;
+        com.RunningObject = outlook;
 
         var repo2 = new FakeScanStateRepository();
         await scanner.ScanAsync(repo2);

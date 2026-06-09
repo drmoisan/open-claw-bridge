@@ -100,9 +100,21 @@ internal sealed partial class OutlookScanner : IOutlookScanner
                 "Created and logged on to Outlook because autostart is enabled."
             );
         }
-        catch (Exception ex) when (outlookRunning)
+        catch (Exception ex)
         {
-            _state.MarkOutlookUnavailable("running_instance_unavailable");
+            // Autostart logon can fail even when no Outlook process is running (for example a
+            // headless MAPI Logon with no logged-on session). Handle the failure deterministically
+            // for both cases so the bridge never remains stuck in the starting state.
+            if (outlookRunning)
+            {
+                _state.MarkOutlookUnavailable("running_instance_unavailable");
+            }
+            else
+            {
+                _state.SetState(BridgeState.waiting_for_outlook);
+                _state.OutlookConnected = false;
+            }
+
             _logger.LogWarning(
                 "Unable to attach to the running Outlook instance or create a fallback session: {Message}",
                 ex.Message

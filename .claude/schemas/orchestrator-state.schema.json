@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://drmoisan.github.io/mix-calculator/orchestrator-state.schema.json",
+  "title": "Orchestrator State",
+  "description": "Repo-local schema for artifacts/orchestration/orchestrator-state.json. Defines the remediation_loop shape required by issue #25 (Remediation Loop Protocol).",
+  "type": "object",
+  "properties": {
+    "objective": { "type": "string" },
+    "completed_steps": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "next_step": { "type": "string" },
+    "last_updated": { "type": "string" },
+    "remediation_loop": {
+      "type": "object",
+      "description": "Remediation cycle state. Present whenever a remediation cycle has been started.",
+      "required": ["current_cycle", "cycles"],
+      "properties": {
+        "current_cycle": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based index of the cycle currently in progress or most recently completed."
+        },
+        "cycles": {
+          "type": "array",
+          "description": "Sequential list of remediation cycles. The Nth cycle (0-based) corresponds to current_cycle == N+1.",
+          "items": { "$ref": "#/$defs/cycle" }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "cycle": {
+      "type": "object",
+      "required": [
+        "entry_timestamp",
+        "inputs_path",
+        "plan_path",
+        "preflight",
+        "execution_status",
+        "audit_paths",
+        "blocking_count",
+        "exit_condition_met"
+      ],
+      "properties": {
+        "entry_timestamp": {
+          "type": "string",
+          "description": "ISO-8601 yyyy-MM-ddTHH-mm timestamp at cycle entry."
+        },
+        "exit_timestamp": {
+          "type": ["string", "null"],
+          "description": "ISO-8601 yyyy-MM-ddTHH-mm timestamp at cycle exit; null while the cycle is still in progress."
+        },
+        "inputs_path": {
+          "type": "string",
+          "description": "Path to remediation-inputs.<entry-ts>.md authored by the orchestrator."
+        },
+        "plan_path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to remediation-plan.<entry-ts>.md authored by atomic-planner. Required; an empty string is a malformed cycle."
+        },
+        "preflight": { "$ref": "#/$defs/preflight" },
+        "execution_status": {
+          "type": "string",
+          "enum": ["not_started", "in_progress", "complete", "failed"]
+        },
+        "audit_paths": {
+          "type": "object",
+          "required": ["code_review", "feature_audit", "policy_audit"],
+          "properties": {
+            "code_review": { "type": ["string", "null"] },
+            "feature_audit": { "type": ["string", "null"] },
+            "policy_audit": { "type": ["string", "null"] }
+          },
+          "additionalProperties": false
+        },
+        "blocking_count": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Total FAIL + blocking-PARTIAL findings across the three reaudit artifacts; null until reaudit completes."
+        },
+        "exit_condition_met": {
+          "type": ["boolean", "null"],
+          "description": "True only when blocking_count == 0; null until the exit gate runs."
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "description": "Exit-gate invariant: exit_condition_met == true requires blocking_count == 0.",
+          "if": {
+            "properties": { "exit_condition_met": { "const": true } },
+            "required": ["exit_condition_met"]
+          },
+          "then": {
+            "properties": { "blocking_count": { "const": 0 } },
+            "required": ["blocking_count"]
+          }
+        },
+        {
+          "description": "Execution-without-cleared-preflight invariant: any non-not_started execution_status requires preflight.final_status == 'clear'.",
+          "if": {
+            "properties": {
+              "execution_status": {
+                "enum": ["in_progress", "complete", "failed"]
+              }
+            },
+            "required": ["execution_status"]
+          },
+          "then": {
+            "properties": {
+              "preflight": {
+                "properties": {
+                  "final_status": { "const": "clear" }
+                },
+                "required": ["final_status"]
+              }
+            },
+            "required": ["preflight"]
+          }
+        }
+      ]
+    },
+    "preflight": {
+      "type": "object",
+      "required": ["iterations", "final_status"],
+      "properties": {
+        "iterations": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of preflight passes that ran for this cycle."
+        },
+        "final_status": {
+          "type": "string",
+          "enum": ["clear", "changes_requested", "pending"],
+          "description": "Most recent preflight outcome for this cycle."
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -32,9 +32,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (AgentReadyz probe)' {
             param([uri]$Uri, [string]$Method, [int]$TimeoutSec, [switch]$UseBasicParsing, [switch]$SkipHttpErrorCheck, $Headers, $Body)
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
                 default { '{}' }
@@ -55,9 +55,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (AgentReadyz probe)' {
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
             $statusCode = 200
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { $statusCode = 503; 'not ready' }
                 default { '{}' }
@@ -80,9 +80,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (AgentReadyz probe)' {
                 throw 'Connection refused'
             }
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 default { '{}' }
             }

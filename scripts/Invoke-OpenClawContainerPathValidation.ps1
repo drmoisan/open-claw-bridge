@@ -19,7 +19,7 @@ and the four new probes introduced by issue #38) live in the
 Base URL for OpenClaw.Core endpoint probes. When omitted, the script reads
 `OPENCLAW_HTTP_PORT` from `-EnvFilePath` and uses `http://127.0.0.1:<port>`.
 If the env file or port setting is absent, the fallback is
-`http://127.0.0.1:8080`.
+`http://127.0.0.1:8081`.
 #>
 [CmdletBinding()]
 param(
@@ -53,7 +53,7 @@ function Get-OpenClawCoreBaseUrl {
     )
 
     $envMap = Get-OpenClawEnvFileMap -EnvFilePath $EnvFilePath
-    $portValue = '8080'
+    $portValue = '8081'
     if ($envMap.ContainsKey('OPENCLAW_HTTP_PORT') -and -not [string]::IsNullOrWhiteSpace([string]$envMap['OPENCLAW_HTTP_PORT'])) {
         $portValue = ([string]$envMap['OPENCLAW_HTTP_PORT']).Trim().Trim([char[]]@('"', "'"))
     }
@@ -296,4 +296,5 @@ else {
         Select-Object Category, Name, IsExpected, HttpStatusCode, Summary |
             Format-Table -AutoSize
 }
+
 

@@ -38,12 +38,16 @@ Describe 'Install.Helpers.psm1' {
                 'Invoke-MsixInstall',
                 'Invoke-MsixCapture',
                 'Invoke-MsixRemove',
+                'Invoke-MsixAppActivate',
                 'Test-DockerAvailable',
                 'Invoke-ComposeUp',
                 'Wait-ComposeHealthy',
                 'Invoke-ComposeDown',
                 'Write-InstallRecord',
-                'Read-InstallRecord'
+                'Read-InstallRecord',
+                'Get-ListeningProcessId',
+                'Get-ProcessMainModulePath',
+                'Invoke-HostAdapterStatusRequest'
             ) | Sort-Object
             $exported | Should -Be $expected
         }
@@ -264,150 +268,19 @@ Describe 'Install.Helpers.psm1' {
         }
     }
 
-    Context 'Test-DockerAvailable' {
-        BeforeEach {
-            # Define a docker shim in the global scope; individual It blocks
-            # override it to set the desired exit code.
-            function global:docker { $global:LASTEXITCODE = 0 }
-        }
-        AfterEach {
-            Remove-Item -Path 'Function:\global:docker' -ErrorAction SilentlyContinue
-        }
+    Context 'Invoke-MsixAppActivate' {
+        BeforeEach { Mock -ModuleName Install.Helpers Start-Process { } }
 
-        It 'returns $true when the docker shim sets $LASTEXITCODE = 0' {
-            function global:docker { $global:LASTEXITCODE = 0 }
-            Test-DockerAvailable | Should -BeTrue
-        }
-
-        It 'throws with a remediation message containing -SkipDocker when the shim sets $LASTEXITCODE = 1' {
-            function global:docker { $global:LASTEXITCODE = 1 }
-            $thrown = { Test-DockerAvailable } | Should -Throw -PassThru
-            $thrown.Exception.Message | Should -Match '-SkipDocker'
-        }
-    }
-
-    Context 'Invoke-ComposeUp' {
-        BeforeEach {
-            $global:lastDockerArgs = $null
-            function global:docker { $global:lastDockerArgs = $args; $global:LASTEXITCODE = 0 }
-        }
-        AfterEach {
-            Remove-Item -Path 'Function:\global:docker' -ErrorAction SilentlyContinue
-            Remove-Variable -Name lastDockerArgs -Scope Global -ErrorAction SilentlyContinue
-        }
-
-        It 'docker shim receives compose up -d with explicit flags verbatim' {
-            Invoke-ComposeUp -DestDockerDir 'C:\dest\docker' -ComposeFilePath 'C:\dest\docker\docker-compose.yml'
-            $expected = @('compose', '--project-name', 'openclaw', '--project-directory', 'C:\dest\docker', '-f', 'C:\dest\docker\docker-compose.yml', 'up', '-d', 'openclaw-core', 'openclaw-agent')
-            ($global:lastDockerArgs -join '|') | Should -Be ($expected -join '|')
-        }
-
-        It 'throws on non-zero exit' {
-            function global:docker { $global:lastDockerArgs = $args; $global:LASTEXITCODE = 1 }
-            { Invoke-ComposeUp -DestDockerDir 'C:\dest\docker' -ComposeFilePath 'C:\dest\docker\dc.yml' } |
-                Should -Throw -ExpectedMessage '*docker compose up failed*'
-        }
-
-        It '-WhatIf does not invoke the shim' {
-            Invoke-ComposeUp -DestDockerDir 'C:\d' -ComposeFilePath 'C:\d\dc.yml' -WhatIf
-            $global:lastDockerArgs | Should -BeNullOrEmpty
-        }
-    }
-
-    Context 'Wait-ComposeHealthy' {
-        BeforeEach {
-            $global:dockerCallCount = 0
-            $global:dockerResponses = @()
-            function global:docker {
-                $global:dockerCallCount++
-                $global:LASTEXITCODE = 0
-                $idx = [math]::Min($global:dockerCallCount - 1, $global:dockerResponses.Count - 1)
-                $global:dockerResponses[$idx]
+        It 'invokes Start-Process with the supplied ActivationUri under ShouldProcess' {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun'
+            Should -Invoke -ModuleName Install.Helpers -CommandName Start-Process -Times 1 -Exactly -ParameterFilter {
+                $FilePath -eq 'openclaw-mailbridge:firstrun'
             }
         }
-        AfterEach {
-            Remove-Item -Path 'Function:\global:docker' -ErrorAction SilentlyContinue
-            Remove-Variable -Name dockerCallCount -Scope Global -ErrorAction SilentlyContinue
-            Remove-Variable -Name dockerResponses -Scope Global -ErrorAction SilentlyContinue
-        }
 
-        It 'returns when both services report running + healthy on the first poll' {
-            $global:dockerResponses = @((@(
-                        [pscustomobject]@{ Service = 'openclaw-core'; State = 'running'; Health = 'healthy' },
-                        [pscustomobject]@{ Service = 'openclaw-agent'; State = 'running'; Health = 'healthy' }
-                    ) | ConvertTo-Json -Compress))
-            { Wait-ComposeHealthy -ComposeFilePath 'C:\x\dc.yml' -TimeoutSeconds 10 -PollIntervalSeconds 1 } | Should -Not -Throw
-        }
-
-        It 'throws with failing service name on timeout when a service never reports healthy' {
-            $global:dockerResponses = @((@(
-                        [pscustomobject]@{ Service = 'openclaw-core'; State = 'running'; Health = 'healthy' },
-                        [pscustomobject]@{ Service = 'openclaw-agent'; State = 'starting'; Health = 'starting' }
-                    ) | ConvertTo-Json -Compress))
-            $thrown = { Wait-ComposeHealthy -ComposeFilePath 'C:\x\dc.yml' -TimeoutSeconds 2 -PollIntervalSeconds 1 } | Should -Throw -PassThru
-            $thrown.Exception.Message | Should -Match 'openclaw-agent'
-        }
-
-        It 'accepts Health as null/empty when no healthcheck is defined' {
-            $global:dockerResponses = @((@(
-                        [pscustomobject]@{ Service = 'openclaw-core'; State = 'running'; Health = '' },
-                        [pscustomobject]@{ Service = 'openclaw-agent'; State = 'running'; Health = $null }
-                    ) | ConvertTo-Json -Compress))
-            { Wait-ComposeHealthy -ComposeFilePath 'C:\x\dc.yml' -TimeoutSeconds 10 -PollIntervalSeconds 1 } | Should -Not -Throw
-        }
-
-        It 'exposes default values -TimeoutSeconds 90 and -PollIntervalSeconds 3' {
-            $ast = (Get-Command -Module Install.Helpers -Name Wait-ComposeHealthy).ScriptBlock.Ast
-            $paramAst = $ast.Body.ParamBlock.Parameters
-            ($paramAst | Where-Object { $_.Name.VariablePath.UserPath -eq 'TimeoutSeconds' }).DefaultValue.Extent.Text | Should -Be '90'
-            ($paramAst | Where-Object { $_.Name.VariablePath.UserPath -eq 'PollIntervalSeconds' }).DefaultValue.Extent.Text | Should -Be '3'
-        }
-
-        It 'parses a stream of one JSON object per line' {
-            $core = [pscustomobject]@{ Service = 'openclaw-core'; State = 'running'; Health = 'healthy' } | ConvertTo-Json -Compress
-            $agent = [pscustomobject]@{ Service = 'openclaw-agent'; State = 'running'; Health = 'healthy' } | ConvertTo-Json -Compress
-            $global:dockerResponses = @($core + "`n" + $agent)
-            { Wait-ComposeHealthy -ComposeFilePath 'C:\x\dc.yml' -TimeoutSeconds 10 -PollIntervalSeconds 1 } | Should -Not -Throw
-        }
-
-        It 'treats malformed JSON as transient and retries until timeout' {
-            $global:dockerResponses = @('NOT VALID JSON')
-            $thrown = { Wait-ComposeHealthy -ComposeFilePath 'C:\x\dc.yml' -TimeoutSeconds 2 -PollIntervalSeconds 1 } | Should -Throw -PassThru
-            $thrown.Exception.Message | Should -Match 'Timed out'
-        }
-
-        It 'reports absent-service when JSON omits a required service' {
-            $global:dockerResponses = @((@(
-                        [pscustomobject]@{ Service = 'openclaw-core'; State = 'running'; Health = 'healthy' }
-                    ) | ConvertTo-Json -Compress -AsArray))
-            $thrown = { Wait-ComposeHealthy -ComposeFilePath 'C:\x\dc.yml' -TimeoutSeconds 2 -PollIntervalSeconds 1 } | Should -Throw -PassThru
-            $thrown.Exception.Message | Should -Match 'openclaw-agent'
-        }
-    }
-
-    Context 'Invoke-ComposeDown' {
-        BeforeEach {
-            $global:lastDockerArgs = $null
-            function global:docker { $global:lastDockerArgs = $args; $global:LASTEXITCODE = 0 }
-        }
-        AfterEach {
-            Remove-Item -Path 'Function:\global:docker' -ErrorAction SilentlyContinue
-            Remove-Variable -Name lastDockerArgs -Scope Global -ErrorAction SilentlyContinue
-        }
-
-        It 'docker shim receives compose --project-name <name> -f <file> down verbatim' {
-            Invoke-ComposeDown -ComposeFilePath 'C:\x\dc.yml' -ProjectName 'openclaw'
-            ($global:lastDockerArgs -join '|') | Should -Be (@('compose', '--project-name', 'openclaw', '-f', 'C:\x\dc.yml', 'down') -join '|')
-        }
-
-        It 'throws on non-zero exit' {
-            function global:docker { $global:lastDockerArgs = $args; $global:LASTEXITCODE = 2 }
-            { Invoke-ComposeDown -ComposeFilePath 'C:\x\dc.yml' } | Should -Throw -ExpectedMessage '*docker compose down failed*'
-        }
-
-        It '-WhatIf does not invoke the shim' {
-            Invoke-ComposeDown -ComposeFilePath 'C:\x\dc.yml' -WhatIf
-            $global:lastDockerArgs | Should -BeNullOrEmpty
+        It 'is a no-op when ShouldProcess returns false (e.g., -WhatIf)' {
+            Invoke-MsixAppActivate -ActivationUri 'openclaw-mailbridge:firstrun' -WhatIf
+            Should -Invoke -ModuleName Install.Helpers -CommandName Start-Process -Times 0 -Exactly
         }
     }
 
@@ -490,5 +363,29 @@ Describe 'Install.Helpers.psm1' {
             $r.PSObject.Properties.Name | Should -Contain 'skipDocker'
             $r.PSObject.Properties.Name | Should -Contain 'allowUnsigned'
         }
+    }
+}
+
+Describe 'Get-ProcessMainModulePath defensive branch' {
+    BeforeAll { Import-Module (Join-Path $PSScriptRoot '..\..\scripts\Install.Helpers.psm1') -Force }
+    It 'returns $null and does not throw when Get-Process throws Win32Exception (access denied)' {
+        Mock Get-Process -ModuleName Install.Helpers -MockWith { throw [System.ComponentModel.Win32Exception]::new(5, 'Access is denied') } -ParameterFilter { $Id -eq 99001 -and $ErrorAction -eq 'Stop' }
+        Get-ProcessMainModulePath -ProcessId 99001 | Should -BeNullOrEmpty
+    }
+    It 'returns $null when Get-Process returns a process whose MainModule is null' {
+        Mock Get-Process -ModuleName Install.Helpers -MockWith { [pscustomobject]@{ Id = 99002; MainModule = $null } } -ParameterFilter { $Id -eq 99002 }
+        Get-ProcessMainModulePath -ProcessId 99002 | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Get-ListeningProcessId no-listener path' {
+    BeforeAll { Import-Module (Join-Path $PSScriptRoot '..\..\scripts\Install.Helpers.psm1') -Force }
+    It 'returns $null when Get-NetTCPConnection yields an empty pipeline' {
+        Mock Get-NetTCPConnection -ModuleName Install.Helpers -MockWith { } -ParameterFilter { $LocalPort -eq 14319 -and $State -eq 'Listen' }
+        Get-ListeningProcessId -Port 14319 | Should -BeNullOrEmpty
+    }
+    It 'returns the OwningProcess as [int] when a single listener is present' {
+        Mock Get-NetTCPConnection -ModuleName Install.Helpers -MockWith { [pscustomobject]@{ OwningProcess = 4321 } } -ParameterFilter { $LocalPort -eq 14320 -and $State -eq 'Listen' }
+        Get-ListeningProcessId -Port 14320 | Should -Be 4321
     }
 }

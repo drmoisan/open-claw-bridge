@@ -26,7 +26,7 @@ graph TB
         AgentTokenMount["/run/openclaw/hostadapter.token<br/>read-only bind mount (agent)"]
     end
 
-    Browser["Local browser / operator<br/>http://127.0.0.1:8080"]
+    Browser["Local browser / operator<br/>http://127.0.0.1:8081"]
 
     Outlook --> Bridge
     Bridge --> BridgeDb
@@ -502,7 +502,7 @@ flowchart TB
     TokenMount["Mount token file read-only<br/>at /run/openclaw/hostadapter.token"]
     Poll["Core pollers call HostAdapter<br/>through host.docker.internal"]
     Cache["Persist bridge snapshots,<br/>messages, events, cursors, ingest runs"]
-    Serve["Serve UI and internal APIs<br/>at http://127.0.0.1:8080"]
+    Serve["Serve UI and internal APIs<br/>at http://127.0.0.1:8081"]
     Degraded{"Bridge degraded or unavailable?"}
     Warn["Keep cached reads available<br/>show degraded / stale warnings"]
     Fallback["fallback to OpenClaw.MailBridge.Client<br/>for direct Windows-host troubleshooting"]

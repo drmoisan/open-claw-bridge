@@ -79,11 +79,12 @@ Describe 'Publish.Helpers.psm1' {
     }
 
     Context 'Module exports' {
-        It 'exports the expected 12 helper functions' {
+        It 'exports the expected 14 helper functions' {
             $expected = @(
                 'Find-WindowsSdkTool', 'Get-StampedAppxManifestXml', 'Invoke-VersionStamp',
                 'Invoke-LayoutAssembly', 'Invoke-MakePri', 'Invoke-MakeAppx',
-                'Invoke-SignTool', 'Invoke-DotnetPublish', 'Copy-DockerArtifact',
+                'Invoke-SignTool', 'Invoke-DotnetPublish', 'Invoke-DotnetExe',
+                'Resolve-CertThumbprint', 'Copy-DockerArtifact',
                 'Copy-InstallScriptsIntoBundle', 'New-ManifestEntry', 'Write-PublishManifest'
             ) | Sort-Object
             $actual = (Get-Command -Module Publish.Helpers).Name | Sort-Object
@@ -290,6 +291,67 @@ Describe 'Publish.Helpers.psm1' {
         }
     }
 
+    Context 'Resolve-CertThumbprint' {
+        # All cases mock the Invoke-DotnetExe WRAPPER (never the dotnet executable
+        # directly), with a mock signature matching param([string[]]$DotnetArgs).
+        It 'explicit thumbprint wins over user secret and env' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = SECRETVALUE'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint 'EXPLICITVALUE' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint 'ENVVALUE'
+            $r | Should -Be 'EXPLICITVALUE'
+            Assert-MockCalled -ModuleName Publish.Helpers Invoke-DotnetExe -Times 0 -Scope It
+        }
+        It 'returns the user-secret value when explicit is empty' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                @('Some preamble line', 'Signing:CertThumbprint = ABC123DEF456', 'Trailing line')
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint 'ENVVALUE'
+            $r | Should -Be 'ABC123DEF456'
+        }
+        It 'returns the injected env value when explicit and user secret are absent' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'No secrets configured for this application.'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint 'ENVVALUE'
+            $r | Should -Be 'ENVVALUE'
+        }
+        It 'returns empty string when all sources are absent' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'No secrets configured for this application.'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint ''
+            $r | Should -Be ''
+        }
+        It 'whitespace-only explicit value does not win; falls through to user secret' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = FALLTHROUGH'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '   ' -ProjectPath 'C:\fake\proj.csproj' -EnvThumbprint ''
+            $r | Should -Be 'FALLTHROUGH'
+        }
+        It 'skips the user-secret lookup when ProjectPath is empty' {
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = SHOULDNOTBEUSED'
+            }
+            $r = Resolve-CertThumbprint -ExplicitThumbprint '' -ProjectPath '' -EnvThumbprint 'ENVONLY'
+            $r | Should -Be 'ENVONLY'
+            Assert-MockCalled -ModuleName Publish.Helpers Invoke-DotnetExe -Times 0 -Scope It
+        }
+    }
+
     Context 'Copy-DockerArtifact' {
         BeforeEach {
             $script:Copies = @()
@@ -449,15 +511,17 @@ Describe 'Publish.Helpers.psm1' {
             }
             Mock -ModuleName Publish.Helpers Test-Path { $true }
         }
-        It 'copies Install.ps1, Uninstall.ps1, and Install.Helpers.psm1 in order' {
+        It 'copies Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and Install.Preflight.psm1 in order' {
             Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle'
-            $script:CopyCalls.Count | Should -Be 3
+            $script:CopyCalls.Count | Should -Be 4
             $script:CopyCalls[0].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.ps1')
             $script:CopyCalls[0].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.ps1')
             $script:CopyCalls[1].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Uninstall.ps1')
             $script:CopyCalls[1].Dst | Should -Be (Join-Path 'C:\bundle' 'Uninstall.ps1')
             $script:CopyCalls[2].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Helpers.psm1')
             $script:CopyCalls[2].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Helpers.psm1')
+            $script:CopyCalls[3].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Preflight.psm1')
+            $script:CopyCalls[3].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Preflight.psm1')
         }
         It 'throws with the missing path when a source file is absent' {
             $missing = Join-Path 'C:\repo\scripts' 'Uninstall.ps1'
@@ -474,3 +538,4 @@ Describe 'Publish.Helpers.psm1' {
         }
     }
 }
+

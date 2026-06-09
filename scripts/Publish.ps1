@@ -37,7 +37,18 @@
 
 .PARAMETER CertThumbprint
     SHA-1 thumbprint of the code-signing certificate in Cert:\CurrentUser\My.
-    Required unless -SkipSign is supplied.
+    Required unless -SkipSign is supplied. When -SkipSign is not set and this
+    parameter is empty, the thumbprint is resolved via Resolve-CertThumbprint in
+    the following precedence:
+      1. an explicit -CertThumbprint value (always wins);
+      2. the dotnet user secret 'Signing:CertThumbprint' for
+         src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj (set via
+         `dotnet user-secrets set 'Signing:CertThumbprint' '<thumbprint>'
+          --project src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj`);
+      3. the OPENCLAW_CERT_THUMBPRINT environment variable.
+    The original fail-fast contract is preserved: if -SkipSign is not set and no
+    thumbprint can be resolved from any source, the script throws before any
+    state-changing stage.
 
 .PARAMETER SkipSign
     When supplied, the MSIX is packed but not signed.
@@ -79,19 +90,32 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# Import without -Force so Pester mocks applied to the already-loaded module
-# are preserved across repeated script invocations within the same session.
-Import-Module (Join-Path $PSScriptRoot 'Publish.Helpers.psm1')
+# Force a reload so a reused PowerShell session does not keep executing an
+# older Publish.Helpers module after the file changes on disk.
+Import-Module (Join-Path $PSScriptRoot 'Publish.Helpers.psm1') -Force -ErrorAction Stop
 
 # --- Main (only runs when executed directly, not when dot-sourced for tests) ---
 if ($MyInvocation.InvocationName -ne '.') {
 
-    # Stage 0: parameter validation. Fail fast before any state-changing stage.
+    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+
+    # Stage 0a: resolve the signing thumbprint when signing is requested but no
+    # explicit -CertThumbprint was provided. Precedence: explicit > user secret >
+    # OPENCLAW_CERT_THUMBPRINT env var. The env value is injected (not read inside
+    # the resolver) to keep resolution deterministic and testable.
     if (-not $SkipSign -and [string]::IsNullOrWhiteSpace($CertThumbprint)) {
-        throw 'Either -SkipSign or a non-empty -CertThumbprint must be supplied. Refusing to proceed with an ambiguous signing configuration.'
+        $signingProject = Join-Path $RepoRoot 'src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj'
+        $CertThumbprint = Resolve-CertThumbprint `
+            -ExplicitThumbprint $CertThumbprint `
+            -ProjectPath $signingProject `
+            -EnvThumbprint $env:OPENCLAW_CERT_THUMBPRINT
     }
 
-    $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    # Stage 0b: parameter validation. Fail fast before any state-changing stage.
+    if (-not $SkipSign -and [string]::IsNullOrWhiteSpace($CertThumbprint)) {
+        throw 'Either -SkipSign or a non-empty -CertThumbprint must be supplied (directly, via the dotnet user secret Signing:CertThumbprint, or via OPENCLAW_CERT_THUMBPRINT). Refusing to proceed with an ambiguous signing configuration.'
+    }
+
     $BundleRoot = Join-Path $OutputDir $Version
 
     # Stage 1: clean and recreate the bundle root.
@@ -176,7 +200,7 @@ if ($MyInvocation.InvocationName -ne '.') {
 
     # Stage 5: stage install scripts into the bundle root so the bundle is
     # self-installing (operator cd's into the bundle and runs .\Install.ps1).
-    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1 into $BundleRoot" -InformationAction Continue
+    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and Install.Preflight.psm1 into $BundleRoot" -InformationAction Continue
     Copy-InstallScriptsIntoBundle -RepoRoot $RepoRoot -BundleRoot $BundleRoot
 
     # Stage 6: manifest (runs AFTER install-script staging so the manifest

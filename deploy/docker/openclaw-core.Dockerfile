@@ -54,7 +54,7 @@ COPY --from=build --chown=app:app /app/publish /app/
 # Run the service as the dedicated application user and expose the internal web
 # port consumed by the compose configuration.
 USER app
-EXPOSE 8080
+EXPOSE 8081
 
 # Delegate startup to the repository entrypoint so environment setup and any
 # pre-launch checks stay in one place.

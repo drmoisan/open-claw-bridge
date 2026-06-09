@@ -7,12 +7,12 @@
   IgnorableNamespaces="uap uap5 rescap">
   <Identity
     Name="OpenClaw.MailBridge"
-    Publisher="CN=OpenClaw, O=OpenClaw, C=US"
-    Version="1.0.0.0"
+    Publisher="CN=Daniel Moisan, O=Daniel Moisan, S=Connecticut, C=US"
+    Version="1.0.1.0"
     ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>OpenClaw MailBridge</DisplayName>
-    <PublisherDisplayName>OpenClaw</PublisherDisplayName>
+    <PublisherDisplayName>Daniel Moisan</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   <Dependencies>
@@ -33,6 +33,9 @@
         <uap5:Extension Category="windows.startupTask" Executable="bridge\OpenClaw.MailBridge.exe" EntryPoint="Windows.FullTrustApplication">
           <uap5:StartupTask TaskId="OpenClawMailBridge" Enabled="true" DisplayName="OpenClaw MailBridge" />
         </uap5:Extension>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="openclaw-mailbridge" />
+        </uap:Extension>
       </Extensions>
     </Application>
   </Applications>

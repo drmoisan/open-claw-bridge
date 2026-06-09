@@ -396,7 +396,8 @@ function Copy-InstallScriptsIntoBundle {
     .SYNOPSIS
         Copies the install-related scripts from the repo into the bundle root.
     .DESCRIPTION
-        The three files Install.ps1, Uninstall.ps1, and Install.Helpers.psm1
+        The four files Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and
+        Install.Preflight.psm1
         must ship inside every bundle so operators can `cd` into the bundle
         directory and invoke .\Install.ps1 directly (the script self-locates
         via $PSScriptRoot). This helper resolves <RepoRoot>/scripts/<name> for
@@ -406,7 +407,7 @@ function Copy-InstallScriptsIntoBundle {
         Absolute path to the repository root containing the scripts/ directory.
     .PARAMETER BundleRoot
         Absolute path to the bundle root (same level as executables/, docker/,
-        msix/). The three install-script files are copied to this directory.
+        msix/). The install-script files are copied to this directory.
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -418,7 +419,7 @@ function Copy-InstallScriptsIntoBundle {
     )
 
     $srcScriptsDir = Join-Path $RepoRoot 'scripts'
-    $names = @('Install.ps1', 'Uninstall.ps1', 'Install.Helpers.psm1')
+    $names = @('Install.ps1', 'Uninstall.ps1', 'Install.Helpers.psm1', 'Install.Preflight.psm1')
 
     foreach ($name in $names) {
         $srcPath = Join-Path $srcScriptsDir $name
@@ -479,6 +480,86 @@ function Write-PublishManifest {
     return $manifestPath
 }
 
+function Invoke-DotnetExe {
+    <#
+    .SYNOPSIS
+        External-executable wrapper seam for the dotnet CLI.
+    .DESCRIPTION
+        Runs `dotnet @DotnetArgs 2>&1` and returns the merged output. This wrapper
+        exists so callers (for example Resolve-CertThumbprint) can be unit-tested by
+        mocking Invoke-DotnetExe rather than mocking the dotnet executable directly,
+        per the repo design-seam rule. The parameter is named DotnetArgs (not Args)
+        to avoid the automatic-variable collision.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$DotnetArgs
+    )
+
+    return & dotnet @DotnetArgs 2>&1
+}
+
+function Resolve-CertThumbprint {
+    <#
+    .SYNOPSIS
+        Resolves a code-signing certificate thumbprint from the first available source.
+    .DESCRIPTION
+        Returns the first non-empty value found, in this precedence:
+          1. -ExplicitThumbprint when non-empty/non-whitespace (an explicit caller value
+             always wins);
+          2. the dotnet user secret 'Signing:CertThumbprint' for the project at
+             -ProjectPath, read via the Invoke-DotnetExe wrapper seam and parsed from the
+             'Signing:CertThumbprint = <value>' line;
+          3. -EnvThumbprint, an injected environment value (the caller passes
+             $env:OPENCLAW_CERT_THUMBPRINT). The function never reads $env: itself so it
+             stays deterministic and testable.
+        Returns an empty string when none of the sources yields a value.
+    .PARAMETER ExplicitThumbprint
+        An explicit thumbprint supplied by the caller. Highest precedence.
+    .PARAMETER ProjectPath
+        Path to the .csproj whose dotnet user secrets are queried for
+        'Signing:CertThumbprint'.
+    .PARAMETER EnvThumbprint
+        An environment-supplied thumbprint, injected by the caller. Lowest precedence.
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [string]$ExplicitThumbprint = '',
+
+        [string]$ProjectPath = '',
+
+        [string]$EnvThumbprint = ''
+    )
+
+    # Source 1: explicit value always wins.
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitThumbprint)) {
+        return $ExplicitThumbprint.Trim()
+    }
+
+    # Source 2: dotnet user secret 'Signing:CertThumbprint'.
+    if (-not [string]::IsNullOrWhiteSpace($ProjectPath)) {
+        $secretsOutput = Invoke-DotnetExe -DotnetArgs @('user-secrets', 'list', '--project', $ProjectPath)
+        foreach ($line in @($secretsOutput)) {
+            $text = [string]$line
+            if ($text -match '^Signing:CertThumbprint = (.+)$') {
+                $value = $Matches[1].Trim()
+                if (-not [string]::IsNullOrWhiteSpace($value)) {
+                    return $value
+                }
+            }
+        }
+    }
+
+    # Source 3: injected environment value.
+    if (-not [string]::IsNullOrWhiteSpace($EnvThumbprint)) {
+        return $EnvThumbprint.Trim()
+    }
+
+    return ''
+}
+
 Export-ModuleMember -Function @(
     'Find-WindowsSdkTool'
     'Get-StampedAppxManifestXml'
@@ -488,9 +569,13 @@ Export-ModuleMember -Function @(
     'Invoke-MakeAppx'
     'Invoke-SignTool'
     'Invoke-DotnetPublish'
+    'Invoke-DotnetExe'
+    'Resolve-CertThumbprint'
     'Copy-DockerArtifact'
     'Copy-InstallScriptsIntoBundle'
     'New-ManifestEntry'
     'Write-PublishManifest'
 )
+
+
 

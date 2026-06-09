@@ -345,8 +345,7 @@ Every new or modified unit test must adhere to these guidelines.
   - These coverage expectations apply across all languages in the repo.
   - Aim to exercise critical paths and important edge conditions.
   - Configure coverage tooling to exclude test files (e.g., `tests/`), so metrics reflect the application code, not the tests themselves.
-  - Repository-wide line coverage must remain `>= 80%`.
-  - Any new modules, classes, or methods added must target `>= 90%` coverage.
+  - Repository-wide line coverage must remain `>= 85%` and branch coverage must remain `>= 75%`, uniform across all tiers (T1–T4).
   - Code changes or refactors must not reduce coverage for the lines that were changed.
   - Coverage is a supporting metric, not the sole quality gate; untested critical behavior is not acceptable even if the overall percentage looks good.
 
@@ -432,27 +431,23 @@ These are the required tools for C# code in this repo:
    - Do **not** use `dotnet format` — it loads the solution/project model and can mis-handle legacy VSTO / .NET Framework projects by rewriting `.csproj` files.
    - `csharpier` is file-based and formats only `*.cs` without touching project files.
    - Do not hand-format; if a diff disagrees with `csharpier`, formatter output wins.
-   - Approved commands:
-     - `dotnet tool run csharpier .`
-     - or `csharpier .` (if installed globally)
+   - Approved command (CSharpier is available as a global tool):
+     - `csharpier .`
 
 2. **Linting / Static Analysis — .NET analyzers**
 
-   - C# code must pass Roslyn/.NET analyzer diagnostics configured by `.editorconfig`, `.globalconfig`, and project properties.
-   - Enforce analyzer diagnostics in build using `EnableNETAnalyzers` and `EnforceCodeStyleInBuild`.
+   - C# code must pass Roslyn/.NET analyzer diagnostics from the .NET SDK defaults and per-project settings this repository actually uses.
    - Prefer fixing diagnostics over suppressing them.
-   - Approved commands (Windows; choose the variant for your shell):
-     - **CMD / Developer Command Prompt:** `msbuild TaskMaster.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true`
-     - **PowerShell:** `msbuild TaskMaster.sln /t:Build /p:Configuration=Debug /p:Platform='Any CPU' /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true`
+   - Approved command:
+     - `dotnet build OpenClaw.MailBridge.sln`
 
 3. **Type Checking — C# compiler + nullable analysis**
 
    - Treat C# compiler diagnostics and nullable-flow warnings as first-class type-safety checks.
    - Enable nullable reference types and fail builds on warnings for touched code paths.
    - Avoid introducing nullable warnings; fix the root null-state issue instead.
-   - Approved commands (Windows; choose the variant for your shell):
-     - **CMD / Developer Command Prompt:** `msbuild TaskMaster.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true`
-     - **PowerShell:** `msbuild TaskMaster.sln /t:Build /p:Configuration=Debug /p:Platform='Any CPU' /p:Nullable=enable /p:TreatWarningsAsErrors=true`
+   - Approved command:
+     - `dotnet build OpenClaw.MailBridge.sln`
 
 > **Testing tools and behavior are defined in the unit test policies.** Do not define test behavior here; instead, obey `general-unit-test.instructions.md` and `csharp-unit-test.instructions.md`.
 
@@ -625,9 +620,8 @@ Rules:
 
 - For C# work, use these concrete commands for the general policy toolchain loop:
   1. `csharpier .`
-  2. `msbuild TaskMaster.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:EnableNETAnalyzers=true /p:EnforceCodeStyleInBuild=true`
-  3. `msbuild TaskMaster.sln /t:Build /p:Configuration=Debug /p:Platform="Any CPU" /p:Nullable=enable /p:TreatWarningsAsErrors=true`
-  4. `vstest.console.exe <test-assembly-paths> /EnableCodeCoverage`
+  2. `dotnet build OpenClaw.MailBridge.sln`
+  3. `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`
 
 - The loop behavior (restart rules, must-pass requirements, and audit expectations) is defined by `general-code-change.instructions.md` and is intentionally not repeated here.
 
@@ -1251,7 +1245,7 @@ Rerun the loop from step 1 if any step changes code or fails.
 ## 1. Framework and Scope
 
 - **Testing framework:** All PowerShell tests must use **Pester** (v5.x).
-- Use the repo config at `scripts/powershell/PoshQC/settings/pester.runsettings.psd1`.
+- CI runs Pester directly as `Invoke-Pester -Path tests/scripts -Output Detailed -CI` (see `.github/workflows/ci.yml`). A PoshQC repo settings file at `scripts/powershell/PoshQC/settings/pester.runsettings.psd1` is not yet present in this repository; do not reference it as an existing config.
 - **Agent execution requirement:** use the MCP server function `mcp_drmcopilotext_run_poshqc_test`. Do **not** use VS Code task wrappers as a substitute.
 - Keep tests compatible with PowerShell 7+.
 

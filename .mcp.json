@@ -1,12 +1,8 @@
 {
   "mcpServers": {
-    "drmCopilotExtension": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "C:/Users/DanMoisan/.vscode-insiders/extensions/undefined_publisher.drm-copilot-0.0.1/out/mcp-server.js"
-      ],
-      "env": {}
+    "drm-copilot": {
+      "command": "npx",
+      "args": ["-y", "@danmoisan/drm-copilot-mcp"]
     }
   }
 }

@@ -258,7 +258,7 @@ docker compose --env-file .env -f .\docker-compose.yml -f .\docker-compose.dev.y
 Open the local UI:
 
 ```text
-http://127.0.0.1:8080
+http://127.0.0.1:8081
 ```
 
 Validate the local-only path:
@@ -266,13 +266,13 @@ Validate the local-only path:
 ```powershell
 $token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
 curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/v1/status
-curl.exe http://127.0.0.1:8080/health/ready
-curl.exe http://127.0.0.1:8080/api/status
+curl.exe http://127.0.0.1:8081/health/ready
+curl.exe http://127.0.0.1:8081/api/status
 ```
 
 Operational notes:
 
-- `OpenClaw.Core` publishes only to `127.0.0.1:${OPENCLAW_HTTP_PORT:-8080}`.
+- `OpenClaw.Core` publishes only to `127.0.0.1:${OPENCLAW_HTTP_PORT:-8081}`.
 - The container keeps its own SQLite database at `/data/openclaw.db`.
 - If the HostAdapter or container path is unavailable, use `OpenClaw.MailBridge.Client` directly on the Windows host as the fallback troubleshooting path.
 

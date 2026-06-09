@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.WindowsServices;
@@ -9,6 +10,11 @@ namespace OpenClaw.MailBridge;
 
 internal class BridgeApplication
 {
+    private static readonly JsonSerializerOptions SettingsSerializerOptions = new()
+    {
+        WriteIndented = true,
+    };
+
     public async Task<int> RunAsync(string[] args)
     {
         var configPath =
@@ -67,16 +73,37 @@ internal class BridgeApplication
         {
             WriteSettingsStore(
                 path,
-                JsonSerializer.Serialize(
-                    BridgeSettings.Default,
-                    new JsonSerializerOptions { WriteIndented = true }
-                )
+                JsonSerializer.Serialize(BridgeSettings.Default, SettingsSerializerOptions)
             );
             return BridgeSettings.Default;
         }
 
-        return JsonSerializer.Deserialize<BridgeSettings>(ReadSettingsStore(path))
-            ?? BridgeSettings.Default;
+        return MergeWithDefaults(ReadSettingsStore(path)) ?? BridgeSettings.Default;
+    }
+
+    /// <summary>
+    /// Overlays a persisted settings document onto <see cref="BridgeSettings.Default"/> so that
+    /// fields absent from an older-schema file retain their default values while fields present
+    /// in the file are honored verbatim (including values that later fail validation). Returns
+    /// <c>null</c> when the persisted document is JSON <c>null</c>, mirroring the prior
+    /// <see cref="JsonSerializer.Deserialize{TValue}(string, JsonSerializerOptions)"/> contract.
+    /// </summary>
+    private static BridgeSettings? MergeWithDefaults(string storedContent)
+    {
+        if (JsonNode.Parse(storedContent) is not JsonObject storedObject)
+        {
+            return null;
+        }
+
+        var merged = (JsonObject)
+            JsonSerializer.SerializeToNode(BridgeSettings.Default, SettingsSerializerOptions)!;
+
+        foreach (var property in storedObject)
+        {
+            merged[property.Key] = property.Value?.DeepClone();
+        }
+
+        return merged.Deserialize<BridgeSettings>(SettingsSerializerOptions);
     }
 
     internal virtual void EnsureSettingsDirectory(string path) =>

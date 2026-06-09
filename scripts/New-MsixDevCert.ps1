@@ -10,7 +10,7 @@
 
 .PARAMETER Subject
     The certificate subject distinguished name. Must match the Publisher attribute in Package.appxmanifest.
-    Defaults to 'CN=OpenClaw, O=OpenClaw, C=US'.
+    Defaults to 'CN=Daniel Moisan, O=Daniel Moisan, S=Connecticut, C=US'.
 
 .PARAMETER OutputDir
     Directory path where the exported PFX and CER files are written.
@@ -25,11 +25,11 @@
 
 .EXAMPLE
     $pwd = ConvertTo-SecureString 'mypass' -AsPlainText -Force
-    .\New-MsixDevCert.ps1 -Subject 'CN=OpenClaw, O=OpenClaw, C=US' -OutputDir 'artifacts' -PfxPassword $pwd
+    .\New-MsixDevCert.ps1 -Subject 'CN=Daniel Moisan, O=Daniel Moisan, S=Connecticut, C=US' -OutputDir 'artifacts' -PfxPassword $pwd
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [string]$Subject = 'CN=OpenClaw, O=OpenClaw, C=US',
+    [string]$Subject = 'CN=Daniel Moisan, O=Daniel Moisan, S=Connecticut, C=US',
 
     [string]$OutputDir = 'artifacts',
 

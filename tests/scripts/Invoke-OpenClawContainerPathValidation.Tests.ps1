@@ -43,9 +43,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
             $requestedUris.Add([string]$Uri)
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true,"cacheStale":false,"lastSuccessfulPollUtc":"2026-04-20T12:00:00Z"}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"lastSuccessfulPollUtc":"2026-04-20T12:00:00Z","cacheItemCounts":{"messages":1,"meetingRequests":0,"events":2},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true,"cacheStale":false,"lastSuccessfulPollUtc":"2026-04-20T12:00:00Z"}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"lastSuccessfulPollUtc":"2026-04-20T12:00:00Z","cacheItemCounts":{"messages":1,"meetingRequests":0,"events":2},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
                 default { throw "Unexpected URI: $Uri" }
@@ -175,12 +175,12 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
             $statusCode = 200
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' {
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' {
                     $statusCode = 503
                     '{"status":"degraded","sqliteReady":true,"hostAdapterReachable":false,"cacheStale":true}'
                 }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":false,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":true,"staleReason":"HostAdapter unreachable"}}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":false,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":true,"staleReason":"HostAdapter unreachable"}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
                 default { throw "Unexpected URI: $Uri" }
@@ -252,9 +252,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
 
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
                 default { throw "Unexpected URI: $Uri" }

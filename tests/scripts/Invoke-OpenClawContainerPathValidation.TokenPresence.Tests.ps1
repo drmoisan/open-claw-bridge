@@ -30,9 +30,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (GatewayTokenPresence probe
             param([uri]$Uri, [string]$Method, [int]$TimeoutSec, [switch]$UseBasicParsing, [switch]$SkipHttpErrorCheck, $Headers, $Body)
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck, $Headers, $Body)
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html>dashboard</html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
                 default { '{}' }
@@ -51,7 +51,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (GatewayTokenPresence probe
         # SupportingDiagnostics names the missing key.
         Mock -ModuleName OpenClawContainerValidation Test-Path { return $true }
         Mock -ModuleName OpenClawContainerValidation Get-Content {
-            return @('OPENCLAW_AGENT_IMAGE=ghcr.io/openclaw/openclaw:latest', 'OPENCLAW_HTTP_PORT=8080')
+            return @('OPENCLAW_AGENT_IMAGE=ghcr.io/openclaw/openclaw:latest', 'OPENCLAW_HTTP_PORT=8081')
         } -ParameterFilter { (($Path -and $Path -match '\.env$') -or ($LiteralPath -and $LiteralPath -match '\.env$')) }
 
         Mock -ModuleName OpenClawContainerValidation Invoke-WebRequest {
@@ -64,9 +64,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (GatewayTokenPresence probe
             )
             $null = @($Method, $TimeoutSec, $UseBasicParsing, $SkipHttpErrorCheck)
             $content = switch ([string]$Uri) {
-                'http://127.0.0.1:8080/health/live' { '{"status":"live"}' }
-                'http://127.0.0.1:8080/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
-                'http://127.0.0.1:8080/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
+                'http://127.0.0.1:8081/health/live' { '{"status":"live"}' }
+                'http://127.0.0.1:8081/health/ready' { '{"status":"ready","sqliteReady":true,"hostAdapterReachable":true}' }
+                'http://127.0.0.1:8081/api/status' { '{"sqliteReady":true,"hostAdapterReachable":true,"cacheItemCounts":{"messages":0,"meetingRequests":0,"events":0},"bridgeFreshness":{"cacheStale":false}}' }
                 'http://127.0.0.1:18789/' { '<html><body>OpenClaw Gateway Dashboard</body></html>' }
                 'http://127.0.0.1:18789/readyz' { 'ready' }
                 default { '{}' }
