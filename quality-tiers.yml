@@ -1,0 +1,27 @@
+# Module rigor tier map for OpenClaw.MailBridge.sln.
+#
+# Tier definitions and rationale are in docs/ci.research.md section 1
+# (the source of truth for the T1-T4 tier system). Every project in
+# OpenClaw.MailBridge.sln must appear here with a tier in {T1, T2, T3, T4}.
+# Test projects are classified with their production peer.
+#
+# Coverage thresholds (line >= 85%, branch >= 75%) are uniform across all
+# tiers; the tier controls the tier-dependent gates only.
+
+projects:
+  # T1 - Critical: host-agnostic core and host-adapter implementation.
+  OpenClaw.Core: T1
+  OpenClaw.HostAdapter: T1
+
+  # T2 - Core: contract surfaces and the managed bridge entry point.
+  OpenClaw.MailBridge.Contracts: T2
+  OpenClaw.HostAdapter.Contracts: T2
+  OpenClaw.MailBridge: T2
+
+  # T3 - Adapters & UI: client transport and the Outlook-COM-confined surface.
+  OpenClaw.MailBridge.Client: T3
+
+  # Test projects, classified with their production peer.
+  OpenClaw.Core.Tests: T1
+  OpenClaw.HostAdapter.Tests: T1
+  OpenClaw.MailBridge.Tests: T2
