@@ -26,6 +26,7 @@ Every unit test must satisfy all five of these properties:
 - Tier-specific lower coverage thresholds are not used in this repository. See `.claude/rules/quality-tiers.md` for the full tier system.
 - Coverage is a supporting metric, not the sole quality gate. Untested critical behavior is not acceptable even if the overall percentage looks good.
 - Configure coverage tooling to exclude test files (e.g., `tests/`) so metrics reflect application code, not tests.
+- Agent-harness tooling under `.claude/hooks/**` is classified as T4 scaffolding (see `.claude/rules/quality-tiers.md`) and is excluded from the application coverage surface, consistent with excluding test files and dev `scripts/` tooling. A language whose only changed files on a branch are under `.claude/hooks/**` does not require an application-coverage PASS/FAIL verdict for that language. This scope exclusion does not lower the product-code thresholds: line coverage >= 85% and branch coverage >= 75% remain unchanged for application code.
 
 ## Scenario Completeness
 

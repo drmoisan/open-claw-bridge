@@ -126,6 +126,13 @@ function Get-ChangedLanguageSet {
     foreach ($line in $Lines) {
         if ($line -notmatch '^\s*-\s+(\S+)\s+\(\+\d+/-\d+\)\s*$') { continue }
         $path = $matches[1]
+        # Agent-harness tooling under .claude/hooks/** is classified as T4 scaffolding and is
+        # excluded from the application coverage surface (see .claude/rules/general-unit-test.md
+        # and .claude/rules/quality-tiers.md). Such paths do not contribute a changed language,
+        # so a branch whose only changed files of a given language live under .claude/hooks/**
+        # does not require an application-coverage verdict for that language.
+        $normalizedPath = $path -replace '\\', '/'
+        if ($normalizedPath -match '(^|/)\.claude/hooks/') { continue }
         $ext = [IO.Path]::GetExtension($path).ToLowerInvariant()
         switch -Regex ($ext) {
             '^\.(ts|tsx)$' { $langs['TypeScript'] = $true }

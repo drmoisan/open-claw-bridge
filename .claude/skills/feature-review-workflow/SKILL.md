@@ -114,6 +114,7 @@ If the branch diff modifies any path matching `.github/workflows/**`, `scripts/b
           - Repo-wide per language: line coverage >= 85% and branch coverage >= 75%. Flag as FAIL otherwise.
         - If coverage artifacts already exist from the executor run, inspect them instead of re-running.
         - If no coverage artifact exists for a language that has changed files, flag as FAIL — coverage verification is mandatory for all languages with changed files.
+        - Coverage-scope exclusion: agent-harness tooling under `.claude/hooks/**` is T4 scaffolding and is excluded from the per-language application coverage surface per `.claude/rules/general-unit-test.md` and `.claude/rules/quality-tiers.md`. A language whose only changed files in the branch diff are under `.claude/hooks/**` does not require an application-coverage PASS/FAIL verdict for that language. This exclusion is scoped to `.claude/hooks/**` harness tooling only; it does not narrow scope for any in-scope application language (the Scope-Invariant below still rejects narrowing whenever a language has non-hook changed files).
    - Run the smallest relevant subset first when the repo policy permits it.
    - If a tool cannot run in the environment, mark the affected section unverified or partial with a concrete reason.
 

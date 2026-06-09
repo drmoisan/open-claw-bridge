@@ -1,5 +1,33 @@
 # Phase 0 — Policy Read Evidence (Issue #66)
 
+> Remediation Cycle `remediation-plan.2026-06-08T20-00.md` (P0-T1).
+> Re-read of the required policy set for the PowerShell hook coverage-gate remediation. Prior cycles retained below.
+
+Timestamp: 2026-06-08T20-00
+
+Policy Order (remediation cycle): per `.claude/skills/policy-compliance-order` —
+1. `CLAUDE.md`
+2. `.claude/rules/general-code-change.md`
+3. `.claude/rules/general-unit-test.md`
+4. `.claude/rules/powershell.md`
+5. `.claude/rules/quality-tiers.md`
+
+Files read (remediation cycle, P0-T1 ordered set):
+
+1. `CLAUDE.md` — NOT PRESENT at repo root. The `policy-compliance-order` baseline lists `CLAUDE.md` as "always loaded", but no standalone root `CLAUDE.md` exists in this repository (verified: `Glob **/CLAUDE.md` → no files; `Test-Path CLAUDE.md` → false). Standing instructions are injected via system context. Documented assumption; no file-level standing-instruction document overrides the rule files below.
+2. `.claude/rules/general-code-change.md` — cross-language code change policy (read). 500-line cap for code/test/script; Markdown docs exempt.
+3. `.claude/rules/general-unit-test.md` — cross-language unit test policy (read). Coverage section confirmed: line >= 85%, branch >= 75%; existing test-file exclusion clause present (line 28).
+4. `.claude/rules/powershell.md` — PowerShell policy (read). Toolchain order: format (PoshQC) → analyze (PoshQC) → test (Pester); type-check N/A.
+5. `.claude/rules/quality-tiers.md` — module rigor tier system (read). T4 = scaffolding; current T4 examples include PowerShell dev tooling under `scripts/`.
+
+Override note (Option B): The operator decision authorizes targeted edits to `.claude/rules/general-unit-test.md` and `.claude/rules/quality-tiers.md` (coverage-scope exclusion of `.claude/hooks/**` as T4 scaffolding), as an explicit override of the `policy-compliance-order` baseline "Do NOT modify policy documents under `.claude/rules/`." No coverage threshold value is changed by this cycle.
+
+Verification: this section lists all five policy files named by P0-T1.
+
+---
+
+## Scope Extension (Option 1A) cycle — retained for provenance
+
 > Scope Extension (Option 1A) cycle, plan `plan.2026-06-08T11-00.md`.
 > Re-read of the required policy set for the extension. Original (09-20) read retained below.
 

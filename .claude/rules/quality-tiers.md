@@ -13,7 +13,7 @@ This rule defines the T1–T4 module rigor tier system used by all CI gates in t
 - **T1 — Critical.** Behavior bugs cause silent data loss, host-state corruption, or security holes. Examples: `OpenClaw.Core` (host-agnostic command/transfer model and core logic), `OpenClaw.HostAdapter` (host-adapter implementation brokering host operations).
 - **T2 — Core.** Bugs cause feature regressions but not data loss. Examples: `OpenClaw.MailBridge.Contracts`, `OpenClaw.HostAdapter.Contracts`, and the managed (non-COM) surface of `OpenClaw.MailBridge`.
 - **T3 — Adapters & UI.** Glue around APIs the team does not own. Examples: `OpenClaw.MailBridge.Client` (client transport) and the Outlook-COM-confined surface within `OpenClaw.MailBridge`. Outlook COM is allowed and confined here, not banned.
-- **T4 — Scaffolding.** Examples: DI wiring, bootstrap, build scripts, PowerShell dev tooling under `scripts/`, generated code, manifests.
+- **T4 — Scaffolding.** Examples: DI wiring, bootstrap, build scripts, PowerShell dev tooling under `scripts/`, agent-harness tooling under `.claude/hooks/**`, generated code, manifests. Agent-harness tooling under `.claude/hooks/**` is T4 scaffolding and is excluded from the application coverage surface, consistent with the coverage-scope clause in `.claude/rules/general-unit-test.md`; this exclusion does not lower the uniform line >= 85% / branch >= 75% thresholds for application code.
 
 ## Source of Truth
 
