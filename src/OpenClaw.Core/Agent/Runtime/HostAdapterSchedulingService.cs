@@ -1,0 +1,103 @@
+using OpenClaw.Core.Agent;
+using OpenClaw.HostAdapter.Contracts;
+
+namespace OpenClaw.Core.Agent.Runtime;
+
+/// <summary>
+/// HostAdapter-backed <see cref="ISchedulingService"/> implementation (OR-4). Wraps
+/// <see cref="IHostAdapterClient"/> and the <see cref="SchedulingDtoMapper"/> for the
+/// read methods available today. This is part of the runtime seam (namespace
+/// <c>OpenClaw.Core.Agent.Runtime</c>) and may reference
+/// <c>OpenClaw.HostAdapter.Contracts</c>, which <c>OpenClaw.Core</c> already references.
+/// </summary>
+public sealed class HostAdapterSchedulingService(
+    IHostAdapterClient hostAdapterClient,
+    SchedulingDtoMapper mapper
+) : ISchedulingService
+{
+    /// <inheritdoc />
+    public async Task<SchedulingMessageDto?> GetSchedulingMessageAsync(
+        string messageId,
+        CancellationToken ct
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+
+        var envelope = await hostAdapterClient
+            .GetMessageAsync(messageId, cancellationToken: ct)
+            .ConfigureAwait(false);
+        return envelope is { Ok: true, Data: not null } ? mapper.MapMessage(envelope.Data) : null;
+    }
+
+    /// <inheritdoc />
+    public async Task<SchedulingEventDto?> GetEventForMessageAsync(
+        string messageId,
+        CancellationToken ct
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
+
+        // The message-to-event linkage is part of the deferred bridge work (#71-#76).
+        // Until then the adapter attempts a direct event lookup by the supplied id and
+        // returns null when no event is linked, so the deterministic pipeline degrades
+        // gracefully (ordinary-mail fallback in D1).
+        return await GetEventAsync(messageId, ct).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<SchedulingEventDto>> GetCalendarViewAsync(
+        DateTimeOffset start,
+        DateTimeOffset end,
+        CancellationToken ct
+    )
+    {
+        var envelope = await hostAdapterClient
+            .ListCalendarWindowAsync(start, end, cancellationToken: ct)
+            .ConfigureAwait(false);
+        if (envelope is not { Ok: true, Data: not null })
+        {
+            return Array.Empty<SchedulingEventDto>();
+        }
+
+        return envelope.Data.Items.Select(mapper.MapEvent).ToList();
+    }
+
+    /// <inheritdoc />
+    public async Task<SchedulingEventDto?> GetEventAsync(string eventId, CancellationToken ct)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+
+        var envelope = await hostAdapterClient
+            .GetEventAsync(eventId, cancellationToken: ct)
+            .ConfigureAwait(false);
+        return envelope is { Ok: true, Data: not null } ? mapper.MapEvent(envelope.Data) : null;
+    }
+
+    /// <inheritdoc />
+    public Task<MailboxSettingsDto> GetMailboxSettingsAsync(CancellationToken ct) =>
+        throw new NotSupportedException(
+            "Mailbox settings are not yet exposed by the HostAdapter/MailBridge surface. "
+                + "This endpoint is deferred to issues #74/#75; no HostAdapter or MailBridge "
+                + "endpoint changes are made by this feature."
+        );
+
+    /// <inheritdoc />
+    public Task<FreeBusyScheduleDto> GetFreeBusyAsync(
+        DateTimeOffset start,
+        DateTimeOffset end,
+        CancellationToken ct
+    ) =>
+        throw new NotSupportedException(
+            "Free/busy schedule is not yet exposed by the HostAdapter/MailBridge surface. "
+                + "This endpoint is deferred to issues #74/#75; no HostAdapter or MailBridge "
+                + "endpoint changes are made by this feature."
+        );
+
+    /// <inheritdoc />
+    public Task SendMailAsync(SendMailRequest request, CancellationToken ct) =>
+        throw new NotSupportedException(
+            "Outbound mail is not yet exposed by the HostAdapter/MailBridge surface. "
+                + "This endpoint is deferred to issues #74/#75; no HostAdapter or MailBridge "
+                + "endpoint changes are made by this feature."
+        );
+}
