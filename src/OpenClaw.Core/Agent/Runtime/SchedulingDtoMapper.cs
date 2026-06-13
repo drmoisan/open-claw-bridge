@@ -33,7 +33,11 @@ public sealed class SchedulingDtoMapper
     {
         ArgumentNullException.ThrowIfNull(message);
 
-        var sender = BuildAttendee(message.SenderName, message.SenderEmail);
+        // Sender reflects the resolved SMTP sender; From reflects the on-behalf-of/delegate
+        // identity (or the resolved sender when not delegate-sent) per Master 9.2 and issue #73
+        // (decisions D-A/D-C). The two are distinct values populated by the bridge scanner.
+        var sender = BuildAttendee(message.SenderName, message.SenderEmailResolved);
+        var from = BuildAttendee(message.SenderName, message.FromEmailAddress);
 
         return new SchedulingMessageDto(
             Id: message.BridgeId,
@@ -43,14 +47,13 @@ public sealed class SchedulingDtoMapper
             // preview is available.
             BodyContent: null,
             BodyContentType: null,
-            From: sender,
+            From: from,
             Sender: sender,
             ToRecipients: ParseAttendees(message.ToJson),
             CcRecipients: ParseAttendees(message.CcJson),
-            // Conversation id and meeting-message type are not yet available (#71-#76).
-            ConversationId: null,
+            ConversationId: message.ConversationId,
             ReceivedDateTime: message.ReceivedUtc ?? message.SentUtc,
-            MeetingMessageType: message.ItemKind == "meeting" ? "meetingRequest" : null,
+            MeetingMessageType: MapMeetingMessageType(message.MeetingMessageType),
             Importance: MapImportance(message.Importance)
         );
     }
@@ -154,6 +157,22 @@ public sealed class SchedulingDtoMapper
             1 => "personal",
             2 => "private",
             3 => "confidential",
+            _ => null,
+        };
+
+    /// <summary>
+    /// Maps the raw <c>OlMeetingType</c> integer carried by <see cref="MessageDto.MeetingMessageType"/>
+    /// (issue #73, decision D-B) to the Graph <c>meetingMessageType</c> vocabulary. Ordinary mail
+    /// (null) and unknown values map to null.
+    /// </summary>
+    private static string? MapMeetingMessageType(int? type) =>
+        type switch
+        {
+            0 => "meetingRequest",
+            1 => "meetingCancelled",
+            2 => "meetingDeclined",
+            3 => "meetingAccepted",
+            4 => "meetingTentativelyAccepted",
             _ => null,
         };
 

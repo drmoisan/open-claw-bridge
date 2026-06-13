@@ -95,6 +95,12 @@ internal sealed class FakeMailItem
     public string? SenderEmailAddress { get; init; }
     public string? Body { get; init; }
     public FakeOutlookParent Parent { get; init; } = new();
+
+    // Issue #73: resolved-field COM analogs read reflectively by ComMessageSource (null = absent).
+    public string? ConversationID { get; init; }
+    public string? SentOnBehalfOfEmailAddress { get; init; }
+    public object? Sender { get; init; }
+    public object? Recipients { get; init; }
 }
 
 internal sealed class FakeMeetingItem
@@ -110,6 +116,13 @@ internal sealed class FakeMeetingItem
     public string? SenderEmailAddress { get; init; }
     public string? Body { get; init; }
     public FakeOutlookParent Parent { get; init; } = new();
+
+    // Issue #73: MeetingType is the raw OlMeetingType int; other members mirror FakeMailItem.
+    public int MeetingType { get; init; }
+    public string? ConversationID { get; init; }
+    public string? SentOnBehalfOfEmailAddress { get; init; }
+    public object? Sender { get; init; }
+    public object? Recipients { get; init; }
 }
 
 internal sealed record FakeAppointmentItem
@@ -189,11 +202,16 @@ internal sealed class FakeRecipient
 
 /// <summary>
 /// Reflection-readable analog of a COM <c>AddressEntry</c> (issue #71): exposes the resolved SMTP
-/// <c>Address</c> used when the recipient's own <c>Address</c> is unavailable.
+/// <c>Address</c> for the recipient email fallback. Issue #73 adds the optional true-SMTP surface
+/// (<c>PropertyAccessor.GetProperty</c> and <c>GetExchangeUser()</c>) read by <c>ComMessageSource</c>.
 /// </summary>
 internal sealed class FakeAddressEntry
 {
     public string? Address { get; init; }
+    public FakePropertyAccessor? PropertyAccessor { get; init; }
+    public FakeExchangeUser? ExchangeUser { get; init; }
+
+    public FakeExchangeUser? GetExchangeUser() => ExchangeUser;
 }
 
 internal sealed class FakeOutlookParent

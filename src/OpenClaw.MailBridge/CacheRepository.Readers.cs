@@ -29,7 +29,11 @@ internal sealed partial class CacheRepository
             GetString(reader, "cc_json"),
             GetString(reader, "body_preview"),
             GetBoolean(reader, "protected_fields_available"),
-            GetBoolean(reader, "is_redacted")
+            GetBoolean(reader, "is_redacted"),
+            SenderEmailResolved: GetString(reader, "sender_email_resolved"),
+            FromEmailAddress: GetString(reader, "from_email_address"),
+            ConversationId: GetString(reader, "conversation_id"),
+            MeetingMessageType: GetNullableInt(reader, "meeting_message_type")
         );
 
     private static EventDto ReadEvent(SqliteDataReader reader) =>

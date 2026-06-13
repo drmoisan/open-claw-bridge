@@ -57,6 +57,7 @@ internal sealed partial class CoreCacheRepository : IDisposable
         await new SqliteCommand(CreateTablesSql, connection).ExecuteNonQueryAsync();
 
         await MigrateEventsSchemaAsync(connection);
+        await MigrateMessagesSchemaAsync(connection);
     }
 
     public async Task UpsertBridgeStatusSnapshotAsync(
@@ -98,12 +99,14 @@ INSERT INTO messages(
     bridge_id, item_kind, subject, received_utc, sent_utc, importance, sensitivity, unread,
     has_attachments, message_class, sender_name, sender_email, to_json, cc_json, body_preview,
     protected_fields_available, is_redacted, bridge_mode, cache_stale, stale_reason,
-    adapter_request_id, observed_at_utc)
+    adapter_request_id, observed_at_utc,
+    sender_email_resolved, from_email_address, conversation_id, meeting_message_type)
 VALUES(
     $bridge_id, $item_kind, $subject, $received_utc, $sent_utc, $importance, $sensitivity, $unread,
     $has_attachments, $message_class, $sender_name, $sender_email, $to_json, $cc_json, $body_preview,
     $protected_fields_available, $is_redacted, $bridge_mode, $cache_stale, $stale_reason,
-    $adapter_request_id, $observed_at_utc)
+    $adapter_request_id, $observed_at_utc,
+    $sender_email_resolved, $from_email_address, $conversation_id, $meeting_message_type)
 ON CONFLICT(bridge_id) DO UPDATE SET
     item_kind = excluded.item_kind,
     subject = excluded.subject,
@@ -125,7 +128,11 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     cache_stale = excluded.cache_stale,
     stale_reason = excluded.stale_reason,
     adapter_request_id = excluded.adapter_request_id,
-    observed_at_utc = excluded.observed_at_utc;";
+    observed_at_utc = excluded.observed_at_utc,
+    sender_email_resolved = excluded.sender_email_resolved,
+    from_email_address = excluded.from_email_address,
+    conversation_id = excluded.conversation_id,
+    meeting_message_type = excluded.meeting_message_type;";
             AddMessageParameters(command, message, bridgeStatus, requestId, observedAtUtc);
             await command.ExecuteNonQueryAsync();
         }
@@ -472,6 +479,7 @@ LIMIT 1;";
             "$observed_at_utc",
             observedAtUtc.UtcDateTime.ToString("O")
         );
+        AddMessageResolvedFieldParameters(command, message);
     }
 
     private static void AddEventParameters(
@@ -622,7 +630,11 @@ LIMIT 1;";
             ReadString(reader, "cc_json"),
             ReadString(reader, "body_preview"),
             ReadBoolean(reader, "protected_fields_available"),
-            ReadBoolean(reader, "is_redacted")
+            ReadBoolean(reader, "is_redacted"),
+            SenderEmailResolved: ReadString(reader, "sender_email_resolved"),
+            FromEmailAddress: ReadString(reader, "from_email_address"),
+            ConversationId: ReadString(reader, "conversation_id"),
+            MeetingMessageType: ReadNullableInt(reader, "meeting_message_type")
         );
 
     private static EventDto ReadEvent(SqliteDataReader reader) =>

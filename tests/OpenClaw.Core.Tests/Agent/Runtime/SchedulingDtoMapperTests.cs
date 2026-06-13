@@ -21,7 +21,11 @@ public sealed class SchedulingDtoMapperTests
         string? toJson = null,
         string? ccJson = null,
         int? importance = null,
-        int? sensitivity = null
+        int? sensitivity = null,
+        string? senderEmailResolved = "sender@contoso.com",
+        string? fromEmailAddress = "sender@contoso.com",
+        string? conversationId = null,
+        int? meetingMessageType = 0
     ) =>
         new(
             BridgeId: "msg-1",
@@ -40,7 +44,11 @@ public sealed class SchedulingDtoMapperTests
             CcJson: ccJson,
             BodyPreview: "Let us meet",
             ProtectedFieldsAvailable: true,
-            IsRedacted: false
+            IsRedacted: false,
+            SenderEmailResolved: senderEmailResolved,
+            FromEmailAddress: fromEmailAddress,
+            ConversationId: conversationId,
+            MeetingMessageType: meetingMessageType
         );
 
     private static EventDto Event(
@@ -99,11 +107,62 @@ public sealed class SchedulingDtoMapperTests
     }
 
     [TestMethod]
-    public void MapMessage_NonMeetingKind_HasNullMeetingType()
+    public void MapMessage_UsesResolvedSenderForSenderAndFromForFrom()
     {
-        var result = mapper.MapMessage(Message(itemKind: "mail"));
+        // Sender reflects SenderEmailResolved; From reflects FromEmailAddress (D-A): distinct values.
+        var result = mapper.MapMessage(
+            Message(
+                senderEmailResolved: "resolved.sender@contoso.com",
+                fromEmailAddress: "delegate.boss@contoso.com"
+            )
+        );
+
+        result.Sender!.Email.Should().Be("resolved.sender@contoso.com");
+        result.From!.Email.Should().Be("delegate.boss@contoso.com");
+    }
+
+    [DataTestMethod]
+    [DataRow(0, "meetingRequest")]
+    [DataRow(1, "meetingCancelled")]
+    [DataRow(2, "meetingDeclined")]
+    [DataRow(3, "meetingAccepted")]
+    [DataRow(4, "meetingTentativelyAccepted")]
+    public void MapMessage_MapsMeetingMessageTypeIntToGraphString(
+        int olMeetingType,
+        string expected
+    )
+    {
+        var result = mapper.MapMessage(Message(meetingMessageType: olMeetingType));
+
+        result.MeetingMessageType.Should().Be(expected);
+    }
+
+    [DataTestMethod]
+    [DataRow(5)]
+    [DataRow(99)]
+    [DataRow(-1)]
+    public void MapMessage_UnknownMeetingType_MapsToNull(int olMeetingType)
+    {
+        var result = mapper.MapMessage(Message(meetingMessageType: olMeetingType));
 
         result.MeetingMessageType.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MapMessage_NonMeetingKind_HasNullMeetingType()
+    {
+        // Ordinary mail carries no OlMeetingType (D-B): MeetingMessageType is null on the DTO.
+        var result = mapper.MapMessage(Message(itemKind: "mail", meetingMessageType: null));
+
+        result.MeetingMessageType.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MapMessage_FlowsConversationIdFromDto()
+    {
+        var result = mapper.MapMessage(Message(conversationId: "conv-abc"));
+
+        result.ConversationId.Should().Be("conv-abc");
     }
 
     [TestMethod]
@@ -124,10 +183,10 @@ public sealed class SchedulingDtoMapperTests
     [TestMethod]
     public void MapMessage_DeferredFields_AreNull()
     {
-        var result = mapper.MapMessage(Message());
+        // ConversationId now flows from the DTO (issue #73); body content remains deferred.
+        var result = mapper.MapMessage(Message(conversationId: null));
 
-        // Fields deferred to #71-#76.
-        result.ConversationId.Should().BeNull();
+        result.ConversationId.Should().BeNull("a null DTO ConversationId maps through as null");
         result.BodyContent.Should().BeNull();
         result.BodyContentType.Should().BeNull();
     }

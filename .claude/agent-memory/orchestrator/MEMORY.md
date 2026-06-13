@@ -6,3 +6,4 @@
 - [Checkpoint validator contract](project_checkpoint-validator-contract.md) — orchestrator-state validator requires hyphen keys, stepN enum (verified not complete), and delegation_receipts as a LIST; differs from prompt.
 - [csharpier local tool manifest broken](project_csharpier-local-tool-manifest-broken.md) — local dotnet-tools csharpier entry misconfigured; use global csharpier with format/check subcommands.
 - [HostAdapter scheduling = Design A](project_hostadapter-scheduling-design-a.md) — track #76->#74->#75 uses Graph-shaped HostAdapter endpoints (not Core-cache compute); #75 should follow the same pattern.
+- [Unify COM vs Modern behind adapter](feedback_unify-com-vs-modern-behind-adapter.md) — model-specific field resolution goes behind a unifying interface + data-type adapter so only the adapter swaps (COM->Modern).
