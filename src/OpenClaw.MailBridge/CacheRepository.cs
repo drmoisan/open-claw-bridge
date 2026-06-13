@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using OpenClaw.MailBridge.Contracts.Models;
 
@@ -87,48 +88,9 @@ internal sealed partial class CacheRepository : IBridgeRepository, IDisposable
         await using var conn = Open();
         await conn.OpenAsync();
 
-        var sql =
-            @"
-CREATE TABLE IF NOT EXISTS messages(bridge_id TEXT PRIMARY KEY,entry_id TEXT NOT NULL,store_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,received_utc TEXT NULL,sent_utc TEXT NULL,importance INTEGER NULL,sensitivity INTEGER NULL,unread INTEGER NOT NULL,has_attachments INTEGER NOT NULL,message_class TEXT NULL,sender_name TEXT NULL,sender_email TEXT NULL,to_json TEXT NULL,cc_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_seen_utc TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS events(bridge_id TEXT PRIMARY KEY,entry_id TEXT NULL,store_id TEXT NULL,global_appointment_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,start_utc TEXT NOT NULL,end_utc TEXT NOT NULL,location TEXT NULL,busy_status INTEGER NULL,meeting_status INTEGER NULL,is_recurring INTEGER NOT NULL,sensitivity INTEGER NULL,organizer TEXT NULL,required_attendees_json TEXT NULL,optional_attendees_json TEXT NULL,resources_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_modified_utc TEXT NULL,last_seen_utc TEXT NOT NULL,response_status INTEGER NULL);
-CREATE TABLE IF NOT EXISTS scan_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);";
-        await new SqliteCommand(sql, conn).ExecuteNonQueryAsync();
+        await new SqliteCommand(CreateTablesSql, conn).ExecuteNonQueryAsync();
 
         await MigrateEventsSchemaAsync(conn);
-    }
-
-    /// <summary>
-    /// Idempotent schema migration for the <c>events</c> table. Adds the <c>response_status</c>
-    /// column when it is absent on an existing database. Running this twice is safe: the
-    /// <c>PRAGMA table_info</c> check guards the ALTER so no "duplicate column" error occurs.
-    /// </summary>
-    private static async Task MigrateEventsSchemaAsync(SqliteConnection conn)
-    {
-        if (await EventsColumnExistsAsync(conn, "response_status"))
-        {
-            return;
-        }
-
-        var alter = conn.CreateCommand();
-        alter.CommandText = "ALTER TABLE events ADD COLUMN response_status INTEGER NULL;";
-        await alter.ExecuteNonQueryAsync();
-    }
-
-    private static async Task<bool> EventsColumnExistsAsync(SqliteConnection conn, string column)
-    {
-        var cmd = conn.CreateCommand();
-        cmd.CommandText = "PRAGMA table_info(events);";
-        await using var reader = await cmd.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
-        {
-            // table_info column index 1 is the column name.
-            var name = reader.GetString(1);
-            if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-        return false;
     }
 
     public async Task TouchScanStateAsync(string key, DateTimeOffset value)
@@ -265,12 +227,16 @@ INSERT INTO events(
     bridge_id, entry_id, store_id, global_appointment_id, item_kind, subject, start_utc, end_utc,
     location, busy_status, meeting_status, is_recurring, sensitivity, organizer,
     required_attendees_json, optional_attendees_json, resources_json, body_preview,
-    protected_fields_available, is_redacted, last_modified_utc, last_seen_utc, response_status
+    protected_fields_available, is_redacted, last_modified_utc, last_seen_utc, response_status,
+    categories_json, is_organizer, is_online_meeting, allow_new_time_proposals, ical_uid,
+    series_master_id, body_full, sensitivity_label
 ) VALUES(
     $bridge_id, $entry_id, $store_id, $global_appointment_id, $item_kind, $subject, $start_utc, $end_utc,
     $location, $busy_status, $meeting_status, $is_recurring, $sensitivity, $organizer,
     $required_attendees_json, $optional_attendees_json, $resources_json, $body_preview,
-    $protected_fields_available, $is_redacted, $last_modified_utc, $last_seen_utc, $response_status
+    $protected_fields_available, $is_redacted, $last_modified_utc, $last_seen_utc, $response_status,
+    $categories_json, $is_organizer, $is_online_meeting, $allow_new_time_proposals, $ical_uid,
+    $series_master_id, $body_full, $sensitivity_label
 )
 ON CONFLICT(bridge_id) DO UPDATE SET
     entry_id = excluded.entry_id,
@@ -294,7 +260,15 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     is_redacted = excluded.is_redacted,
     last_modified_utc = excluded.last_modified_utc,
     last_seen_utc = excluded.last_seen_utc,
-    response_status = excluded.response_status;";
+    response_status = excluded.response_status,
+    categories_json = excluded.categories_json,
+    is_organizer = excluded.is_organizer,
+    is_online_meeting = excluded.is_online_meeting,
+    allow_new_time_proposals = excluded.allow_new_time_proposals,
+    ical_uid = excluded.ical_uid,
+    series_master_id = excluded.series_master_id,
+    body_full = excluded.body_full,
+    sensitivity_label = excluded.sensitivity_label;";
 
         AddEventParameters(cmd, entryId, storeId, globalAppointmentId, evt);
         await cmd.ExecuteNonQueryAsync();
@@ -455,11 +429,32 @@ LIMIT $limit;";
             evt.ProtectedFieldsAvailable ? 1 : 0
         );
         cmd.Parameters.AddWithValue("$is_redacted", evt.IsRedacted ? 1 : 0);
-        cmd.Parameters.AddWithValue("$last_modified_utc", DBNull.Value);
+        cmd.Parameters.AddWithValue("$last_modified_utc", ToDbValue(evt.LastModifiedDateTime));
         cmd.Parameters.AddWithValue(
             "$last_seen_utc",
             DateTimeOffset.UtcNow.UtcDateTime.ToString("O")
         );
         cmd.Parameters.AddWithValue("$response_status", ToDbValue(evt.ResponseStatus));
+        cmd.Parameters.AddWithValue("$categories_json", CategoriesToDbValue(evt.Categories));
+        cmd.Parameters.AddWithValue("$is_organizer", evt.IsOrganizer ? 1 : 0);
+        cmd.Parameters.AddWithValue("$is_online_meeting", evt.IsOnlineMeeting ? 1 : 0);
+        cmd.Parameters.AddWithValue("$allow_new_time_proposals", evt.AllowNewTimeProposals ? 1 : 0);
+        cmd.Parameters.AddWithValue("$ical_uid", (object?)evt.ICalUId ?? DBNull.Value);
+        cmd.Parameters.AddWithValue(
+            "$series_master_id",
+            (object?)evt.SeriesMasterId ?? DBNull.Value
+        );
+        cmd.Parameters.AddWithValue("$body_full", (object?)evt.BodyFull ?? DBNull.Value);
+        cmd.Parameters.AddWithValue(
+            "$sensitivity_label",
+            (object?)evt.SensitivityLabel ?? DBNull.Value
+        );
     }
+
+    /// <summary>
+    /// Serializes the optional <c>Categories</c> array to a JSON array column value, consistent
+    /// with the existing attendee/resource JSON columns. A null array stores SQL NULL.
+    /// </summary>
+    private static object CategoriesToDbValue(string[]? categories) =>
+        categories is null ? DBNull.Value : JsonSerializer.Serialize(categories);
 }

@@ -112,7 +112,7 @@ internal sealed class FakeMeetingItem
     public FakeOutlookParent Parent { get; init; } = new();
 }
 
-internal sealed class FakeAppointmentItem
+internal sealed record FakeAppointmentItem
 {
     public required string EntryID { get; init; }
     public string? GlobalAppointmentID { get; init; }
@@ -126,6 +126,14 @@ internal sealed class FakeAppointmentItem
     public string? Organizer { get; init; }
     public string? Body { get; init; }
     public int? ResponseStatus { get; init; }
+
+    // Issue #72 Graph-shaped COM analogs.
+    public int? Sensitivity { get; init; }
+    public string? Categories { get; init; }
+    public bool IsOnlineMeeting { get; init; }
+    public bool AllowNewTimeProposal { get; init; }
+    public int? RecurrenceState { get; init; }
+    public DateTime? LastModificationTime { get; init; }
     public FakeOutlookParent Parent { get; init; } = new();
 }
 

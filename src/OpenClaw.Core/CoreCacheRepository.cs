@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using OpenClaw.MailBridge.Contracts.Models;
 
@@ -11,7 +12,7 @@ internal sealed record StoredBridgeStatusSnapshot(
     DateTimeOffset ObservedAtUtc
 );
 
-internal sealed class CoreCacheRepository : IDisposable
+internal sealed partial class CoreCacheRepository : IDisposable
 {
     private readonly string connectionString;
     private readonly SqliteConnection? anchor;
@@ -53,84 +54,9 @@ internal sealed class CoreCacheRepository : IDisposable
         await using var connection = Open();
         await connection.OpenAsync();
 
-        const string sql =
-            @"
-CREATE TABLE IF NOT EXISTS bridge_status_snapshots(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    request_id TEXT NOT NULL,
-    observed_at_utc TEXT NOT NULL,
-    state TEXT NOT NULL,
-    mode TEXT NOT NULL,
-    outlook_connected INTEGER NOT NULL,
-    cache_stale INTEGER NOT NULL,
-    stale_reason TEXT NULL,
-    last_inbox_scan_utc TEXT NULL,
-    last_calendar_scan_utc TEXT NULL
-);
-CREATE TABLE IF NOT EXISTS messages(
-    bridge_id TEXT PRIMARY KEY,
-    item_kind TEXT NOT NULL,
-    subject TEXT NULL,
-    received_utc TEXT NULL,
-    sent_utc TEXT NULL,
-    importance INTEGER NULL,
-    sensitivity INTEGER NULL,
-    unread INTEGER NOT NULL,
-    has_attachments INTEGER NOT NULL,
-    message_class TEXT NULL,
-    sender_name TEXT NULL,
-    sender_email TEXT NULL,
-    to_json TEXT NULL,
-    cc_json TEXT NULL,
-    body_preview TEXT NULL,
-    protected_fields_available INTEGER NOT NULL,
-    is_redacted INTEGER NOT NULL,
-    bridge_mode TEXT NOT NULL,
-    cache_stale INTEGER NOT NULL,
-    stale_reason TEXT NULL,
-    adapter_request_id TEXT NOT NULL,
-    observed_at_utc TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS events(
-    bridge_id TEXT PRIMARY KEY,
-    global_appointment_id TEXT NULL,
-    subject TEXT NULL,
-    start_utc TEXT NOT NULL,
-    end_utc TEXT NOT NULL,
-    location TEXT NULL,
-    busy_status INTEGER NULL,
-    meeting_status INTEGER NULL,
-    is_recurring INTEGER NOT NULL,
-    sensitivity INTEGER NULL,
-    organizer TEXT NULL,
-    required_attendees_json TEXT NULL,
-    optional_attendees_json TEXT NULL,
-    resources_json TEXT NULL,
-    body_preview TEXT NULL,
-    protected_fields_available INTEGER NOT NULL,
-    is_redacted INTEGER NOT NULL,
-    bridge_mode TEXT NOT NULL,
-    cache_stale INTEGER NOT NULL,
-    stale_reason TEXT NULL,
-    adapter_request_id TEXT NOT NULL,
-    observed_at_utc TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS poll_cursors(
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    observed_at_utc TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS ingest_runs(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    operation_name TEXT NOT NULL,
-    outcome TEXT NOT NULL,
-    request_id TEXT NULL,
-    started_at_utc TEXT NOT NULL,
-    finished_at_utc TEXT NOT NULL,
-    error_message TEXT NULL
-);";
+        await new SqliteCommand(CreateTablesSql, connection).ExecuteNonQueryAsync();
 
-        await new SqliteCommand(sql, connection).ExecuteNonQueryAsync();
+        await MigrateEventsSchemaAsync(connection);
     }
 
     public async Task UpsertBridgeStatusSnapshotAsync(
@@ -223,12 +149,16 @@ INSERT INTO events(
     bridge_id, global_appointment_id, subject, start_utc, end_utc, location, busy_status,
     meeting_status, is_recurring, sensitivity, organizer, required_attendees_json,
     optional_attendees_json, resources_json, body_preview, protected_fields_available,
-    is_redacted, bridge_mode, cache_stale, stale_reason, adapter_request_id, observed_at_utc)
+    is_redacted, bridge_mode, cache_stale, stale_reason, adapter_request_id, observed_at_utc,
+    last_modified_utc, categories_json, is_organizer, is_online_meeting, allow_new_time_proposals,
+    ical_uid, series_master_id, body_full, sensitivity_label)
 VALUES(
     $bridge_id, $global_appointment_id, $subject, $start_utc, $end_utc, $location, $busy_status,
     $meeting_status, $is_recurring, $sensitivity, $organizer, $required_attendees_json,
     $optional_attendees_json, $resources_json, $body_preview, $protected_fields_available,
-    $is_redacted, $bridge_mode, $cache_stale, $stale_reason, $adapter_request_id, $observed_at_utc)
+    $is_redacted, $bridge_mode, $cache_stale, $stale_reason, $adapter_request_id, $observed_at_utc,
+    $last_modified_utc, $categories_json, $is_organizer, $is_online_meeting, $allow_new_time_proposals,
+    $ical_uid, $series_master_id, $body_full, $sensitivity_label)
 ON CONFLICT(bridge_id) DO UPDATE SET
     global_appointment_id = excluded.global_appointment_id,
     subject = excluded.subject,
@@ -250,7 +180,16 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     cache_stale = excluded.cache_stale,
     stale_reason = excluded.stale_reason,
     adapter_request_id = excluded.adapter_request_id,
-    observed_at_utc = excluded.observed_at_utc;";
+    observed_at_utc = excluded.observed_at_utc,
+    last_modified_utc = excluded.last_modified_utc,
+    categories_json = excluded.categories_json,
+    is_organizer = excluded.is_organizer,
+    is_online_meeting = excluded.is_online_meeting,
+    allow_new_time_proposals = excluded.allow_new_time_proposals,
+    ical_uid = excluded.ical_uid,
+    series_master_id = excluded.series_master_id,
+    body_full = excluded.body_full,
+    sensitivity_label = excluded.sensitivity_label;";
             AddEventParameters(command, evt, bridgeStatus, requestId, observedAtUtc);
             await command.ExecuteNonQueryAsync();
         }
@@ -586,6 +525,53 @@ LIMIT 1;";
             "$observed_at_utc",
             observedAtUtc.UtcDateTime.ToString("O")
         );
+        command.Parameters.AddWithValue("$last_modified_utc", ToDbValue(evt.LastModifiedDateTime));
+        command.Parameters.AddWithValue("$categories_json", CategoriesToDbValue(evt.Categories));
+        command.Parameters.AddWithValue("$is_organizer", evt.IsOrganizer ? 1 : 0);
+        command.Parameters.AddWithValue("$is_online_meeting", evt.IsOnlineMeeting ? 1 : 0);
+        command.Parameters.AddWithValue(
+            "$allow_new_time_proposals",
+            evt.AllowNewTimeProposals ? 1 : 0
+        );
+        command.Parameters.AddWithValue("$ical_uid", (object?)evt.ICalUId ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$series_master_id",
+            (object?)evt.SeriesMasterId ?? DBNull.Value
+        );
+        command.Parameters.AddWithValue("$body_full", (object?)evt.BodyFull ?? DBNull.Value);
+        command.Parameters.AddWithValue(
+            "$sensitivity_label",
+            (object?)evt.SensitivityLabel ?? DBNull.Value
+        );
+    }
+
+    /// <summary>
+    /// Serializes the optional <c>Categories</c> array to a JSON array column value, consistent
+    /// with the existing attendee/resource JSON columns. A null array stores SQL NULL.
+    /// </summary>
+    private static object CategoriesToDbValue(string[]? categories) =>
+        categories is null ? DBNull.Value : JsonSerializer.Serialize(categories);
+
+    /// <summary>
+    /// Deserializes the <c>categories_json</c> column to a string array. A NULL or unparseable
+    /// value yields null, matching the optional <see cref="EventDto.Categories"/> default.
+    /// </summary>
+    private static string[]? ReadCategories(SqliteDataReader reader, string name)
+    {
+        var json = ReadString(reader, name);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     private static async Task<int> CountAsync(SqliteConnection connection, string sql)
@@ -657,7 +643,17 @@ LIMIT 1;";
             ReadString(reader, "resources_json"),
             ReadString(reader, "body_preview"),
             ReadBoolean(reader, "protected_fields_available"),
-            ReadBoolean(reader, "is_redacted")
+            ReadBoolean(reader, "is_redacted"),
+            ResponseStatus: null,
+            Categories: ReadCategories(reader, "categories_json"),
+            IsOrganizer: ReadBoolean(reader, "is_organizer"),
+            IsOnlineMeeting: ReadBoolean(reader, "is_online_meeting"),
+            AllowNewTimeProposals: ReadBoolean(reader, "allow_new_time_proposals"),
+            ICalUId: ReadString(reader, "ical_uid"),
+            SeriesMasterId: ReadString(reader, "series_master_id"),
+            LastModifiedDateTime: ReadDateTimeOffset(reader, "last_modified_utc"),
+            BodyFull: ReadString(reader, "body_full"),
+            SensitivityLabel: ReadString(reader, "sensitivity_label")
         );
 
     private static object ToDbValue(DateTimeOffset? value) =>

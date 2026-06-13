@@ -444,29 +444,7 @@ internal sealed partial class OutlookScanner : IOutlookScanner
 
         var globalAppointmentId = OutlookComHelpers.GetOptionalString(item, "GlobalAppointmentID");
         var bridgeId = BridgeIdCodec.EventId(globalAppointmentId, entryId, startUtc.Value);
-        var dto = new EventDto(
-            bridgeId,
-            globalAppointmentId,
-            OutlookComHelpers.GetOptionalString(item, "Subject"),
-            startUtc.Value,
-            endUtc.Value,
-            OutlookComHelpers.GetOptionalString(item, "Location"),
-            OutlookComHelpers.GetOptionalInt(item, "BusyStatus"),
-            OutlookComHelpers.GetOptionalInt(item, "MeetingStatus"),
-            OutlookComHelpers.GetOptionalBool(item, "IsRecurring"),
-            OutlookComHelpers.GetOptionalInt(item, "Sensitivity"),
-            OutlookComHelpers.GetOptionalString(item, "Organizer"),
-            null,
-            null,
-            null,
-            ResponseShaper.ShapePreview(
-                OutlookComHelpers.GetOptionalString(item, "Body"),
-                _settings
-            ),
-            !string.IsNullOrWhiteSpace(OutlookComHelpers.GetOptionalString(item, "Body")),
-            false,
-            OutlookComHelpers.GetOptionalInt(item, "ResponseStatus")
-        );
+        var dto = BuildEventDto(item, bridgeId, globalAppointmentId, startUtc.Value, endUtc.Value);
 
         return new NormalizedEvent(entryId, GetStoreId(item), globalAppointmentId, dto);
     }
