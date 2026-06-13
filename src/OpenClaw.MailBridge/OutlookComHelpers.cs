@@ -29,6 +29,23 @@ internal static class OutlookComHelpers
         }
     }
 
+    /// <summary>
+    /// Retrieves an item from a COM collection by its 1-based index via the collection's
+    /// <c>Item(index)</c> accessor, failing soft (returns <see langword="null"/>) on any COM error so
+    /// a single unreadable element does not abort enumeration.
+    /// </summary>
+    internal static object? GetOptionalIndexedItem(object collection, int index)
+    {
+        try
+        {
+            return InvokeMember(collection, "Item", index);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     internal static void SetMemberValue(object target, string memberName, object? value) =>
         target
             .GetType()

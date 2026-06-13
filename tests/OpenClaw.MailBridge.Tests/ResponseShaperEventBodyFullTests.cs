@@ -55,6 +55,49 @@ public sealed class ResponseShaperEventBodyFullTests
         shaped.IsRedacted.Should().BeTrue();
     }
 
+    private static EventDto CreateEventWithAttendees() =>
+        CreateEvent(bodyFull: "Body") with
+        {
+            RequiredAttendeesJson = "[{\"name\":\"Req\",\"email\":\"req@example.com\"}]",
+            OptionalAttendeesJson = "[{\"name\":\"Opt\",\"email\":\"opt@example.com\"}]",
+            ResourcesJson = "[{\"name\":\"Room\",\"email\":\"room@example.com\"}]",
+        };
+
+    [TestMethod]
+    public void ShapeEvent_in_safe_mode_should_null_all_three_attendee_fields()
+    {
+        // Arrange (issue #71 US-AC4): populated attendee JSON fields must be redacted in safe mode,
+        // matching the message-path redaction of SenderName/SenderEmail.
+        var evt = CreateEventWithAttendees();
+        var settings = BridgeSettings.Default with { Mode = "safe" };
+
+        // Act
+        var shaped = ResponseShaper.ShapeEvent(evt, settings);
+
+        // Assert
+        shaped.RequiredAttendeesJson.Should().BeNull("safe mode must redact attendee PII");
+        shaped.OptionalAttendeesJson.Should().BeNull("safe mode must redact attendee PII");
+        shaped.ResourcesJson.Should().BeNull("safe mode must redact attendee PII");
+        shaped.IsRedacted.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void ShapeEvent_in_enhanced_mode_should_preserve_all_three_attendee_fields()
+    {
+        // Arrange (issue #71 US-AC4 non-regression): enhanced mode leaves attendee JSON intact.
+        var evt = CreateEventWithAttendees();
+        var settings = BridgeSettings.Default with { Mode = "enhanced" };
+
+        // Act
+        var shaped = ResponseShaper.ShapeEvent(evt, settings);
+
+        // Assert
+        shaped.RequiredAttendeesJson.Should().Be(evt.RequiredAttendeesJson);
+        shaped.OptionalAttendeesJson.Should().Be(evt.OptionalAttendeesJson);
+        shaped.ResourcesJson.Should().Be(evt.ResourcesJson);
+        shaped.IsRedacted.Should().BeFalse();
+    }
+
     [TestMethod]
     public void ShapeEvent_in_enhanced_mode_should_return_full_untruncated_body_verbatim()
     {
