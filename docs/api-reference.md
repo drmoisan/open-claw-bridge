@@ -44,10 +44,30 @@ The pipe is ACL-restricted to the current interactive user, BUILTIN\Administrato
 | `GET /users/{id}/messages?$filter=meetingMessageType ne null&$top=<n>` | `list-meeting-requests --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
 | `GET /users/{id}/calendarView?startDateTime=<utc>&endDateTime=<utc>&$top=<n>` | `list-calendar --start <utc> --end <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<EventDto>>` |
 | `GET /users/{id}/events/{eventId}` | `get-event --id <bridgeId>` | `ApiEnvelope<EventDto>` |
+| `GET /users/{id}/mailboxSettings` | none (config-sourced) | `ApiEnvelope<MailboxSettingsDto>` |
+| `GET /users/{id}/calendar/getSchedule?startDateTime=<utc>&endDateTime=<utc>` | `list-calendar --start <utc> --end <utc> --limit <n>` | `ApiEnvelope<FreeBusyScheduleDto>` |
+
+The last two routes were added for the scheduling pipeline (issue #74):
+
+- `GET /users/{id}/mailboxSettings` returns the mailbox time zone and working hours. The data is **config-sourced** from the `OpenClaw:HostAdapter:MailboxSettings` subsection; this route does not check bridge readiness and does not shell out to the CLI. On malformed configuration it returns an `ApiEnvelope<MailboxSettingsDto>` failure with error code `CONFIGURATION_ERROR` (HTTP 503). `MailboxSettingsDto` carries `TimeZoneId`, `WorkingDays`, `WorkingHoursStart`, and `WorkingHoursEnd`.
+- `GET /users/{id}/calendar/getSchedule` returns a free/busy grid **computed from bridge calendar data** fetched through the same `list-calendar` CLI chain as `calendarView`. The window is validated like `calendarView` (`startDateTime`/`endDateTime` must be ISO-8601 UTC and `endDateTime` must be later than `startDateTime`, else HTTP 400 `INVALID_REQUEST`). An event contributes a `BusyIntervalDto(Start, End)` when its `BusyStatus` is not `0` (free); a null `BusyStatus` is treated as busy (conservative). An empty window yields an empty `BusyIntervals` list (not an error). `FreeBusyScheduleDto` carries `MailboxUpn` and `BusyIntervals`. (Stage-0 note: real Microsoft Graph `getSchedule` is a POST with a JSON body; the Stage-0 GET-with-query form keeps all routes uniform and is portable — only the `HostAdapterHttpClient` wire construction changes for PI-1 Graph, not the typed method signature.)
 
 > Breaking change (adapter version `1.0.0`): the earlier bespoke `/v1/*` routes were replaced by the Graph-shaped surface above. Request and response envelope shapes are unchanged. Meeting requests are served by the `/users/{id}/messages` route filtered on `meetingMessageType`. The `OpenClaw.Core` adapter base URL no longer carries a `/v1/` segment.
 
 Requests use `Authorization: Bearer <token>` and may include `X-Request-Id`. The additive `OpenClaw.Core` container path reaches this HTTP surface through `host.docker.internal`.
+
+### HostAdapter mailbox-settings configuration
+
+The `mailboxSettings` route is served from the `OpenClaw:HostAdapter:MailboxSettings` configuration subsection (bound onto `HostAdapterOptions.MailboxSettings`). The documented defaults apply when the subsection is absent:
+
+| Key | Type | Default |
+|---|---|---|
+| `OpenClaw:HostAdapter:MailboxSettings:TimeZoneId` | string | `UTC` |
+| `OpenClaw:HostAdapter:MailboxSettings:WorkingDaysOfWeek` | string array | `["Monday","Tuesday","Wednesday","Thursday","Friday"]` |
+| `OpenClaw:HostAdapter:MailboxSettings:WorkingHoursStart` | string `HH:mm` | `09:00` |
+| `OpenClaw:HostAdapter:MailboxSettings:WorkingHoursEnd` | string `HH:mm` | `17:00` |
+
+When an operator supplies `WorkingDaysOfWeek`, the configured entries replace (not augment) the defaults. The external `appsettings.json` loaded from `HostAdapterOptions.DefaultAppSettingsPath` is the site-specific override point.
 
 ---
 

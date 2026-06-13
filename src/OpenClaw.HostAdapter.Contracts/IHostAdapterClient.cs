@@ -99,4 +99,48 @@ public interface IHostAdapterClient
         string? requestId = null,
         CancellationToken cancellationToken = default
     );
+
+    /// <summary>
+    /// Retrieves the mailbox time zone and working hours via
+    /// <c>GET /users/{id}/mailboxSettings</c>.
+    /// </summary>
+    /// <remarks>
+    /// The HostAdapter sources these values from its own configuration
+    /// (<c>OpenClaw:HostAdapter:MailboxSettings</c>); this route does not perform a bridge
+    /// round-trip. The defaults are <c>TimeZoneId</c> UTC, working days Monday–Friday, and
+    /// working hours 09:00–17:00.
+    /// </remarks>
+    /// <param name="requestId">An optional caller-supplied correlation identifier.</param>
+    /// <param name="cancellationToken">Cancels the outbound operation.</param>
+    /// <returns>The mailbox settings wrapped in an API envelope.</returns>
+    Task<ApiEnvelope<MailboxSettingsDto>> GetMailboxSettingsAsync(
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
+    /// Retrieves the free/busy schedule for the given UTC window via
+    /// <c>GET /users/{id}/calendar/getSchedule?startDateTime={iso8601}&amp;endDateTime={iso8601}</c>.
+    /// </summary>
+    /// <remarks>
+    /// The HostAdapter computes the busy intervals from the bridge calendar data it fetches
+    /// through the CLI client process; an empty window yields an empty
+    /// <c>BusyIntervals</c> list (not an error). The window is passed as typed
+    /// <paramref name="startUtc"/>/<paramref name="endUtc"/> parameters: this signature is the
+    /// portability boundary (decision D2). For Stage 0 the wire request is a GET with query
+    /// parameters; when the PI-1 Microsoft Graph backend replaces the local adapter, only the
+    /// <c>HostAdapterHttpClient</c> wire construction changes to the Graph POST-with-body form
+    /// while this signature and every caller remain unchanged.
+    /// </remarks>
+    /// <param name="startUtc">The inclusive UTC window start emitted as the <c>startDateTime</c> parameter.</param>
+    /// <param name="endUtc">The exclusive UTC window end emitted as the <c>endDateTime</c> parameter.</param>
+    /// <param name="requestId">An optional caller-supplied correlation identifier.</param>
+    /// <param name="cancellationToken">Cancels the outbound operation.</param>
+    /// <returns>The free/busy schedule wrapped in an API envelope.</returns>
+    Task<ApiEnvelope<FreeBusyScheduleDto>> GetFreeBusyAsync(
+        DateTimeOffset startUtc,
+        DateTimeOffset endUtc,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    );
 }

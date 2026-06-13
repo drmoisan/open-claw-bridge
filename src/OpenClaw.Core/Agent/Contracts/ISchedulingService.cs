@@ -1,3 +1,5 @@
+using OpenClaw.HostAdapter.Contracts;
+
 namespace OpenClaw.Core.Agent;
 
 /// <summary>

@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.Agent;
+using OpenClaw.HostAdapter.Contracts;
 
 namespace OpenClaw.Core.Tests.Agent;
 

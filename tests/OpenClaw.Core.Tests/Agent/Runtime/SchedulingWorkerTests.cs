@@ -10,6 +10,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
+using OpenClaw.HostAdapter.Contracts;
 
 namespace OpenClaw.Core.Tests.Agent.Runtime;
 

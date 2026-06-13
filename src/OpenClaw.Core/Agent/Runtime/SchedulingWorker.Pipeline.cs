@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OpenClaw.Core.Agent;
+using OpenClaw.HostAdapter.Contracts;
 
 namespace OpenClaw.Core.Agent.Runtime;
 

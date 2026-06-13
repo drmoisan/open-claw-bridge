@@ -204,4 +204,121 @@ public class HostAdapterValidationTests
                 "the over-max request should be rejected at the adapter boundary without triggering another CLI command."
             );
     }
+
+    [TestMethod]
+    public async Task GetSchedule_should_return_400_when_end_is_not_later_than_start()
+    {
+        using var factory = new HostAdapterTestWebApplicationFactory();
+        EnqueueReadyStatus(factory);
+        using var client = factory.CreateAuthorizedClient();
+
+        using var response = await client.GetAsync(
+            "/users/me/calendar/getSchedule?startDateTime=2026-06-20T00:00:00Z&endDateTime=2026-06-15T00:00:00Z"
+        );
+        var payload = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(payload);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        document.RootElement.GetProperty("ok").GetBoolean().Should().BeFalse();
+        document
+            .RootElement.GetProperty("error")
+            .GetProperty("code")
+            .GetString()
+            .Should()
+            .Be(BridgeErrorCodes.InvalidRequest);
+        document
+            .RootElement.GetProperty("error")
+            .GetProperty("message")
+            .GetString()
+            .Should()
+            .Contain("endDateTime")
+            .And.Contain("startDateTime");
+        // The free/busy fetch must not be invoked when window validation fails.
+        factory
+            .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
+            .Should()
+            .Equal("status");
+    }
+
+    [TestMethod]
+    public async Task GetSchedule_should_return_400_when_start_date_time_is_missing()
+    {
+        using var factory = new HostAdapterTestWebApplicationFactory();
+        EnqueueReadyStatus(factory);
+        using var client = factory.CreateAuthorizedClient();
+
+        using var response = await client.GetAsync(
+            "/users/me/calendar/getSchedule?endDateTime=2026-06-20T00:00:00Z"
+        );
+        var payload = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(payload);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        document
+            .RootElement.GetProperty("error")
+            .GetProperty("code")
+            .GetString()
+            .Should()
+            .Be(BridgeErrorCodes.InvalidRequest);
+        document
+            .RootElement.GetProperty("error")
+            .GetProperty("message")
+            .GetString()
+            .Should()
+            .Contain("startDateTime");
+        factory
+            .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
+            .Should()
+            .Equal("status");
+    }
+
+    [TestMethod]
+    public async Task GetSchedule_should_return_400_when_end_date_time_is_malformed()
+    {
+        using var factory = new HostAdapterTestWebApplicationFactory();
+        EnqueueReadyStatus(factory);
+        using var client = factory.CreateAuthorizedClient();
+
+        using var response = await client.GetAsync(
+            "/users/me/calendar/getSchedule?startDateTime=2026-06-15T00:00:00Z&endDateTime=not-a-timestamp"
+        );
+        var payload = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(payload);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        document
+            .RootElement.GetProperty("error")
+            .GetProperty("code")
+            .GetString()
+            .Should()
+            .Be(BridgeErrorCodes.InvalidRequest);
+        document
+            .RootElement.GetProperty("error")
+            .GetProperty("message")
+            .GetString()
+            .Should()
+            .Contain("endDateTime")
+            .And.Contain("UTC");
+        factory
+            .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
+            .Should()
+            .Equal("status");
+    }
+
+    private static void EnqueueReadyStatus(HostAdapterTestWebApplicationFactory factory)
+    {
+        var readyBridge = new BridgeStatusDto(
+            BridgeState.ready.ToString(),
+            BridgeMode.safe.ToString(),
+            true,
+            false,
+            null,
+            null,
+            null
+        );
+        factory.ProcessRunner.EnqueueResponse(
+            "status",
+            HostAdapterResponses.Success(readyBridge, "status-request", "test-version", readyBridge)
+        );
+    }
 }

@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
 using OpenClaw.Core.Agent;
@@ -153,31 +154,114 @@ public sealed class HostAdapterSchedulingServiceTests
     }
 
     [TestMethod]
-    public async Task GetMailboxSettingsAsync_Throws_DeferredNotSupported()
+    public async Task GetMailboxSettingsAsync_DelegatesToClient_ReturnsDto()
     {
         var client = new Mock<IHostAdapterClient>();
+        var expected = new MailboxSettingsDto(
+            "Pacific Standard Time",
+            [DayOfWeek.Monday, DayOfWeek.Wednesday],
+            new TimeOnly(8, 0),
+            new TimeOnly(16, 0)
+        );
+        client
+            .Setup(c =>
+                c.GetMailboxSettingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(new ApiEnvelope<MailboxSettingsDto>(true, expected, Meta, null));
 
-        var act = async () => await Service(client).GetMailboxSettingsAsync(CancellationToken.None);
+        var result = await Service(client).GetMailboxSettingsAsync(CancellationToken.None);
 
-        (await act.Should().ThrowAsync<NotSupportedException>())
-            .Which.Message.Should()
-            .Contain("#74/#75");
+        result.Should().Be(expected);
     }
 
     [TestMethod]
-    public async Task GetFreeBusyAsync_Throws_DeferredNotSupported()
+    public async Task GetMailboxSettingsAsync_WhenEnvelopeNotOk_ReturnsDocumentedDefaults()
     {
         var client = new Mock<IHostAdapterClient>();
+        client
+            .Setup(c =>
+                c.GetMailboxSettingsAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(
+                new ApiEnvelope<MailboxSettingsDto>(
+                    false,
+                    null,
+                    Meta,
+                    new ApiError("DOWNSTREAM_FAILURE", "x")
+                )
+            );
 
-        var act = async () =>
-            await Service(client)
-                .GetFreeBusyAsync(
-                    DateTimeOffset.UnixEpoch,
-                    DateTimeOffset.UnixEpoch.AddDays(1),
-                    CancellationToken.None
-                );
+        var result = await Service(client).GetMailboxSettingsAsync(CancellationToken.None);
 
-        await act.Should().ThrowAsync<NotSupportedException>();
+        result.TimeZoneId.Should().Be("UTC");
+        result
+            .WorkingDays.Should()
+            .Equal(
+                DayOfWeek.Monday,
+                DayOfWeek.Tuesday,
+                DayOfWeek.Wednesday,
+                DayOfWeek.Thursday,
+                DayOfWeek.Friday
+            );
+        result.WorkingHoursStart.Should().Be(new TimeOnly(9, 0));
+        result.WorkingHoursEnd.Should().Be(new TimeOnly(17, 0));
+    }
+
+    [TestMethod]
+    public async Task GetFreeBusyAsync_DelegatesToClient_ReturnsSchedule()
+    {
+        // Window values are derived from FakeTimeProvider, never wall-clock.
+        var timeProvider = new FakeTimeProvider(
+            new DateTimeOffset(2026, 6, 15, 0, 0, 0, TimeSpan.Zero)
+        );
+        var start = timeProvider.GetUtcNow();
+        var end = start.AddDays(5);
+        var expected = new FreeBusyScheduleDto(
+            "me",
+            [new BusyIntervalDto(start, start.AddHours(1))]
+        );
+        var client = new Mock<IHostAdapterClient>();
+        client
+            .Setup(c =>
+                c.GetFreeBusyAsync(start, end, It.IsAny<string?>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(new ApiEnvelope<FreeBusyScheduleDto>(true, expected, Meta, null));
+
+        var result = await Service(client).GetFreeBusyAsync(start, end, CancellationToken.None);
+
+        result.Should().BeEquivalentTo(expected);
+    }
+
+    [TestMethod]
+    public async Task GetFreeBusyAsync_WhenEnvelopeNotOk_ReturnsEmptyIntervals()
+    {
+        var timeProvider = new FakeTimeProvider(
+            new DateTimeOffset(2026, 6, 15, 0, 0, 0, TimeSpan.Zero)
+        );
+        var start = timeProvider.GetUtcNow();
+        var end = start.AddDays(5);
+        var client = new Mock<IHostAdapterClient>();
+        client
+            .Setup(c =>
+                c.GetFreeBusyAsync(
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(
+                new ApiEnvelope<FreeBusyScheduleDto>(
+                    false,
+                    null,
+                    Meta,
+                    new ApiError("DOWNSTREAM_FAILURE", "x")
+                )
+            );
+
+        var result = await Service(client).GetFreeBusyAsync(start, end, CancellationToken.None);
+
+        result.BusyIntervals.Should().BeEmpty();
     }
 
     [TestMethod]
