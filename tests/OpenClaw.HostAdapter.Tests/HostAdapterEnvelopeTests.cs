@@ -28,7 +28,7 @@ public class HostAdapterEnvelopeTests
         );
         using var client = factory.CreateAuthorizedClient();
 
-        using var response = await client.GetAsync("/v1/status");
+        using var response = await client.GetAsync("/status");
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
         var meta = document.RootElement.GetProperty("meta");

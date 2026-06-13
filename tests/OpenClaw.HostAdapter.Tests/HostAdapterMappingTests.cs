@@ -97,7 +97,7 @@ public class HostAdapterMappingTests
         using var client = factory.CreateAuthorizedClient();
 
         using var response = await client.GetAsync(
-            "/v1/messages?since=2026-04-12T13:00:00Z&limit=1"
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T13:00:00Z&$top=1"
         );
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
@@ -111,5 +111,83 @@ public class HostAdapterMappingTests
             .GetBoolean()
             .Should()
             .BeTrue();
+    }
+
+    [TestMethod]
+    public async Task HostAdapter_should_dispatch_meeting_requests_branch_when_filter_contains_meeting_message_type_predicate()
+    {
+        using var factory = new HostAdapterTestWebApplicationFactory();
+        var readyBridge = new BridgeStatusDto(
+            BridgeState.ready.ToString(),
+            BridgeMode.safe.ToString(),
+            true,
+            false,
+            null,
+            null,
+            null
+        );
+        factory.ProcessRunner.EnqueueResponse(
+            "status",
+            HostAdapterResponses.Success(readyBridge, "status-request", "test-version", readyBridge)
+        );
+        factory.ProcessRunner.EnqueueResponse(
+            "list-meeting-requests",
+            HostAdapterResponses.Success(
+                new ItemsResponse<MessageDto>(Array.Empty<MessageDto>()),
+                "meeting-requests-request",
+                "test-version",
+                readyBridge
+            )
+        );
+        using var client = factory.CreateAuthorizedClient();
+
+        using var response = await client.GetAsync(
+            "/users/me/messages?$filter=meetingMessageType ne null and receivedDateTime ge 2026-04-12T13:00:00Z&$top=5"
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory
+            .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
+            .Should()
+            .Equal("status", "list-meeting-requests");
+    }
+
+    [TestMethod]
+    public async Task HostAdapter_should_dispatch_plain_messages_branch_when_filter_has_no_meeting_message_type_predicate()
+    {
+        using var factory = new HostAdapterTestWebApplicationFactory();
+        var readyBridge = new BridgeStatusDto(
+            BridgeState.ready.ToString(),
+            BridgeMode.safe.ToString(),
+            true,
+            false,
+            null,
+            null,
+            null
+        );
+        factory.ProcessRunner.EnqueueResponse(
+            "status",
+            HostAdapterResponses.Success(readyBridge, "status-request", "test-version", readyBridge)
+        );
+        factory.ProcessRunner.EnqueueResponse(
+            "list-messages",
+            HostAdapterResponses.Success(
+                new ItemsResponse<MessageDto>(Array.Empty<MessageDto>()),
+                "messages-request",
+                "test-version",
+                readyBridge
+            )
+        );
+        using var client = factory.CreateAuthorizedClient();
+
+        using var response = await client.GetAsync(
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T13:00:00Z&$top=5"
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        factory
+            .ProcessRunner.Invocations.Select(invocation => invocation.Verb)
+            .Should()
+            .Equal("status", "list-messages");
     }
 }

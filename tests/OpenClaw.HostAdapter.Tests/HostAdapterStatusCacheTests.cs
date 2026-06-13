@@ -47,10 +47,10 @@ public class HostAdapterStatusCacheTests
         using var client = factory.CreateAuthorizedClient();
 
         using var firstResponse = await client.GetAsync(
-            "/v1/messages?since=2026-04-12T13:00:00Z&limit=1"
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T13:00:00Z&$top=1"
         );
         using var secondResponse = await client.GetAsync(
-            "/v1/messages?since=2026-04-12T13:05:00Z&limit=1"
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T13:05:00Z&$top=1"
         );
 
         firstResponse.StatusCode.Should().Be(HttpStatusCode.OK);

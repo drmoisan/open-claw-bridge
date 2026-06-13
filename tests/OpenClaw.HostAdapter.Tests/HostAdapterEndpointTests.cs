@@ -144,8 +144,8 @@ public class HostAdapterEndpointTests
         );
         using var client = factory.CreateAuthorizedClient();
 
-        using var messageResponse = await client.GetAsync("/v1/messages/bridge%20id%2Bvalue");
-        using var eventResponse = await client.GetAsync("/v1/events/bridge%20id%2Bvalue");
+        using var messageResponse = await client.GetAsync("/users/me/messages/bridge%20id%2Bvalue");
+        using var eventResponse = await client.GetAsync("/users/me/events/bridge%20id%2Bvalue");
 
         messageResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         eventResponse.StatusCode.Should().Be(HttpStatusCode.OK);

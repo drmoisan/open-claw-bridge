@@ -27,7 +27,21 @@ public sealed class HostAdapterOptions
     public static string DefaultClientExecutablePath => "OpenClaw.MailBridge.Client.exe";
 
     public static string DefaultAdapterVersion =>
-        typeof(HostAdapterOptions).Assembly.GetName().Version?.ToString() ?? "0.1.0";
+        FormatAdapterVersion(typeof(HostAdapterOptions).Assembly.GetName().Version);
+
+    private static string FormatAdapterVersion(Version? version)
+    {
+        // The assembly version renders four components (major.minor.build.revision); the adapter
+        // version reported in meta.adapterVersion uses the three-component major.minor.patch form
+        // (for example 1.0.0). A missing version falls back to the historical 0.1.0 value.
+        if (version is null)
+        {
+            return "0.1.0";
+        }
+
+        var build = version.Build < 0 ? 0 : version.Build;
+        return $"{version.Major}.{version.Minor}.{build}";
+    }
 
     public string AppSettingsPath { get; set; } = DefaultAppSettingsPath;
 
@@ -40,4 +54,10 @@ public sealed class HostAdapterOptions
     public int MaxLimit { get; set; } = 250;
 
     public string AdapterVersion { get; set; } = DefaultAdapterVersion;
+
+    /// <summary>
+    /// The mailbox identifier rendered into the Graph-shaped <c>/users/{id}/...</c> route segment.
+    /// Defaults to the non-identifying literal <c>"me"</c>.
+    /// </summary>
+    public string MailboxId { get; set; } = "me";
 }
