@@ -1,0 +1,1 @@
+- [Artifact validator quirks](project_artifact-validator-quirks.md) — exact heading/line-format rules the orchestration-artifact validator enforces for review artifacts
