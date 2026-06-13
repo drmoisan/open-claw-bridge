@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Options;
 using OpenClaw.Core;
+using OpenClaw.Core.Agent;
+using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.HostAdapter.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -52,6 +54,16 @@ builder.Services.AddHttpClient<IHostAdapterClient, HostAdapterHttpClient>(
 );
 builder.Services.AddHostedService<MessagePollingWorker>();
 builder.Services.AddHostedService<CalendarPollingWorker>();
+
+// Deterministic agent (D5/D6) registrations.
+builder
+    .Services.AddOptions<AgentPolicyOptions>()
+    .Bind(builder.Configuration.GetSection("OpenClaw:AgentPolicy"));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<SchedulingDtoMapper>();
+builder.Services.AddSingleton<ISchedulingService, HostAdapterSchedulingService>();
+builder.Services.AddSingleton<ISchedulingCandidateSource, CacheSchedulingCandidateSource>();
+builder.Services.AddHostedService<SchedulingWorker>();
 
 var app = builder.Build();
 app.UseStaticFiles();
