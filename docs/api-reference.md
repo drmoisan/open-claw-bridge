@@ -9,7 +9,7 @@ The MailBridge exposes a local JSON-RPC API over Windows Named Pipes. An OpenCla
 
 The repository also includes an additive HTTP-and-container path:
 
-- `OpenClaw.HostAdapter` runs on Windows and translates authenticated HTTP requests such as `GET /v1/status` into the same six `OpenClaw.MailBridge.Client` commands.
+- `OpenClaw.HostAdapter` runs on Windows and translates authenticated, Microsoft Graph-shaped HTTP requests such as `GET /status` and `GET /users/{id}/messages` into the same six `OpenClaw.MailBridge.Client` commands.
 - `OpenClaw.Core` runs locally in Docker, calls the HostAdapter through `host.docker.internal`, and serves cache-backed UI and internal API responses.
 - The six-command `OpenClaw.MailBridge.Client` contract remains unchanged and is still the canonical transport seam.
 
@@ -34,16 +34,18 @@ The pipe is ACL-restricted to the current interactive user, BUILTIN\Administrato
 
 ## Additive HostAdapter HTTP Surface
 
-`OpenClaw.HostAdapter` is the only approved network seam for the containerized path. It wraps the existing DTOs in `ApiEnvelope<T>` responses and preserves the current CLI contract by shelling out to `OpenClaw.MailBridge.Client` with allowlisted arguments.
+`OpenClaw.HostAdapter` is the only approved network seam for the containerized path. It wraps the existing DTOs in `ApiEnvelope<T>` responses and preserves the current CLI contract by shelling out to `OpenClaw.MailBridge.Client` with allowlisted arguments. As of adapter version `1.0.0`, the surface is Microsoft Graph-shaped: the `{id}` path segment is the configured mailbox identifier (`HostAdapterOptions.MailboxId`, default `me`).
 
 | Route | Backing `OpenClaw.MailBridge.Client` command | Response shape |
 |---|---|---|
-| `GET /v1/status` | `status` | `ApiEnvelope<BridgeStatusDto>` |
-| `GET /v1/messages?since=<utc>&limit=<n>` | `list-messages --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
-| `GET /v1/messages/{bridgeId}` | `get-message --id <bridgeId>` | `ApiEnvelope<MessageDto>` |
-| `GET /v1/meeting-requests?since=<utc>&limit=<n>` | `list-meeting-requests --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
-| `GET /v1/calendar?start=<utc>&end=<utc>&limit=<n>` | `list-calendar --start <utc> --end <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<EventDto>>` |
-| `GET /v1/events/{bridgeId}` | `get-event --id <bridgeId>` | `ApiEnvelope<EventDto>` |
+| `GET /status` | `status` | `ApiEnvelope<BridgeStatusDto>` |
+| `GET /users/{id}/messages?$filter=receivedDateTime ge <utc>&$top=<n>` | `list-messages --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
+| `GET /users/{id}/messages/{messageId}` | `get-message --id <bridgeId>` | `ApiEnvelope<MessageDto>` |
+| `GET /users/{id}/messages?$filter=meetingMessageType ne null&$top=<n>` | `list-meeting-requests --since <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<MessageDto>>` |
+| `GET /users/{id}/calendarView?startDateTime=<utc>&endDateTime=<utc>&$top=<n>` | `list-calendar --start <utc> --end <utc> --limit <n>` | `ApiEnvelope<ItemsResponse<EventDto>>` |
+| `GET /users/{id}/events/{eventId}` | `get-event --id <bridgeId>` | `ApiEnvelope<EventDto>` |
+
+> Breaking change (adapter version `1.0.0`): the earlier bespoke `/v1/*` routes were replaced by the Graph-shaped surface above. Request and response envelope shapes are unchanged. Meeting requests are served by the `/users/{id}/messages` route filtered on `meetingMessageType`. The `OpenClaw.Core` adapter base URL no longer carries a `/v1/` segment.
 
 Requests use `Authorization: Bearer <token>` and may include `X-Request-Id`. The additive `OpenClaw.Core` container path reaches this HTTP surface through `host.docker.internal`.
 

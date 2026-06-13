@@ -13,9 +13,16 @@ public sealed class OpenClawOptions
 
 public sealed class HostAdapterOptions
 {
-    public string BaseUrl { get; set; } = "http://host.docker.internal:4319/v1/";
+    public string BaseUrl { get; set; } = "http://host.docker.internal:4319/";
 
     public string TokenFile { get; set; } = "/run/openclaw/hostadapter.token";
+
+    /// <summary>
+    /// The mailbox identifier rendered into the Graph-shaped <c>/users/{id}/...</c> route segment.
+    /// Mirrors the HostAdapter-side default <c>"me"</c> without crossing the project boundary into
+    /// <c>OpenClaw.HostAdapter</c>.
+    /// </summary>
+    public string MailboxId { get; set; } = "me";
 }
 
 public sealed class PollingOptions

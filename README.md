@@ -266,7 +266,7 @@ Validate the local-only path:
 
 ```powershell
 $token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
-curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/v1/status
+curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/status
 curl.exe http://127.0.0.1:8081/health/ready
 curl.exe http://127.0.0.1:8081/api/status
 ```
@@ -368,14 +368,16 @@ Key behavior:
 - `list-calendar --start <utc> --end <utc> --limit <n>`
 - `get-event --id <bridgeId>`
 
-The HostAdapter preserves this contract exactly and exposes it through:
+The HostAdapter preserves this contract exactly and exposes it through a Microsoft Graph-shaped HTTP surface. The `{id}` path segment is the configured mailbox identifier (`HostAdapterOptions.MailboxId`, default `me`):
 
-- `GET /v1/status`
-- `GET /v1/messages`
-- `GET /v1/messages/{bridgeId}`
-- `GET /v1/meeting-requests`
-- `GET /v1/calendar`
-- `GET /v1/events/{bridgeId}`
+- `GET /status`
+- `GET /users/{id}/messages` (`?$filter=receivedDateTime ge <iso8601>&$top=<n>`)
+- `GET /users/{id}/messages/{messageId}`
+- `GET /users/{id}/messages` (`?$filter=meetingMessageType ne null&$top=<n>` for meeting requests)
+- `GET /users/{id}/calendarView` (`?startDateTime=<iso8601>&endDateTime=<iso8601>&$top=<n>`)
+- `GET /users/{id}/events/{eventId}`
+
+> Breaking change (adapter version `1.0.0`): the earlier bespoke `/v1/*` routes (`/v1/status`, `/v1/messages`, `/v1/meeting-requests`, `/v1/calendar`, `/v1/events/{bridgeId}`) were replaced by the Graph-shaped surface above. Request and response envelope shapes are unchanged. Meeting requests are served by the `/users/{id}/messages` route filtered on `meetingMessageType`. Clients configure the adapter base URL without a `/v1/` segment (for example `http://127.0.0.1:4319/`).
 
 ## Additional Documentation
 

@@ -28,7 +28,7 @@ public class HostAdapterHttpClientTests
     {
         var opts = new OpenClawOptions();
         opts.HostAdapter.TokenFile = tokenFile;
-        opts.HostAdapter.BaseUrl = "http://localhost:4319/v1/";
+        opts.HostAdapter.BaseUrl = "http://localhost:4319/";
         return Options.Create(opts);
     }
 
@@ -45,7 +45,7 @@ public class HostAdapterHttpClientTests
     {
         var httpClient = new HttpClient(handler)
         {
-            BaseAddress = new Uri("http://localhost:4319/v1/"),
+            BaseAddress = new Uri("http://localhost:4319/"),
         };
         return new HostAdapterHttpClient(httpClient, BuildOptions(tokenFile))
         {
@@ -338,15 +338,16 @@ public class HostAdapterHttpClientTests
 
         await client.GetStatusAsync();
 
-        capturedPath.Should().EndWith("/v1/status");
+        capturedPath.Should().EndWith("/status");
     }
 
     /// <summary>
     /// Verifies that <see cref="HostAdapterHttpClient.ListMessagesAsync"/> sends a GET request
-    /// to the <c>messages</c> path and includes <c>since</c> and <c>limit</c> query parameters.
+    /// to the Graph-shaped <c>users/{id}/messages</c> path with the <c>$filter</c>
+    /// receivedDateTime lower bound and <c>$top</c> parameters.
     /// </summary>
     [TestMethod]
-    public async Task ListMessagesAsync_SendsGetToMessagesPathWithSinceAndLimit()
+    public async Task ListMessagesAsync_SendsGetToMessagesPathWithFilterAndTop()
     {
         string? capturedPath = null;
         var handler = new FakeHttpHandler(req =>
@@ -361,9 +362,9 @@ public class HostAdapterHttpClientTests
             limit: 50
         );
 
-        capturedPath.Should().Contain("messages");
-        capturedPath.Should().Contain("since=");
-        capturedPath.Should().Contain("limit=50");
+        capturedPath.Should().Contain("users/me/messages");
+        capturedPath.Should().Contain("$filter=receivedDateTime");
+        capturedPath.Should().Contain("$top=50");
     }
 
     /// <summary>
@@ -383,7 +384,7 @@ public class HostAdapterHttpClientTests
 
         await client.GetMessageAsync("msg/with/slashes");
 
-        capturedPath.Should().Contain("messages/");
+        capturedPath.Should().Contain("users/me/messages/");
         capturedPath
             .Should()
             .Contain(
@@ -394,10 +395,11 @@ public class HostAdapterHttpClientTests
 
     /// <summary>
     /// Verifies that <see cref="HostAdapterHttpClient.ListMeetingRequestsAsync"/> sends a GET
-    /// request to the <c>meeting-requests</c> path with <c>since</c> and <c>limit</c>.
+    /// request to the Graph-shaped messages-filtered form: the <c>users/{id}/messages</c> path
+    /// carrying the <c>meetingMessageType ne null</c> predicate and the <c>$top</c> parameter.
     /// </summary>
     [TestMethod]
-    public async Task ListMeetingRequestsAsync_SendsGetToMeetingRequestsPathWithSinceAndLimit()
+    public async Task ListMeetingRequestsAsync_SendsGetToMessagesPathWithMeetingMessageTypeFilter()
     {
         string? capturedPath = null;
         var handler = new FakeHttpHandler(req =>
@@ -412,17 +414,18 @@ public class HostAdapterHttpClientTests
             limit: 25
         );
 
-        capturedPath.Should().Contain("meeting-requests");
-        capturedPath.Should().Contain("since=");
-        capturedPath.Should().Contain("limit=25");
+        capturedPath.Should().Contain("users/me/messages");
+        capturedPath.Should().Contain("meetingMessageType");
+        capturedPath.Should().Contain("$top=25");
     }
 
     /// <summary>
     /// Verifies that <see cref="HostAdapterHttpClient.ListCalendarWindowAsync"/> sends a GET
-    /// request to the <c>calendar</c> path with <c>start</c>, <c>end</c>, and <c>limit</c>.
+    /// request to the Graph-shaped <c>users/{id}/calendarView</c> path with
+    /// <c>startDateTime</c>, <c>endDateTime</c>, and <c>$top</c>.
     /// </summary>
     [TestMethod]
-    public async Task ListCalendarWindowAsync_SendsGetToCalendarPathWithStartEndAndLimit()
+    public async Task ListCalendarWindowAsync_SendsGetToCalendarViewPathWithStartEndAndTop()
     {
         string? capturedPath = null;
         var handler = new FakeHttpHandler(req =>
@@ -438,10 +441,10 @@ public class HostAdapterHttpClientTests
             limit: 75
         );
 
-        capturedPath.Should().Contain("calendar");
-        capturedPath.Should().Contain("start=");
-        capturedPath.Should().Contain("end=");
-        capturedPath.Should().Contain("limit=75");
+        capturedPath.Should().Contain("users/me/calendarView");
+        capturedPath.Should().Contain("startDateTime=");
+        capturedPath.Should().Contain("endDateTime=");
+        capturedPath.Should().Contain("$top=75");
     }
 
     /// <summary>
@@ -461,7 +464,7 @@ public class HostAdapterHttpClientTests
 
         await client.GetEventAsync("event id with spaces");
 
-        capturedPath.Should().Contain("events/");
+        capturedPath.Should().Contain("users/me/events/");
         capturedPath
             .Should()
             .Contain(
@@ -490,7 +493,7 @@ public class HostAdapterHttpClientTests
         // Omit limit; default is 100 per the method signature
         await client.ListMessagesAsync(DateTimeOffset.UtcNow);
 
-        capturedPath.Should().Contain("limit=100");
+        capturedPath.Should().Contain("$top=100");
     }
 
     // ─── TRANSPORT_FAILURE ────────────────────────────────────────────────────────

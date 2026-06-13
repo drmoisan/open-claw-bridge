@@ -40,6 +40,7 @@ builder
         options.AdapterVersion = string.IsNullOrWhiteSpace(options.AdapterVersion)
             ? HostAdapterOptions.DefaultAdapterVersion
             : options.AdapterVersion;
+        options.MailboxId = string.IsNullOrWhiteSpace(options.MailboxId) ? "me" : options.MailboxId;
     });
 builder.Services.AddSingleton<HostAdapterCommandBuilder>();
 builder.Services.AddSingleton<IHostAdapterProcessRunner, HostAdapterProcessRunner>();
@@ -51,7 +52,7 @@ app.UseMiddleware<RequestLoggingMiddleware>();
 app.UseMiddleware<BearerTokenMiddleware>();
 
 app.MapGet(
-    "/v1/status",
+    "/status",
     async (
         HttpContext context,
         StatusCacheService statusCache,
@@ -64,8 +65,9 @@ app.MapGet(
 );
 
 app.MapGet(
-    "/v1/messages",
+    "/users/{id}/messages",
     async (
+        string id,
         HttpContext context,
         StatusCacheService statusCache,
         HostAdapterCommandBuilder commandBuilder,
@@ -87,10 +89,12 @@ app.MapGet(
             return ToHttpResult(context, failure);
         }
 
+        var filter = context.Request.Query["$filter"];
+        var sinceValues = HostAdapterRequestValidation.ExtractReceivedDateTimeLowerBound(filter);
         if (
             !HostAdapterRequestValidation.TryGetUtcTimestamp<ItemsResponse<MessageDto>>(
-                context.Request.Query["since"],
-                "since",
+                sinceValues,
+                "$filter (receivedDateTime ge)",
                 requestId,
                 options,
                 bridgeStatus,
@@ -104,7 +108,7 @@ app.MapGet(
 
         if (
             !HostAdapterRequestValidation.TryGetLimit<ItemsResponse<MessageDto>>(
-                context.Request.Query["limit"],
+                context.Request.Query["$top"],
                 requestId,
                 options,
                 bridgeStatus,
@@ -116,8 +120,12 @@ app.MapGet(
             return ToHttpResult(context, limitFailure!);
         }
 
+        var command = HostAdapterRequestValidation.FilterSelectsMeetingRequests(filter)
+            ? commandBuilder.BuildListMeetingRequests(sinceUtc, limit)
+            : commandBuilder.BuildListMessages(sinceUtc, limit);
+
         var result = await processRunner.ExecuteAsync<ItemsResponse<MessageDto>>(
-            commandBuilder.BuildListMessages(sinceUtc, limit),
+            command,
             requestId,
             bridgeStatus,
             DeserializeItemsResponse<MessageDto>,
@@ -128,9 +136,10 @@ app.MapGet(
 );
 
 app.MapGet(
-    "/v1/messages/{bridgeId}",
+    "/users/{id}/messages/{messageId}",
     async (
-        string bridgeId,
+        string id,
+        string messageId,
         HttpContext context,
         StatusCacheService statusCache,
         HostAdapterCommandBuilder commandBuilder,
@@ -154,7 +163,7 @@ app.MapGet(
 
         if (
             !HostAdapterRequestValidation.TryGetBridgeId<MessageDto>(
-                bridgeId,
+                messageId,
                 requestId,
                 options,
                 bridgeStatus,
@@ -178,72 +187,9 @@ app.MapGet(
 );
 
 app.MapGet(
-    "/v1/meeting-requests",
+    "/users/{id}/calendarView",
     async (
-        HttpContext context,
-        StatusCacheService statusCache,
-        HostAdapterCommandBuilder commandBuilder,
-        IHostAdapterProcessRunner processRunner,
-        IOptions<HostAdapterOptions> optionsAccessor,
-        CancellationToken cancellationToken
-    ) =>
-    {
-        var requestId = context.GetRequestId();
-        var options = optionsAccessor.Value;
-        var (bridgeStatus, failure) = await RequireReadyBridgeAsync<ItemsResponse<MessageDto>>(
-            requestId,
-            options,
-            statusCache,
-            cancellationToken
-        );
-        if (failure is not null)
-        {
-            return ToHttpResult(context, failure);
-        }
-
-        if (
-            !HostAdapterRequestValidation.TryGetUtcTimestamp<ItemsResponse<MessageDto>>(
-                context.Request.Query["since"],
-                "since",
-                requestId,
-                options,
-                bridgeStatus,
-                out var sinceUtc,
-                out var timestampFailure
-            )
-        )
-        {
-            return ToHttpResult(context, timestampFailure!);
-        }
-
-        if (
-            !HostAdapterRequestValidation.TryGetLimit<ItemsResponse<MessageDto>>(
-                context.Request.Query["limit"],
-                requestId,
-                options,
-                bridgeStatus,
-                out var limit,
-                out var limitFailure
-            )
-        )
-        {
-            return ToHttpResult(context, limitFailure!);
-        }
-
-        var result = await processRunner.ExecuteAsync<ItemsResponse<MessageDto>>(
-            commandBuilder.BuildListMeetingRequests(sinceUtc, limit),
-            requestId,
-            bridgeStatus,
-            DeserializeItemsResponse<MessageDto>,
-            cancellationToken
-        );
-        return ToHttpResult(context, result);
-    }
-);
-
-app.MapGet(
-    "/v1/calendar",
-    async (
+        string id,
         HttpContext context,
         StatusCacheService statusCache,
         HostAdapterCommandBuilder commandBuilder,
@@ -267,8 +213,8 @@ app.MapGet(
 
         if (
             !HostAdapterRequestValidation.TryGetUtcTimestamp<ItemsResponse<EventDto>>(
-                context.Request.Query["start"],
-                "start",
+                context.Request.Query["startDateTime"],
+                "startDateTime",
                 requestId,
                 options,
                 bridgeStatus,
@@ -282,8 +228,8 @@ app.MapGet(
 
         if (
             !HostAdapterRequestValidation.TryGetUtcTimestamp<ItemsResponse<EventDto>>(
-                context.Request.Query["end"],
-                "end",
+                context.Request.Query["endDateTime"],
+                "endDateTime",
                 requestId,
                 options,
                 bridgeStatus,
@@ -311,7 +257,7 @@ app.MapGet(
 
         if (
             !HostAdapterRequestValidation.TryGetLimit<ItemsResponse<EventDto>>(
-                context.Request.Query["limit"],
+                context.Request.Query["$top"],
                 requestId,
                 options,
                 bridgeStatus,
@@ -335,9 +281,10 @@ app.MapGet(
 );
 
 app.MapGet(
-    "/v1/events/{bridgeId}",
+    "/users/{id}/events/{eventId}",
     async (
-        string bridgeId,
+        string id,
+        string eventId,
         HttpContext context,
         StatusCacheService statusCache,
         HostAdapterCommandBuilder commandBuilder,
@@ -361,7 +308,7 @@ app.MapGet(
 
         if (
             !HostAdapterRequestValidation.TryGetBridgeId<EventDto>(
-                bridgeId,
+                eventId,
                 requestId,
                 options,
                 bridgeStatus,

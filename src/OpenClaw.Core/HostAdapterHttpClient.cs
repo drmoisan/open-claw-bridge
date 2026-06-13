@@ -40,8 +40,9 @@ internal sealed class HostAdapterHttpClient(
         CancellationToken cancellationToken = default
     )
     {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
         return SendAsync<ItemsResponse<MessageDto>>(
-            $"messages?since={Uri.EscapeDataString(sinceUtc.ToString("O"))}&limit={limit}",
+            $"users/{id}/messages?$filter=receivedDateTime ge {Uri.EscapeDataString(sinceUtc.ToString("O"))}&$top={limit}",
             requestId,
             cancellationToken
         );
@@ -53,8 +54,9 @@ internal sealed class HostAdapterHttpClient(
         CancellationToken cancellationToken = default
     )
     {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
         return SendAsync<MessageDto>(
-            $"messages/{Uri.EscapeDataString(bridgeId)}",
+            $"users/{id}/messages/{Uri.EscapeDataString(bridgeId)}",
             requestId,
             cancellationToken
         );
@@ -67,8 +69,9 @@ internal sealed class HostAdapterHttpClient(
         CancellationToken cancellationToken = default
     )
     {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
         return SendAsync<ItemsResponse<MessageDto>>(
-            $"meeting-requests?since={Uri.EscapeDataString(sinceUtc.ToString("O"))}&limit={limit}",
+            $"users/{id}/messages?$filter=meetingMessageType ne null and receivedDateTime ge {Uri.EscapeDataString(sinceUtc.ToString("O"))}&$top={limit}",
             requestId,
             cancellationToken
         );
@@ -82,8 +85,9 @@ internal sealed class HostAdapterHttpClient(
         CancellationToken cancellationToken = default
     )
     {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
         return SendAsync<ItemsResponse<EventDto>>(
-            $"calendar?start={Uri.EscapeDataString(startUtc.ToString("O"))}&end={Uri.EscapeDataString(endUtc.ToString("O"))}&limit={limit}",
+            $"users/{id}/calendarView?startDateTime={Uri.EscapeDataString(startUtc.ToString("O"))}&endDateTime={Uri.EscapeDataString(endUtc.ToString("O"))}&$top={limit}",
             requestId,
             cancellationToken
         );
@@ -95,8 +99,9 @@ internal sealed class HostAdapterHttpClient(
         CancellationToken cancellationToken = default
     )
     {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
         return SendAsync<EventDto>(
-            $"events/{Uri.EscapeDataString(bridgeId)}",
+            $"users/{id}/events/{Uri.EscapeDataString(bridgeId)}",
             requestId,
             cancellationToken
         );

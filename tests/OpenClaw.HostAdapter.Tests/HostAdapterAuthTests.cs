@@ -16,7 +16,7 @@ public class HostAdapterAuthTests
         using var factory = new HostAdapterTestWebApplicationFactory();
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/v1/status");
+        using var response = await client.GetAsync("/status");
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
 
@@ -52,7 +52,7 @@ public class HostAdapterAuthTests
             "invalid-token"
         );
 
-        using var response = await client.GetAsync("/v1/status");
+        using var response = await client.GetAsync("/status");
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
 

@@ -29,7 +29,9 @@ public class HostAdapterValidationTests
         );
         using var client = factory.CreateAuthorizedClient();
 
-        using var response = await client.GetAsync("/v1/messages?since=2026-04-12T09:15:00-04:00");
+        using var response = await client.GetAsync(
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T09:15:00-04:00"
+        );
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
 
@@ -46,7 +48,7 @@ public class HostAdapterValidationTests
             .GetProperty("message")
             .GetString()
             .Should()
-            .Contain("since")
+            .Contain("receivedDateTime")
             .And.Contain("UTC");
         document
             .RootElement.GetProperty("meta")
@@ -81,7 +83,7 @@ public class HostAdapterValidationTests
         using var client = factory.CreateAuthorizedClient();
 
         using var response = await client.GetAsync(
-            "/v1/calendar?start=2026-04-12T13:00:00Z&end=2026-04-12T13:00:00Z"
+            "/users/me/calendarView?startDateTime=2026-04-12T13:00:00Z&endDateTime=2026-04-12T13:00:00Z"
         );
         var payload = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(payload);
@@ -99,8 +101,8 @@ public class HostAdapterValidationTests
             .GetProperty("message")
             .GetString()
             .Should()
-            .Contain("end")
-            .And.Contain("start");
+            .Contain("endDateTime")
+            .And.Contain("startDateTime");
         document
             .RootElement.GetProperty("meta")
             .GetProperty("requestId")
@@ -157,10 +159,10 @@ public class HostAdapterValidationTests
         using var client = factory.CreateAuthorizedClient();
 
         using var defaultLimitResponse = await client.GetAsync(
-            "/v1/messages?since=2026-04-12T13:00:00Z"
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T13:00:00Z"
         );
         using var overMaxResponse = await client.GetAsync(
-            "/v1/messages?since=2026-04-12T13:00:00Z&limit=251"
+            "/users/me/messages?$filter=receivedDateTime ge 2026-04-12T13:00:00Z&$top=251"
         );
 
         var overMaxPayload = await overMaxResponse.Content.ReadAsStringAsync();

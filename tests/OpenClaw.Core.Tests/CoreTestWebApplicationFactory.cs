@@ -32,7 +32,7 @@ internal sealed class CoreTestWebApplicationFactory(
                 configurationBuilder.AddInMemoryCollection(
                     new Dictionary<string, string?>
                     {
-                        ["OpenClaw:HostAdapter:BaseUrl"] = "http://127.0.0.1:4319/v1/",
+                        ["OpenClaw:HostAdapter:BaseUrl"] = "http://127.0.0.1:4319/",
                         ["OpenClaw:HostAdapter:TokenFile"] = "/run/openclaw/hostadapter.token",
                         ["OpenClaw:Storage:DbPath"] = dbPath,
                     }
