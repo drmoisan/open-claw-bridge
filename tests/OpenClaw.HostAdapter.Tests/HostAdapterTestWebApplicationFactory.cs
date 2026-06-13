@@ -15,6 +15,18 @@ namespace OpenClaw.HostAdapter.Tests;
 
 internal sealed class HostAdapterTestWebApplicationFactory : WebApplicationFactory<Program>
 {
+    private readonly IReadOnlyDictionary<string, string?> additionalConfiguration;
+
+    public HostAdapterTestWebApplicationFactory()
+        : this(new Dictionary<string, string?>()) { }
+
+    public HostAdapterTestWebApplicationFactory(
+        IReadOnlyDictionary<string, string?> additionalConfiguration
+    )
+    {
+        this.additionalConfiguration = additionalConfiguration;
+    }
+
     public string ExpectedToken { get; } = "expected-hostadapter-token";
 
     public HostAdapterProcessRunnerStub ProcessRunner { get; } = new();
@@ -50,6 +62,11 @@ internal sealed class HostAdapterTestWebApplicationFactory : WebApplicationFacto
                         [$"{HostAdapterOptions.SectionName}:AdapterVersion"] = "test-version",
                     }
                 );
+
+                if (additionalConfiguration.Count > 0)
+                {
+                    configurationBuilder.AddInMemoryCollection(additionalConfiguration);
+                }
             }
         );
 

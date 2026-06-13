@@ -5,3 +5,4 @@
 - [Core agent = namespace not project](project_core-agent-namespace-not-project.md) — new logic for OpenClaw.Core folds into a namespace, not a new project (arch rule 6); enforce with namespace NetArchTest.
 - [Checkpoint validator contract](project_checkpoint-validator-contract.md) — orchestrator-state validator requires hyphen keys, stepN enum (verified not complete), and delegation_receipts as a LIST; differs from prompt.
 - [csharpier local tool manifest broken](project_csharpier-local-tool-manifest-broken.md) — local dotnet-tools csharpier entry misconfigured; use global csharpier with format/check subcommands.
+- [HostAdapter scheduling = Design A](project_hostadapter-scheduling-design-a.md) — track #76->#74->#75 uses Graph-shaped HostAdapter endpoints (not Core-cache compute); #75 should follow the same pattern.

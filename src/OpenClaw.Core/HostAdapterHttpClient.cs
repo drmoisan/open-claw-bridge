@@ -107,6 +107,34 @@ internal sealed class HostAdapterHttpClient(
         );
     }
 
+    public Task<ApiEnvelope<MailboxSettingsDto>> GetMailboxSettingsAsync(
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
+        return SendAsync<MailboxSettingsDto>(
+            $"users/{id}/mailboxSettings",
+            requestId,
+            cancellationToken
+        );
+    }
+
+    public Task<ApiEnvelope<FreeBusyScheduleDto>> GetFreeBusyAsync(
+        DateTimeOffset startUtc,
+        DateTimeOffset endUtc,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
+        return SendAsync<FreeBusyScheduleDto>(
+            $"users/{id}/calendar/getSchedule?startDateTime={Uri.EscapeDataString(startUtc.ToString("O"))}&endDateTime={Uri.EscapeDataString(endUtc.ToString("O"))}",
+            requestId,
+            cancellationToken
+        );
+    }
+
     private async Task<ApiEnvelope<T>> SendAsync<T>(
         string relativePath,
         string? requestId,

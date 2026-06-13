@@ -60,4 +60,12 @@ public sealed class HostAdapterOptions
     /// Defaults to the non-identifying literal <c>"me"</c>.
     /// </summary>
     public string MailboxId { get; set; } = "me";
+
+    /// <summary>
+    /// The mailbox time zone and working hours served by
+    /// <c>GET /users/{id}/mailboxSettings</c>, bound from the
+    /// <c>OpenClaw:HostAdapter:MailboxSettings</c> subsection. Defaults to UTC, Monday–Friday,
+    /// 09:00–17:00 when the subsection is absent.
+    /// </summary>
+    public MailboxSettingsOptions MailboxSettings { get; set; } = new();
 }

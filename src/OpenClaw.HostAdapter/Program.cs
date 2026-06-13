@@ -41,6 +41,25 @@ builder
             ? HostAdapterOptions.DefaultAdapterVersion
             : options.AdapterVersion;
         options.MailboxId = string.IsNullOrWhiteSpace(options.MailboxId) ? "me" : options.MailboxId;
+
+        // The configuration binder appends array elements onto a pre-initialized default
+        // array rather than replacing it. When an operator supplies MailboxSettings:
+        // WorkingDaysOfWeek, replace the default Monday–Friday array with exactly the
+        // configured entries so config overrides (not augments) the defaults.
+        var workingDaysSection = builder.Configuration.GetSection(
+            $"{HostAdapterOptions.SectionName}:MailboxSettings:WorkingDaysOfWeek"
+        );
+        if (workingDaysSection.Exists())
+        {
+            options.MailboxSettings.WorkingDaysOfWeek =
+            [
+                .. workingDaysSection
+                    .GetChildren()
+                    .Select(child => child.Value)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Select(value => value!),
+            ];
+        }
     });
 builder.Services.AddSingleton<HostAdapterCommandBuilder>();
 builder.Services.AddSingleton<IHostAdapterProcessRunner, HostAdapterProcessRunner>();
@@ -331,79 +350,84 @@ app.MapGet(
     }
 );
 
+app.MapSchedulingRoutes();
+
 app.Run();
-
-static IResult ToHttpResult<T>(HttpContext context, AdapterCommandResult<T> result)
-{
-    context.SetHostAdapterTelemetry(
-        result.Envelope.Meta.Bridge?.State,
-        result.Envelope.Error?.BridgeErrorCode ?? result.Envelope.Error?.Code,
-        result.CliExitCode
-    );
-    return Results.Json(result.Envelope, statusCode: result.StatusCode);
-}
-
-static async Task<(
-    BridgeStatusDto? BridgeStatus,
-    AdapterCommandResult<T>? Failure
-)> RequireReadyBridgeAsync<T>(
-    string requestId,
-    HostAdapterOptions options,
-    StatusCacheService statusCache,
-    CancellationToken cancellationToken
-)
-{
-    var statusResult = await statusCache.GetStatusAsync(requestId, cancellationToken);
-    if (statusResult.StatusCode != StatusCodes.Status200OK || statusResult.Envelope.Data is null)
-    {
-        return (
-            null,
-            HostAdapterResponses.Failure<T>(
-                statusResult.StatusCode,
-                requestId,
-                options.AdapterVersion,
-                statusResult.Envelope.Error?.Code ?? "DOWNSTREAM_FAILURE",
-                statusResult.Envelope.Error?.Message ?? "Unable to obtain bridge status.",
-                statusResult.Envelope.Meta.Bridge,
-                statusResult.Envelope.Error?.BridgeErrorCode,
-                statusResult.Envelope.Error?.Retryable ?? false,
-                statusResult.CliExitCode
-            )
-        );
-    }
-
-    if (IsBridgeNotReady(statusResult.Envelope.Data))
-    {
-        return (
-            statusResult.Envelope.Data,
-            HostAdapterResponses.BridgeNotReady<T>(
-                requestId,
-                options.AdapterVersion,
-                statusResult.Envelope.Data,
-                statusResult.CliExitCode
-            )
-        );
-    }
-
-    return (statusResult.Envelope.Data, null);
-}
-
-static bool IsBridgeNotReady(BridgeStatusDto bridgeStatus)
-{
-    return string.Equals(
-            bridgeStatus.State,
-            BridgeState.starting.ToString(),
-            StringComparison.OrdinalIgnoreCase
-        )
-        || string.Equals(
-            bridgeStatus.State,
-            BridgeState.waiting_for_outlook.ToString(),
-            StringComparison.OrdinalIgnoreCase
-        );
-}
 
 internal partial class Program
 {
+    internal static IResult ToHttpResult<T>(HttpContext context, AdapterCommandResult<T> result)
+    {
+        context.SetHostAdapterTelemetry(
+            result.Envelope.Meta.Bridge?.State,
+            result.Envelope.Error?.BridgeErrorCode ?? result.Envelope.Error?.Code,
+            result.CliExitCode
+        );
+        return Results.Json(result.Envelope, statusCode: result.StatusCode);
+    }
+
+    internal static async Task<(
+        BridgeStatusDto? BridgeStatus,
+        AdapterCommandResult<T>? Failure
+    )> RequireReadyBridgeAsync<T>(
+        string requestId,
+        HostAdapterOptions options,
+        StatusCacheService statusCache,
+        CancellationToken cancellationToken
+    )
+    {
+        var statusResult = await statusCache.GetStatusAsync(requestId, cancellationToken);
+        if (
+            statusResult.StatusCode != StatusCodes.Status200OK
+            || statusResult.Envelope.Data is null
+        )
+        {
+            return (
+                null,
+                HostAdapterResponses.Failure<T>(
+                    statusResult.StatusCode,
+                    requestId,
+                    options.AdapterVersion,
+                    statusResult.Envelope.Error?.Code ?? "DOWNSTREAM_FAILURE",
+                    statusResult.Envelope.Error?.Message ?? "Unable to obtain bridge status.",
+                    statusResult.Envelope.Meta.Bridge,
+                    statusResult.Envelope.Error?.BridgeErrorCode,
+                    statusResult.Envelope.Error?.Retryable ?? false,
+                    statusResult.CliExitCode
+                )
+            );
+        }
+
+        if (IsBridgeNotReady(statusResult.Envelope.Data))
+        {
+            return (
+                statusResult.Envelope.Data,
+                HostAdapterResponses.BridgeNotReady<T>(
+                    requestId,
+                    options.AdapterVersion,
+                    statusResult.Envelope.Data,
+                    statusResult.CliExitCode
+                )
+            );
+        }
+
+        return (statusResult.Envelope.Data, null);
+    }
+
+    internal static bool IsBridgeNotReady(BridgeStatusDto bridgeStatus)
+    {
+        return string.Equals(
+                bridgeStatus.State,
+                BridgeState.starting.ToString(),
+                StringComparison.OrdinalIgnoreCase
+            )
+            || string.Equals(
+                bridgeStatus.State,
+                BridgeState.waiting_for_outlook.ToString(),
+                StringComparison.OrdinalIgnoreCase
+            );
+    }
+
     internal static ItemsResponse<TItem> DeserializeItemsResponse<TItem>(JsonElement element)
     {
         return HostAdapterProcessRunner.DeserializePayload<ItemsResponse<TItem>>(element);

@@ -4,6 +4,7 @@ using System.Text.Json;
 using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.Agent;
+using OpenClaw.HostAdapter.Contracts;
 
 namespace OpenClaw.Core.Tests.Agent;
 
@@ -140,6 +141,59 @@ public sealed class SchedulingDtoContractTests
         // DTOs carrying collection properties are compared by field value (deep
         // structural equivalence) because record equality on IReadOnlyList<> members
         // is reference-based; the round-trip yields new list instances.
+        result.Should().BeEquivalentTo(original);
+    }
+
+    [TestMethod]
+    public void ApiEnvelope_MailboxSettingsDto_RoundTrips()
+    {
+        var original = new ApiEnvelope<MailboxSettingsDto>(
+            Ok: true,
+            Data: new MailboxSettingsDto(
+                TimeZoneId: "Pacific Standard Time",
+                WorkingDays: new[] { DayOfWeek.Monday, DayOfWeek.Wednesday, DayOfWeek.Friday },
+                WorkingHoursStart: new TimeOnly(8, 0),
+                WorkingHoursEnd: new TimeOnly(16, 30)
+            ),
+            Meta: new ApiMeta("req-mbx", "1.0", null),
+            Error: null
+        );
+
+        var result = RoundTrip(original);
+
+        // The outer envelope (Ok, Data, Meta, Error) and the inner MailboxSettingsDto fields are
+        // compared by structural equivalence because collection members are reference-compared by
+        // record equality and the round-trip yields new instances.
+        result.Should().BeEquivalentTo(original);
+    }
+
+    [TestMethod]
+    public void ApiEnvelope_FreeBusyScheduleDto_RoundTrips()
+    {
+        var original = new ApiEnvelope<FreeBusyScheduleDto>(
+            Ok: true,
+            Data: new FreeBusyScheduleDto(
+                MailboxUpn: "owner@contoso.com",
+                BusyIntervals: new List<BusyIntervalDto>
+                {
+                    new(
+                        new DateTimeOffset(2026, 6, 15, 9, 0, 0, TimeSpan.Zero),
+                        new DateTimeOffset(2026, 6, 15, 10, 0, 0, TimeSpan.Zero)
+                    ),
+                    new(
+                        new DateTimeOffset(2026, 6, 15, 13, 0, 0, TimeSpan.Zero),
+                        new DateTimeOffset(2026, 6, 15, 13, 30, 0, TimeSpan.Zero)
+                    ),
+                }
+            ),
+            Meta: new ApiMeta("req-fb", "1.0", null),
+            Error: null
+        );
+
+        var result = RoundTrip(original);
+
+        // The outer envelope and the inner FreeBusyScheduleDto (including BusyIntervals) are
+        // compared by structural equivalence.
         result.Should().BeEquivalentTo(original);
     }
 

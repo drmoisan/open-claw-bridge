@@ -74,24 +74,51 @@ public sealed class HostAdapterSchedulingService(
     }
 
     /// <inheritdoc />
-    public Task<MailboxSettingsDto> GetMailboxSettingsAsync(CancellationToken ct) =>
-        throw new NotSupportedException(
-            "Mailbox settings are not yet exposed by the HostAdapter/MailBridge surface. "
-                + "This endpoint is deferred to issues #74/#75; no HostAdapter or MailBridge "
-                + "endpoint changes are made by this feature."
+    public async Task<MailboxSettingsDto> GetMailboxSettingsAsync(CancellationToken ct)
+    {
+        var envelope = await hostAdapterClient
+            .GetMailboxSettingsAsync(cancellationToken: ct)
+            .ConfigureAwait(false);
+        if (envelope is { Ok: true, Data: not null })
+        {
+            return envelope.Data;
+        }
+
+        // Graceful degradation (consistent with GetCalendarViewAsync): when the route is
+        // unavailable, return the documented defaults so the deterministic pipeline still runs.
+        return new MailboxSettingsDto(
+            "UTC",
+            [
+                DayOfWeek.Monday,
+                DayOfWeek.Tuesday,
+                DayOfWeek.Wednesday,
+                DayOfWeek.Thursday,
+                DayOfWeek.Friday,
+            ],
+            new TimeOnly(9, 0),
+            new TimeOnly(17, 0)
         );
+    }
 
     /// <inheritdoc />
-    public Task<FreeBusyScheduleDto> GetFreeBusyAsync(
+    public async Task<FreeBusyScheduleDto> GetFreeBusyAsync(
         DateTimeOffset start,
         DateTimeOffset end,
         CancellationToken ct
-    ) =>
-        throw new NotSupportedException(
-            "Free/busy schedule is not yet exposed by the HostAdapter/MailBridge surface. "
-                + "This endpoint is deferred to issues #74/#75; no HostAdapter or MailBridge "
-                + "endpoint changes are made by this feature."
-        );
+    )
+    {
+        var envelope = await hostAdapterClient
+            .GetFreeBusyAsync(start, end, cancellationToken: ct)
+            .ConfigureAwait(false);
+        if (envelope is { Ok: true, Data: not null })
+        {
+            return envelope.Data;
+        }
+
+        // Graceful degradation: an unavailable route yields an empty busy grid so the
+        // SlotProposer treats the window as fully free rather than throwing.
+        return new FreeBusyScheduleDto(string.Empty, Array.Empty<BusyIntervalDto>());
+    }
 
     /// <inheritdoc />
     public Task SendMailAsync(SendMailRequest request, CancellationToken ct) =>
