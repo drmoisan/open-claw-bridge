@@ -43,7 +43,11 @@ internal static class ResponseShaper
         // Enhanced mode returns the full untruncated COM Body verbatim in BodyFull; it is NOT
         // routed through BodySanitizer.NormalizePreview (which truncates/collapses whitespace).
         // Safe mode nulls BodyFull alongside BodyPreview to preserve redaction parity, otherwise
-        // the full body text would leak in safe mode.
+        // the full body text would leak in safe mode. Issue #71: safe mode also nulls the three
+        // attendee JSON fields (RequiredAttendeesJson/OptionalAttendeesJson/ResourcesJson) because
+        // attendee names and emails are PII; this matches the message-path redaction of
+        // SenderName/SenderEmail in ShapeMessage. Null here is the redaction signal, distinct from
+        // the empty array "[]" the scanner emits for a type with no attendees.
         return enhancedMode
             ? evt with
             {
@@ -54,6 +58,9 @@ internal static class ResponseShaper
             {
                 BodyPreview = null,
                 BodyFull = null,
+                RequiredAttendeesJson = null,
+                OptionalAttendeesJson = null,
+                ResourcesJson = null,
                 IsRedacted = true,
             };
     }

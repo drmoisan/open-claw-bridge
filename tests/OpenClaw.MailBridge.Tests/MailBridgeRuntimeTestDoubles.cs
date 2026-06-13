@@ -135,6 +135,65 @@ internal sealed record FakeAppointmentItem
     public int? RecurrenceState { get; init; }
     public DateTime? LastModificationTime { get; init; }
     public FakeOutlookParent Parent { get; init; } = new();
+
+    // Issue #71: COM Recipients collection analog, read reflectively by the scanner. Typed as object
+    // so a test can supply either a FakeRecipients or a fail-soft FakeThrowingRecipients double. Null
+    // models an appointment whose Recipients member is unavailable; the enumeration helper must treat
+    // that as "no attendees" ("[]").
+    public object? Recipients { get; init; }
+}
+
+/// <summary>
+/// Reflection-readable analog of the COM <c>Recipients</c> collection (issue #71): exposes a
+/// <c>Count</c> property and a 1-based <c>Item(index)</c> accessor matching the late-bound surface the
+/// scanner enumerates. No live COM.
+/// </summary>
+internal sealed class FakeRecipients
+{
+    private readonly List<FakeRecipient> recipients;
+
+    public FakeRecipients(params FakeRecipient[] recipients) =>
+        this.recipients = recipients.ToList();
+
+    public int Count => recipients.Count;
+
+    // 1-based indexer matching the Outlook Recipients.Item(index) method surface.
+    public FakeRecipient Item(int index) => recipients[index - 1];
+}
+
+/// <summary>
+/// Recipients analog whose <c>Item(index)</c> accessor throws (issue #71): models a COM read failure
+/// on an individual recipient so the scanner's per-recipient fail-soft path (spec SP-B3) and the
+/// fail-soft catch in <c>OutlookComHelpers.GetOptionalIndexedItem</c> are exercised. <c>Count</c> is
+/// non-zero so the enumeration loop enters.
+/// </summary>
+internal sealed class FakeThrowingRecipients
+{
+    public int Count => 1;
+
+    public FakeRecipient Item(int index) =>
+        throw new InvalidOperationException("Simulated COM read failure on recipient.");
+}
+
+/// <summary>
+/// Reflection-readable analog of a COM <c>Recipient</c> (issue #71): exposes <c>Type</c>, <c>Name</c>,
+/// <c>Address</c>, and an optional <c>AddressEntry</c> used for the email fallback path.
+/// </summary>
+internal sealed class FakeRecipient
+{
+    public int Type { get; init; }
+    public string? Name { get; init; }
+    public string? Address { get; init; }
+    public FakeAddressEntry? AddressEntry { get; init; }
+}
+
+/// <summary>
+/// Reflection-readable analog of a COM <c>AddressEntry</c> (issue #71): exposes the resolved SMTP
+/// <c>Address</c> used when the recipient's own <c>Address</c> is unavailable.
+/// </summary>
+internal sealed class FakeAddressEntry
+{
+    public string? Address { get; init; }
 }
 
 internal sealed class FakeOutlookParent

@@ -16,6 +16,18 @@ internal sealed partial class OutlookScanner
     /// reusing it for both the redacted preview and the raw <c>BodyFull</c> value (spec "Limits"),
     /// and populating the nine issue-#72 Graph-shaped fields from their COM analogs/derivations.
     /// </summary>
+    /// <remarks>
+    /// Issue #71: the three attendee JSON fields (<c>RequiredAttendeesJson</c>,
+    /// <c>OptionalAttendeesJson</c>, <c>ResourcesJson</c>) are populated from a single pass over the
+    /// COM <c>Recipients</c> collection via <see cref="ReadAttendees"/>; a type with no recipients
+    /// serializes to <c>"[]"</c> (never null), reserving null for safe-mode redaction.
+    ///
+    /// <c>ProtectedFieldsAvailable</c> remains derived solely from body availability
+    /// (<c>!string.IsNullOrWhiteSpace(body)</c>); attendee readability does NOT contribute to or gate
+    /// that signal (spec SP-B5, design decision 7). Weakening or broadening the body-derived signal
+    /// would change existing issue-#72 behavior outside this issue's scope. Attendee-PII protection is
+    /// enforced separately by safe-mode redaction in <c>ResponseShaper.ShapeEvent</c>.
+    /// </remarks>
     private EventDto BuildEventDto(
         object item,
         string bridgeId,
@@ -28,6 +40,7 @@ internal sealed partial class OutlookScanner
         var sensitivity = OutlookComHelpers.GetOptionalInt(item, "Sensitivity");
         var recurrenceState = OutlookComHelpers.GetOptionalInt(item, "RecurrenceState");
         var responseStatus = OutlookComHelpers.GetOptionalInt(item, "ResponseStatus");
+        var attendees = ReadAttendees(item);
 
         return new EventDto(
             bridgeId,
@@ -41,9 +54,9 @@ internal sealed partial class OutlookScanner
             OutlookComHelpers.GetOptionalBool(item, "IsRecurring"),
             sensitivity,
             OutlookComHelpers.GetOptionalString(item, "Organizer"),
-            null,
-            null,
-            null,
+            attendees.RequiredJson,
+            attendees.OptionalJson,
+            attendees.ResourcesJson,
             ResponseShaper.ShapePreview(body, _settings),
             !string.IsNullOrWhiteSpace(body),
             false,
