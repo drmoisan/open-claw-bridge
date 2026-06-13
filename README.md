@@ -13,6 +13,7 @@ The repository also contains the local-only HTTP and Docker components required 
 
 - Scans the default Outlook Inbox and Calendar on a dedicated STA thread.
 - Stores cached message, meeting-request, and event metadata in `%LOCALAPPDATA%\OpenClaw\MailBridge\cache.db`.
+- Exposes Graph-shaped calendar event fields on `EventDto` (`categories`, `isOrganizer`, `isOnlineMeeting`, `allowNewTimeProposals`, `iCalUId`, `seriesMasterId`, `lastModifiedDateTime`, `bodyFull`, `sensitivityLabel`) populated from Outlook COM. See [`docs/api-reference.md`](./docs/api-reference.md) for the full field contract.
 - Serves cache-backed read-only responses over a named pipe.
 - Keeps `safe` mode as the default response-shaping mode.
 - Supports two Windows installation paths today:
@@ -352,8 +353,8 @@ Default values:
 
 Key behavior:
 
-- `safe` is the default mode and redacts protected fields such as sender details and body previews.
-- `enhanced` returns sanitized preview content and should only be enabled after operator validation.
+- `safe` is the default mode and redacts protected fields such as sender details, body previews, and full event body text (`bodyFull`).
+- `enhanced` returns sanitized preview content plus the full event body text (`bodyFull`) and should only be enabled after operator validation.
 - `pipeName` controls the named pipe used by the bridge and client.
 
 ## Canonical Client Commands

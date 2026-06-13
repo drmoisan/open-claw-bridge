@@ -2,8 +2,10 @@ namespace OpenClaw.Core.Agent;
 
 /// <summary>
 /// Graph-shaped scheduling event (D6), mirroring the <c>GraphEvent</c> type in master
-/// Section 9.2. Fields not yet available from the bridge cache (issues #71-#76) are
-/// mapped to null/empty by the runtime mapper and remain so until those issues land.
+/// Section 9.2. The event Graph fields (iCalUId, seriesMasterId, categories, isOrganizer,
+/// online-meeting and new-time-proposal flags, last-modified time) are supplied by the bridge
+/// cache as of #72 and populated by the runtime mapper. Body content/content-type remain null
+/// until a later issue lands.
 /// </summary>
 /// <param name="Id">The event identifier, or null.</param>
 /// <param name="ICalUId">The cross-store iCalendar identifier, or null.</param>

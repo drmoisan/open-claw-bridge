@@ -40,6 +40,10 @@ internal static class ResponseShaper
         );
         var preview = ShapePreview(evt.BodyPreview, settings);
 
+        // Enhanced mode returns the full untruncated COM Body verbatim in BodyFull; it is NOT
+        // routed through BodySanitizer.NormalizePreview (which truncates/collapses whitespace).
+        // Safe mode nulls BodyFull alongside BodyPreview to preserve redaction parity, otherwise
+        // the full body text would leak in safe mode.
         return enhancedMode
             ? evt with
             {
@@ -49,6 +53,7 @@ internal static class ResponseShaper
             : evt with
             {
                 BodyPreview = null,
+                BodyFull = null,
                 IsRedacted = true,
             };
     }

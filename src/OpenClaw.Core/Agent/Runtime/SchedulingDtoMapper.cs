@@ -12,11 +12,11 @@ namespace OpenClaw.Core.Agent.Runtime;
 /// no new project reference is added.
 /// </summary>
 /// <remarks>
-/// Several Graph fields are not yet available from the bridge cache and remain
-/// null/empty until issues #71-#76 land: message conversation id, meeting-message type,
-/// from/sender split, To/Cc recipients, body content type, event iCalUId,
-/// seriesMasterId, categories, online-meeting and new-time-proposal flags, last-modified
-/// time, and event type. The mapper maps these to null or empty deterministically.
+/// The event Graph fields iCalUId, seriesMasterId, categories, isOrganizer, online-meeting and
+/// new-time-proposal flags, and last-modified time are supplied by the bridge cache as of #72 and
+/// are mapped through directly. Some message Graph fields remain unavailable until later issues
+/// (#71-#76) land — message conversation id, from/sender split nuances, and body content type —
+/// and are mapped to null deterministically.
 /// </remarks>
 public sealed class SchedulingDtoMapper
 {
@@ -57,7 +57,9 @@ public sealed class SchedulingDtoMapper
 
     /// <summary>
     /// Maps a bridge <see cref="EventDto"/> to a Graph-shaped
-    /// <see cref="SchedulingEventDto"/>. Absent Graph fields map to null/empty (#71-#76).
+    /// <see cref="SchedulingEventDto"/>. The event Graph fields supplied by #72 (iCalUId,
+    /// seriesMasterId, categories, isOrganizer, online-meeting and new-time-proposal flags,
+    /// last-modified time) map through directly; body content type remains null.
     /// </summary>
     /// <param name="evt">The bridge event. Must not be null.</param>
     /// <returns>The Graph-shaped scheduling event.</returns>
@@ -68,10 +70,10 @@ public sealed class SchedulingDtoMapper
 
         return new SchedulingEventDto(
             Id: evt.BridgeId,
-            // iCalUId, seriesMasterId, categories, online-meeting and new-time-proposal
-            // flags, last-modified time, and event type are not yet available (#71-#76).
-            ICalUId: evt.GlobalAppointmentId,
-            SeriesMasterId: null,
+            // iCalUId reuses GlobalAppointmentID, populated by the bridge scanner into
+            // EventDto.ICalUId (#72); the mapper consumes the contract field directly.
+            ICalUId: evt.ICalUId,
+            SeriesMasterId: evt.SeriesMasterId,
             Subject: evt.Subject,
             BodyPreview: evt.BodyPreview,
             BodyContent: null,
@@ -80,17 +82,16 @@ public sealed class SchedulingDtoMapper
             RequiredAttendees: ParseAttendees(evt.RequiredAttendeesJson),
             OptionalAttendees: ParseAttendees(evt.OptionalAttendeesJson),
             ResourceAttendees: ParseAttendees(evt.ResourcesJson),
-            Categories: Array.Empty<string>(),
-            // The bridge cache does not yet expose the owner-organizer flag (#71-#76).
-            IsOrganizer: false,
-            IsOnlineMeeting: false,
-            AllowNewTimeProposals: false,
+            Categories: evt.Categories ?? Array.Empty<string>(),
+            IsOrganizer: evt.IsOrganizer,
+            IsOnlineMeeting: evt.IsOnlineMeeting,
+            AllowNewTimeProposals: evt.AllowNewTimeProposals,
             Sensitivity: MapSensitivity(evt.Sensitivity),
             Start: evt.StartUtc,
             StartTimeZone: "UTC",
             End: evt.EndUtc,
             EndTimeZone: "UTC",
-            LastModifiedDateTime: null,
+            LastModifiedDateTime: evt.LastModifiedDateTime,
             // The series-master type is inferred from the recurrence flag where possible.
             Type: evt.IsRecurring ? "seriesMaster" : null
         );
