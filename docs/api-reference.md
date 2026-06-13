@@ -396,9 +396,9 @@ List calendar events whose start time falls within a given window.
 
 **Safe mode vs Enhanced mode:**
 
-In **safe mode**, `bodyPreview` is `null` and `isRedacted` is `true`.
+In **safe mode**, `bodyPreview` and `bodyFull` are `null` and `isRedacted` is `true`.
 
-In **enhanced mode**, `bodyPreview` contains sanitized event body text and `isRedacted` is `false`.
+In **enhanced mode**, `bodyPreview` contains sanitized event body text, `bodyFull` contains the full untruncated body text, and `isRedacted` is `false`.
 
 **Items are sorted by `startUtc` ascending** (earliest first).
 
@@ -478,6 +478,16 @@ Retrieve a single calendar event by its bridge ID.
 | `bodyPreview` | string? | Sanitized event body text. **Null in safe mode.** |
 | `protectedFieldsAvailable` | bool | Whether protected fields could be retrieved from Outlook. |
 | `isRedacted` | bool | `true` in safe mode, `false` in enhanced mode. |
+| `responseStatus` | int? | Outlook response status: 0=None, 1=Organized, 2=Tentative, 3=Accepted, 4=Declined, 5=NotResponded. |
+| `categories` | string[]? | Outlook categories assigned to the event. |
+| `isOrganizer` | bool | Whether the mailbox owner organized the event (derived from `responseStatus == 1`). |
+| `isOnlineMeeting` | bool | Whether Outlook flags the event as an online meeting. May report `false` for some third-party add-in meetings. |
+| `allowNewTimeProposals` | bool | Whether the organizer permits new time proposals. |
+| `iCalUId` | string? | iCalendar UID. Sourced from Outlook's GlobalAppointmentID; not a true RFC 5545 UID. |
+| `seriesMasterId` | string? | Identifier of the recurring-series master for an occurrence or exception; `null` for non-recurring events and series masters. |
+| `lastModifiedDateTime` | string? | ISO-8601 timestamp of the event's last modification. |
+| `bodyFull` | string? | Full (untruncated) event body text. **Null in safe mode**; returned unsanitized in enhanced mode. |
+| `sensitivityLabel` | string? | Sensitivity as a label string: `normal`, `personal`, `private`, or `confidential` (derived from `sensitivity`). |
 
 ---
 

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using OpenClaw.MailBridge.Contracts.Models;
 
@@ -50,8 +51,39 @@ internal sealed partial class CacheRepository
             GetString(reader, "body_preview"),
             GetBoolean(reader, "protected_fields_available"),
             GetBoolean(reader, "is_redacted"),
-            GetNullableInt(reader, "response_status")
+            GetNullableInt(reader, "response_status"),
+            Categories: GetCategories(reader, "categories_json"),
+            IsOrganizer: GetBoolean(reader, "is_organizer"),
+            IsOnlineMeeting: GetBoolean(reader, "is_online_meeting"),
+            AllowNewTimeProposals: GetBoolean(reader, "allow_new_time_proposals"),
+            ICalUId: GetString(reader, "ical_uid"),
+            SeriesMasterId: GetString(reader, "series_master_id"),
+            LastModifiedDateTime: GetDateTimeOffset(reader, "last_modified_utc"),
+            BodyFull: GetString(reader, "body_full"),
+            SensitivityLabel: GetString(reader, "sensitivity_label")
         );
+
+    /// <summary>
+    /// Deserializes the <c>categories_json</c> column to a string array. A NULL or unparseable
+    /// value yields null, matching the optional <see cref="EventDto.Categories"/> default.
+    /// </summary>
+    private static string[]? GetCategories(SqliteDataReader reader, string name)
+    {
+        var json = GetString(reader, name);
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(json);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static object ToDbValue(DateTimeOffset? value) =>
         value is null ? DBNull.Value : value.Value.UtcDateTime.ToString("O");

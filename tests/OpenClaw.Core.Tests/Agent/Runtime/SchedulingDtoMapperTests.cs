@@ -48,7 +48,14 @@ public sealed class SchedulingDtoMapperTests
         string? optional = null,
         string? resources = null,
         int? sensitivity = null,
-        bool isRecurring = false
+        bool isRecurring = false,
+        string[]? categories = null,
+        bool isOrganizer = false,
+        bool isOnlineMeeting = false,
+        bool allowNewTimeProposals = false,
+        string? iCalUId = "global-1",
+        string? seriesMasterId = null,
+        DateTimeOffset? lastModifiedDateTime = null
     ) =>
         new(
             BridgeId: "evt-1",
@@ -67,7 +74,15 @@ public sealed class SchedulingDtoMapperTests
             ResourcesJson: resources,
             BodyPreview: "Agenda",
             ProtectedFieldsAvailable: true,
-            IsRedacted: false
+            IsRedacted: false,
+            ResponseStatus: null,
+            Categories: categories,
+            IsOrganizer: isOrganizer,
+            IsOnlineMeeting: isOnlineMeeting,
+            AllowNewTimeProposals: allowNewTimeProposals,
+            ICalUId: iCalUId,
+            SeriesMasterId: seriesMasterId,
+            LastModifiedDateTime: lastModifiedDateTime
         );
 
     [TestMethod]
@@ -180,8 +195,10 @@ public sealed class SchedulingDtoMapperTests
     }
 
     [TestMethod]
-    public void MapEvent_DeferredFields_AreNullOrEmpty()
+    public void MapEvent_DefaultGraphFields_MapThroughAsNullOrEmpty()
     {
+        // With an EventDto carrying default (unset) graph fields, the mapper passes the defaults
+        // through: null seriesMasterId, empty categories, false flags, null last-modified.
         var result = mapper.MapEvent(Event());
 
         result.SeriesMasterId.Should().BeNull();
@@ -189,6 +206,62 @@ public sealed class SchedulingDtoMapperTests
         result.IsOnlineMeeting.Should().BeFalse();
         result.AllowNewTimeProposals.Should().BeFalse();
         result.LastModifiedDateTime.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MapEvent_PopulatedGraphFields_MapThroughDirectly()
+    {
+        // #72: the mapper wires the populated EventDto graph fields into the SchedulingEventDto
+        // in place of the former hardcoded placeholders.
+        var lastModified = new DateTimeOffset(2026, 6, 5, 8, 0, 0, TimeSpan.Zero);
+        var result = mapper.MapEvent(
+            Event(
+                categories: ["Customer", "Critical"],
+                isOrganizer: true,
+                isOnlineMeeting: true,
+                allowNewTimeProposals: true,
+                seriesMasterId: "series-1",
+                lastModifiedDateTime: lastModified
+            )
+        );
+
+        result.Categories.Should().Equal("Customer", "Critical");
+        result.IsOrganizer.Should().BeTrue();
+        result.IsOnlineMeeting.Should().BeTrue();
+        result.AllowNewTimeProposals.Should().BeTrue();
+        result.SeriesMasterId.Should().Be("series-1");
+        result.LastModifiedDateTime.Should().Be(lastModified);
+    }
+
+    [TestMethod]
+    public void MapEvent_NullCategories_MapToEmptyArray()
+    {
+        var result = mapper.MapEvent(Event(categories: null));
+
+        result.Categories.Should().NotBeNull();
+        result.Categories.Should().BeEmpty();
+    }
+
+    [TestMethod]
+    public void MapEvent_RecurringOnlineMeeting_MapsExpectedGraphFields()
+    {
+        // AC5: a recurring online meeting occurrence maps to a SchedulingEventDto with non-null
+        // ICalUId, IsOnlineMeeting=true, private sensitivity, and the occurrence seriesMasterId.
+        var result = mapper.MapEvent(
+            Event(
+                sensitivity: 2,
+                isRecurring: true,
+                isOnlineMeeting: true,
+                iCalUId: "gid-recurring",
+                seriesMasterId: "gid-recurring"
+            )
+        );
+
+        result.ICalUId.Should().Be("gid-recurring");
+        result.IsOnlineMeeting.Should().BeTrue();
+        result.Sensitivity.Should().Be("private");
+        result.SeriesMasterId.Should().Be("gid-recurring");
+        result.Type.Should().Be("seriesMaster");
     }
 
     [TestMethod]

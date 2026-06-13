@@ -109,7 +109,16 @@ public sealed record EventDto(
     string? BodyPreview,
     bool ProtectedFieldsAvailable,
     bool IsRedacted,
-    int? ResponseStatus = null
+    int? ResponseStatus = null,
+    string[]? Categories = null,
+    bool IsOrganizer = false,
+    bool IsOnlineMeeting = false,
+    bool AllowNewTimeProposals = false,
+    string? ICalUId = null,
+    string? SeriesMasterId = null,
+    DateTimeOffset? LastModifiedDateTime = null,
+    string? BodyFull = null,
+    string? SensitivityLabel = null
 );
 
 public sealed record BridgeSettings(
