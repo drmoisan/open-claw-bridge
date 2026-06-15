@@ -16,6 +16,17 @@ internal sealed class FakePropertyAccessor
 }
 
 /// <summary>
+/// Reflection-readable property accessor whose <c>GetProperty</c> method throws on invocation,
+/// driving the catch path inside <c>ComMessageSource.ResolveViaPropertyAccessor</c> (issue #73
+/// RF-1).
+/// </summary>
+internal sealed class FakeThrowingPropertyAccessor
+{
+    public object? GetProperty(string tag) =>
+        throw new InvalidOperationException("Simulated COM failure on GetProperty.");
+}
+
+/// <summary>
 /// Reflection-readable analog of a COM <c>ExchangeUser</c> (issue #73): exposes the
 /// <c>PrimarySmtpAddress</c> read by <c>ComMessageSource</c> on the GetExchangeUser path.
 /// </summary>
