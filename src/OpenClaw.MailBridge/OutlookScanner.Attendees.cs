@@ -105,6 +105,100 @@ internal sealed partial class OutlookScanner
     /// design decision 7). Attendee PII protection is enforced separately by safe-mode redaction in
     /// <c>ResponseShaper.ShapeEvent</c>.
     /// </summary>
+    /// <summary>
+    /// Immutable carrier for the To/Cc attendee lists produced from a single pass over a message's
+    /// COM <c>Recipients</c> collection (issue #73). Both lists are non-null; a message with no
+    /// recipients of a given class yields an empty list (the construction site serializes an empty
+    /// list to <c>"[]"</c>, never null).
+    /// </summary>
+    internal readonly record struct MessageRecipientSet(
+        IReadOnlyList<Attendee> To,
+        IReadOnlyList<Attendee> Cc
+    );
+
+    /// <summary>
+    /// Reads the COM <c>Recipients</c> collection from a message <paramref name="item"/> in a single
+    /// pass and classifies each recipient by its <c>Type</c> (<c>OlMailRecipientType</c>:
+    /// 1 = To, 2 = Cc; 3 = Bcc is ignored per spec). Email values reuse the same fail-soft
+    /// <c>Address</c> -> <c>AddressEntry.Address</c> chain as <see cref="ReadAttendees"/>; per-recipient
+    /// COM read failures fail soft and do not abort the scan. A null or empty <c>Recipients</c>
+    /// collection yields empty To/Cc lists (issue #73 AC-04).
+    ///
+    /// All COM wrappers obtained while enumerating are released deterministically in a
+    /// <c>finally</c> via <paramref name="com"/> (<see cref="ComActiveObject.ReleaseAll"/>), following
+    /// the <see cref="ReadAttendees"/> idiom (architecture-boundaries COM confinement). Static so the
+    /// <see cref="ComMessageSource"/> adapter can call it without exposing additional scanner state.
+    /// </summary>
+    internal static MessageRecipientSet ReadMessageRecipients(object item, ComActiveObject com)
+    {
+        var to = new List<Attendee>();
+        var cc = new List<Attendee>();
+
+        object? recipients = OutlookComHelpers.GetOptionalMemberValue(item, "Recipients");
+        if (recipients is null)
+        {
+            return new MessageRecipientSet(to, cc);
+        }
+
+        try
+        {
+            var count = OutlookComHelpers.GetOptionalInt(recipients, "Count") ?? 0;
+            for (var index = 1; index <= count; index++)
+            {
+                object? recipient = null;
+                object? addressEntry = null;
+                try
+                {
+                    recipient = OutlookComHelpers.GetOptionalIndexedItem(recipients, index);
+                    if (recipient is null)
+                    {
+                        continue;
+                    }
+
+                    var type = OutlookComHelpers.GetOptionalInt(recipient, "Type");
+                    var target = type switch
+                    {
+                        1 => to,
+                        2 => cc,
+                        _ => null,
+                    };
+                    if (target is null)
+                    {
+                        // To = type 1, Cc = type 2; Bcc (3) and out-of-range values are ignored.
+                        continue;
+                    }
+
+                    var name =
+                        OutlookComHelpers.GetOptionalString(recipient, "Name") ?? string.Empty;
+                    var email = OutlookComHelpers.GetOptionalString(recipient, "Address");
+                    if (string.IsNullOrEmpty(email))
+                    {
+                        addressEntry = OutlookComHelpers.GetOptionalMemberValue(
+                            recipient,
+                            "AddressEntry"
+                        );
+                        if (addressEntry is not null)
+                        {
+                            email = OutlookComHelpers.GetOptionalString(addressEntry, "Address");
+                        }
+                    }
+
+                    target.Add(new Attendee(name, email ?? string.Empty));
+                }
+                finally
+                {
+                    com.ReleaseAll(addressEntry, recipient);
+                }
+            }
+        }
+        finally
+        {
+            com.ReleaseAll(recipients);
+        }
+
+        return new MessageRecipientSet(to, cc);
+    }
+
     private AttendeeJsonSet ReadAttendees(object item)
     {
         var required = new List<Attendee>();

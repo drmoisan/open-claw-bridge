@@ -91,6 +91,7 @@ internal sealed partial class CacheRepository : IBridgeRepository, IDisposable
         await new SqliteCommand(CreateTablesSql, conn).ExecuteNonQueryAsync();
 
         await MigrateEventsSchemaAsync(conn);
+        await MigrateMessagesSchemaAsync(conn);
     }
 
     public async Task TouchScanStateAsync(string key, DateTimeOffset value)
@@ -129,11 +130,13 @@ internal sealed partial class CacheRepository : IBridgeRepository, IDisposable
 INSERT INTO messages(
     bridge_id, entry_id, store_id, item_kind, subject, received_utc, sent_utc, importance,
     sensitivity, unread, has_attachments, message_class, sender_name, sender_email, to_json,
-    cc_json, body_preview, protected_fields_available, is_redacted, last_seen_utc
+    cc_json, body_preview, protected_fields_available, is_redacted, last_seen_utc,
+    sender_email_resolved, from_email_address, conversation_id, meeting_message_type
 ) VALUES(
     $bridge_id, $entry_id, $store_id, $item_kind, $subject, $received_utc, $sent_utc, $importance,
     $sensitivity, $unread, $has_attachments, $message_class, $sender_name, $sender_email, $to_json,
-    $cc_json, $body_preview, $protected_fields_available, $is_redacted, $last_seen_utc
+    $cc_json, $body_preview, $protected_fields_available, $is_redacted, $last_seen_utc,
+    $sender_email_resolved, $from_email_address, $conversation_id, $meeting_message_type
 )
 ON CONFLICT(bridge_id) DO UPDATE SET
     entry_id = excluded.entry_id,
@@ -154,7 +157,11 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     body_preview = excluded.body_preview,
     protected_fields_available = excluded.protected_fields_available,
     is_redacted = excluded.is_redacted,
-    last_seen_utc = excluded.last_seen_utc;";
+    last_seen_utc = excluded.last_seen_utc,
+    sender_email_resolved = excluded.sender_email_resolved,
+    from_email_address = excluded.from_email_address,
+    conversation_id = excluded.conversation_id,
+    meeting_message_type = excluded.meeting_message_type;";
 
         AddMessageParameters(cmd, entryId, storeId, message);
         await cmd.ExecuteNonQueryAsync();
@@ -387,6 +394,19 @@ LIMIT $limit;";
             "$last_seen_utc",
             DateTimeOffset.UtcNow.UtcDateTime.ToString("O")
         );
+        cmd.Parameters.AddWithValue(
+            "$sender_email_resolved",
+            (object?)message.SenderEmailResolved ?? DBNull.Value
+        );
+        cmd.Parameters.AddWithValue(
+            "$from_email_address",
+            (object?)message.FromEmailAddress ?? DBNull.Value
+        );
+        cmd.Parameters.AddWithValue(
+            "$conversation_id",
+            (object?)message.ConversationId ?? DBNull.Value
+        );
+        cmd.Parameters.AddWithValue("$meeting_message_type", ToDbValue(message.MeetingMessageType));
     }
 
     private static void AddEventParameters(

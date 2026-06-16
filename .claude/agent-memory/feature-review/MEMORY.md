@@ -1,1 +1,2 @@
 - [Artifact validator quirks](project_artifact-validator-quirks.md) — exact heading/line-format rules the orchestration-artifact validator enforces for review artifacts
+- [Per-file coverage masking](feedback_per-file-coverage-masking.md) — project-aggregate coverage can pass while a new file fails; re-measure per-file from cobertura, and spec.md ACs are prose not checkboxes

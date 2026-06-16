@@ -47,7 +47,11 @@ CREATE TABLE IF NOT EXISTS messages(
     cache_stale INTEGER NOT NULL,
     stale_reason TEXT NULL,
     adapter_request_id TEXT NOT NULL,
-    observed_at_utc TEXT NOT NULL
+    observed_at_utc TEXT NOT NULL,
+    sender_email_resolved TEXT NULL,
+    from_email_address TEXT NULL,
+    conversation_id TEXT NULL,
+    meeting_message_type INTEGER NULL
 );
 CREATE TABLE IF NOT EXISTS events(
     bridge_id TEXT PRIMARY KEY,
@@ -154,5 +158,84 @@ CREATE TABLE IF NOT EXISTS ingest_runs(
             }
         }
         return false;
+    }
+
+    /// <summary>
+    /// The issue-#73 resolved-field columns added to the Core <c>messages</c> table on existing
+    /// databases via guarded ALTER. Each entry is a column name plus its column definition.
+    /// </summary>
+    private static readonly (string Name, string Definition)[] MessageFieldColumns =
+    [
+        ("sender_email_resolved", "sender_email_resolved TEXT NULL"),
+        ("from_email_address", "from_email_address TEXT NULL"),
+        ("conversation_id", "conversation_id TEXT NULL"),
+        ("meeting_message_type", "meeting_message_type INTEGER NULL"),
+    ];
+
+    /// <summary>
+    /// Idempotent schema migration for the Core <c>messages</c> table. Adds the four issue-#73
+    /// resolved-field columns when absent on an existing database. Running this twice is safe: each
+    /// ALTER is guarded by a <c>PRAGMA table_info</c> check, so no "duplicate column" error occurs.
+    /// </summary>
+    private static async Task MigrateMessagesSchemaAsync(SqliteConnection connection)
+    {
+        foreach (var (name, definition) in MessageFieldColumns)
+        {
+            if (!await MessagesColumnExistsAsync(connection, name))
+            {
+                var alter = connection.CreateCommand();
+                alter.CommandText = $"ALTER TABLE messages ADD COLUMN {definition};";
+                await alter.ExecuteNonQueryAsync();
+            }
+        }
+    }
+
+    private static async Task<bool> MessagesColumnExistsAsync(
+        SqliteConnection connection,
+        string column
+    )
+    {
+        var cmd = connection.CreateCommand();
+        cmd.CommandText = "PRAGMA table_info(messages);";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            // table_info column index 1 is the column name.
+            var name = reader.GetString(1);
+            if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Binds the four issue-#73 resolved-field parameters for the <c>messages</c> upsert. Lives in
+    /// this partial file so the (already over-cap) main <c>CoreCacheRepository.cs</c> does not grow
+    /// further. String columns bind null as <see cref="DBNull.Value"/>; <c>meeting_message_type</c>
+    /// binds via <c>ToDbValue(int?)</c>.
+    /// </summary>
+    private static void AddMessageResolvedFieldParameters(
+        SqliteCommand command,
+        OpenClaw.MailBridge.Contracts.Models.MessageDto message
+    )
+    {
+        command.Parameters.AddWithValue(
+            "$sender_email_resolved",
+            (object?)message.SenderEmailResolved ?? DBNull.Value
+        );
+        command.Parameters.AddWithValue(
+            "$from_email_address",
+            (object?)message.FromEmailAddress ?? DBNull.Value
+        );
+        command.Parameters.AddWithValue(
+            "$conversation_id",
+            (object?)message.ConversationId ?? DBNull.Value
+        );
+        command.Parameters.AddWithValue(
+            "$meeting_message_type",
+            ToDbValue(message.MeetingMessageType)
+        );
     }
 }

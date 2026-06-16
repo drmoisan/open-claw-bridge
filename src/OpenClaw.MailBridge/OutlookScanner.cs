@@ -402,6 +402,14 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             OutlookComHelpers.GetOptionalString(item, "Body"),
             _settings
         );
+
+        // Route resolved-field derivation through the model-agnostic IMessageSource abstraction
+        // (locked decision D-D): the COM adapter is the only place that reads concrete COM members
+        // for these fields, keeping Outlook COM confined to OpenClaw.MailBridge.
+        IMessageSource source = new ComMessageSource(item, _com, isMeeting);
+        var toJson = SerializeAttendees(source.ToRecipients);
+        var ccJson = SerializeAttendees(source.CcRecipients);
+
         var dto = new MessageDto(
             bridgeId,
             isMeeting ? "meeting" : "mail",
@@ -416,13 +424,17 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             messageClass,
             senderName,
             senderEmail,
-            null,
-            null,
+            toJson,
+            ccJson,
             bodyPreview,
             !string.IsNullOrWhiteSpace(senderName)
                 || !string.IsNullOrWhiteSpace(senderEmail)
                 || !string.IsNullOrWhiteSpace(bodyPreview),
-            false
+            false,
+            SenderEmailResolved: source.SenderEmailResolved,
+            FromEmailAddress: source.FromEmailAddress,
+            ConversationId: source.ConversationId,
+            MeetingMessageType: source.MeetingMessageType
         );
 
         return new NormalizedMessage(entryId, storeId, dto);

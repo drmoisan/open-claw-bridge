@@ -88,7 +88,11 @@ public sealed record MessageDto(
     string? CcJson,
     string? BodyPreview,
     bool ProtectedFieldsAvailable,
-    bool IsRedacted
+    bool IsRedacted,
+    string? SenderEmailResolved = null,
+    string? FromEmailAddress = null,
+    string? ConversationId = null,
+    int? MeetingMessageType = null
 );
 
 public sealed record EventDto(
