@@ -135,6 +135,72 @@ internal sealed class HostAdapterHttpClient(
         );
     }
 
+    public Task<ApiEnvelope<object?>> SendMailAsync(
+        SendMailRequest request,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
+        return PostAsync<SendMailRequest, object?>(
+            $"users/{id}/sendMail",
+            request,
+            requestId,
+            cancellationToken
+        );
+    }
+
+    private async Task<ApiEnvelope<TResponse>> PostAsync<TBody, TResponse>(
+        string relativePath,
+        TBody body,
+        string? requestId,
+        CancellationToken cancellationToken
+    )
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, relativePath)
+        {
+            Content = JsonContent.Create(body),
+        };
+        var actualRequestId = string.IsNullOrWhiteSpace(requestId)
+            ? Guid.NewGuid().ToString()
+            : requestId;
+        request.Headers.Add("X-Request-Id", actualRequestId);
+
+        var token = await TokenReader(options.HostAdapter.TokenFile, cancellationToken);
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return new ApiEnvelope<TResponse>(
+                false,
+                default,
+                new ApiMeta(actualRequestId, "hostadapter", null),
+                new ApiError(
+                    "CONFIGURATION_ERROR",
+                    "The HostAdapter token file is missing or empty."
+                )
+            );
+        }
+
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        var response = await httpClient.SendAsync(request, cancellationToken);
+        var envelope = await response.Content.ReadFromJsonAsync<ApiEnvelope<TResponse>>(
+            cancellationToken: cancellationToken
+        );
+        if (envelope is not null)
+        {
+            return envelope;
+        }
+
+        return new ApiEnvelope<TResponse>(
+            false,
+            default,
+            new ApiMeta(actualRequestId, "hostadapter", null),
+            new ApiError(
+                "TRANSPORT_FAILURE",
+                $"The HostAdapter returned HTTP {(int)response.StatusCode} without a parseable envelope."
+            )
+        );
+    }
+
     private async Task<ApiEnvelope<T>> SendAsync<T>(
         string relativePath,
         string? requestId,

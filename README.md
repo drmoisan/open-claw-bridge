@@ -378,6 +378,7 @@ The HostAdapter preserves this contract exactly and exposes it through a Microso
 - `GET /users/{id}/events/{eventId}`
 - `GET /users/{id}/mailboxSettings` (config-sourced mailbox time zone and working hours; returns `ApiEnvelope<MailboxSettingsDto>`)
 - `GET /users/{id}/calendar/getSchedule` (`?startDateTime=<iso8601>&endDateTime=<iso8601>`; free/busy grid computed from bridge calendar data; returns `ApiEnvelope<FreeBusyScheduleDto>`)
+- `POST /users/{assistantMailbox}/sendMail` (Graph-shaped outbound send through Outlook COM on the bridge STA thread; requires >= 1 recipient across To/CC/BCC and `body.contentType` in {Text, HTML}; returns **202 Accepted** with `ApiEnvelope<object?>` `{ ok: true, data: null }` on success). Send-on-behalf (a sending `fromEmailAddress`) is deferred to PI-1; the bridge mail-sender seam already accepts a future `fromEmailAddress` without breaking callers.
 
 > Breaking change (adapter version `1.0.0`): the earlier bespoke `/v1/*` routes (`/v1/status`, `/v1/messages`, `/v1/meeting-requests`, `/v1/calendar`, `/v1/events/{bridgeId}`) were replaced by the Graph-shaped surface above. Request and response envelope shapes are unchanged. Meeting requests are served by the `/users/{id}/messages` route filtered on `meetingMessageType`. Clients configure the adapter base URL without a `/v1/` segment (for example `http://127.0.0.1:4319/`).
 

@@ -32,6 +32,30 @@ internal static class HostAdapterResponses
         );
     }
 
+    /// <summary>
+    /// Builds a 202 Accepted result with an empty payload (<c>ok: true</c>, <c>data: null</c>)
+    /// for accepted-for-send actions such as <c>sendMail</c> (D-A). A 202 indicates the request was
+    /// accepted, not that delivery is guaranteed.
+    /// </summary>
+    public static AdapterCommandResult<object?> AcceptedNoContent(
+        string requestId,
+        string adapterVersion,
+        BridgeStatusDto? bridge = null,
+        int? cliExitCode = null
+    )
+    {
+        return new AdapterCommandResult<object?>(
+            new ApiEnvelope<object?>(
+                true,
+                null,
+                new ApiMeta(requestId, adapterVersion, bridge),
+                null
+            ),
+            StatusCodes.Status202Accepted,
+            cliExitCode
+        );
+    }
+
     public static AdapterCommandResult<T> Failure<T>(
         int statusCode,
         string requestId,

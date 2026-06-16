@@ -351,6 +351,7 @@ app.MapGet(
 );
 
 app.MapSchedulingRoutes();
+app.MapMailRoutes();
 
 app.Run();
 

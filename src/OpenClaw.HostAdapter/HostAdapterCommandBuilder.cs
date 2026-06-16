@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
+using OpenClaw.HostAdapter.Contracts;
 
 namespace OpenClaw.HostAdapter;
 
@@ -52,6 +54,32 @@ internal sealed class HostAdapterCommandBuilder(IOptions<HostAdapterOptions> opt
         AddOption(startInfo, "id", bridgeId);
         return startInfo;
     }
+
+    private static readonly JsonSerializerOptions RecipientJsonOptions = new(
+        JsonSerializerDefaults.Web
+    );
+
+    /// <summary>
+    /// Builds the <c>send-mail</c> CLI invocation with flat <c>--key value</c> options. Recipient
+    /// lists are JSON-serialized arrays of <c>{address, name}</c> per recipient type (D-C);
+    /// <c>--save-to-sent-items</c> defaults to <c>true</c> when the request omits it (AC-08).
+    /// </summary>
+    public ProcessStartInfo BuildSendMail(SendMailRequest request)
+    {
+        var message = request.Message;
+        var startInfo = CreateBaseStartInfo("send-mail");
+        AddOption(startInfo, "subject", message.Subject);
+        AddOption(startInfo, "body-content-type", message.Body.ContentType);
+        AddOption(startInfo, "body-content", message.Body.Content);
+        AddOption(startInfo, "to-recipients", SerializeRecipients(message.ToRecipients));
+        AddOption(startInfo, "cc-recipients", SerializeRecipients(message.CcRecipients));
+        AddOption(startInfo, "bcc-recipients", SerializeRecipients(message.BccRecipients));
+        AddOption(startInfo, "save-to-sent-items", request.SaveToSentItems ? "true" : "false");
+        return startInfo;
+    }
+
+    private static string SerializeRecipients(IReadOnlyList<SendMailRecipientDto>? recipients) =>
+        JsonSerializer.Serialize(recipients ?? [], RecipientJsonOptions);
 
     private ProcessStartInfo CreateBaseStartInfo(string verb)
     {

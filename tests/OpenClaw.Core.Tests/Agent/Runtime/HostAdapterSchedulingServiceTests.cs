@@ -9,6 +9,7 @@ using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.HostAdapter.Contracts;
 using OpenClaw.MailBridge.Contracts.Models;
+using SendMailRequest = OpenClaw.Core.Agent.SendMailRequest;
 
 namespace OpenClaw.Core.Tests.Agent.Runtime;
 

@@ -52,6 +52,8 @@ internal class BridgeApplication
             sp.GetRequiredService<CacheRepository>()
         );
         builder.Services.AddSingleton<IOutlookStaExecutor, OutlookStaExecutor>();
+        builder.Services.AddSingleton<IOutlookApplicationProvider, OutlookApplicationProvider>();
+        builder.Services.AddSingleton<IOutlookMailSender, OutlookComMailSender>();
         builder.Services.AddSingleton<IOutlookScanner, OutlookScanner>();
         builder.Services.AddHostedService<ScanWorker>();
         builder.Services.AddHostedService<PipeRpcWorker>();

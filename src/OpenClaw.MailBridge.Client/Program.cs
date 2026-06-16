@@ -148,8 +148,53 @@ internal static class Program
                 "limit"
             ),
             "get-event" => Req(id, BridgeMethods.GetEvent, opts, "id"),
+            "send-mail" => BuildSendMail(id, opts),
             _ => null,
         };
+    }
+
+    /// <summary>
+    /// Builds the <c>send_mail</c> RPC request. The generic option parser lower-snakes CLI keys
+    /// (for example <c>--body-content-type</c> becomes <c>body_content_type</c>); this arm maps each
+    /// back to the hyphenated param keys the bridge <c>send_mail</c> handler reads. Recipient values
+    /// are JSON arrays forwarded verbatim (D-C). <c>--body-content-type</c> and <c>--to-recipients</c>
+    /// are required.
+    /// </summary>
+    private static RpcRequest? BuildSendMail(string id, Dictionary<string, string> opts)
+    {
+        if (!opts.ContainsKey("body_content_type"))
+        {
+            Console.Error.WriteLine("Missing --body-content-type");
+            return null;
+        }
+        if (!opts.ContainsKey("to_recipients"))
+        {
+            Console.Error.WriteLine("Missing --to-recipients");
+            return null;
+        }
+
+        var p = new Dictionary<string, string>();
+        Map(opts, p, "subject", "subject");
+        Map(opts, p, "body_content_type", "body-content-type");
+        Map(opts, p, "body_content", "body-content");
+        Map(opts, p, "to_recipients", "to-recipients");
+        Map(opts, p, "cc_recipients", "cc-recipients");
+        Map(opts, p, "bcc_recipients", "bcc-recipients");
+        Map(opts, p, "save_to_sent_items", "save-to-sent-items");
+        return new RpcRequest(id, BridgeMethods.SendMail, p);
+    }
+
+    private static void Map(
+        Dictionary<string, string> source,
+        Dictionary<string, string> target,
+        string sourceKey,
+        string targetKey
+    )
+    {
+        if (source.TryGetValue(sourceKey, out var value))
+        {
+            target[targetKey] = value;
+        }
     }
 
     internal static string ResolvePipeName(Dictionary<string, string> options)

@@ -5,6 +5,7 @@ using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.Agent;
 using OpenClaw.HostAdapter.Contracts;
+using SendMailRequest = OpenClaw.Core.Agent.SendMailRequest;
 
 namespace OpenClaw.Core.Tests.Agent;
 

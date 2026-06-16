@@ -143,4 +143,29 @@ public interface IHostAdapterClient
         string? requestId = null,
         CancellationToken cancellationToken = default
     );
+
+    /// <summary>
+    /// Sends an outbound message via <c>POST /users/{assistantMailbox}/sendMail</c>.
+    /// </summary>
+    /// <remarks>
+    /// On success the HostAdapter returns <c>202 Accepted</c> with an empty payload
+    /// (<c>ApiEnvelope&lt;object?&gt;</c> with <c>ok: true</c> and <c>data: null</c>) (D-A); a 202
+    /// indicates the message was accepted for send, not guaranteed delivery (it may queue to the
+    /// Outbox when offline). Validation failures return <c>400 INVALID_REQUEST</c>; a bridge/COM
+    /// send failure maps to <c>502</c>.
+    /// <para>
+    /// Send-on-behalf is deferred to PI-1 (AC-09). A future <c>fromEmailAddress</c> will be added at
+    /// the bridge mail-sender seam without changing this signature, so existing callers are not
+    /// broken when send-on-behalf lands.
+    /// </para>
+    /// </remarks>
+    /// <param name="request">The Graph-shaped send request (message plus <c>saveToSentItems</c>).</param>
+    /// <param name="requestId">An optional caller-supplied correlation identifier.</param>
+    /// <param name="cancellationToken">Cancels the outbound operation.</param>
+    /// <returns>An empty API envelope; <c>ok: true</c> on a 202 success.</returns>
+    Task<ApiEnvelope<object?>> SendMailAsync(
+        SendMailRequest request,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    );
 }

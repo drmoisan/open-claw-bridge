@@ -25,6 +25,7 @@ public static class BridgeMethods
     public const string ListRecentMeetingRequests = "list_recent_meeting_requests";
     public const string ListCalendarWindow = "list_calendar_window";
     public const string GetEvent = "get_event";
+    public const string SendMail = "send_mail";
 
     public static readonly HashSet<string> All =
     [
@@ -34,6 +35,7 @@ public static class BridgeMethods
         ListRecentMeetingRequests,
         ListCalendarWindow,
         GetEvent,
+        SendMail,
     ];
 }
 
