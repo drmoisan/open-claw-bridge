@@ -23,6 +23,12 @@ variants that the parser rejects.
   multiple physical lines breaks the parser ("comparison line missing ... for <lang>").
 - feature-audit requires the heading spelled exactly `## Acceptance Criteria Check-off`
   (lowercase "off"); the template ships it as `## Acceptance Criteria Check-Off` which fails.
+- policy-audit per-language-comparison parser is anchored off `**bold**` table-row labels and
+  will FALSELY flag the LAST bold row (e.g. `**No new analyzer/nullable suppressions**`) as
+  "missing numeric baseline/post-change/new-code coverage + per-language comparison line" when
+  that row's cell text contains glob/`*` characters (verified 2026-06-16 #75 re-audit: a cell
+  with `` `src/**/*.cs` `` and `'^+'`/`#nullable` tokens broke it). Fix: keep `*`-glob patterns
+  and coverage-like tokens out of the bold suppression-row cell; the fix re-validated cleanly.
 
 Validate each artifact immediately after writing per the [[feature-review-workflow]] contract so
 these are caught one at a time.
