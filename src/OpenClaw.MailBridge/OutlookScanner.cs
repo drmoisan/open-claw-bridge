@@ -23,12 +23,14 @@ internal sealed partial class OutlookScanner : IOutlookScanner
     private readonly ComActiveObject _com;
     private readonly Func<string, int> _processCount;
     private readonly Func<DateTimeOffset> _utcNow;
+    private readonly IOutlookApplicationProvider _applicationProvider;
     private object? _outlookApp;
 
     public OutlookScanner(
         BridgeSettings settings,
         BridgeStateStore state,
-        ILogger<OutlookScanner> logger
+        ILogger<OutlookScanner> logger,
+        IOutlookApplicationProvider applicationProvider
     )
         : this(
             settings,
@@ -36,7 +38,8 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             logger,
             new ComActiveObject(),
             name => Process.GetProcessesByName(name).Length,
-            () => DateTimeOffset.UtcNow
+            () => DateTimeOffset.UtcNow,
+            applicationProvider
         ) { }
 
     internal OutlookScanner(
@@ -45,7 +48,8 @@ internal sealed partial class OutlookScanner : IOutlookScanner
         ILogger<OutlookScanner> logger,
         ComActiveObject com,
         Func<string, int> processCount,
-        Func<DateTimeOffset> utcNow
+        Func<DateTimeOffset> utcNow,
+        IOutlookApplicationProvider? applicationProvider = null
     )
     {
         _settings = settings;
@@ -54,6 +58,7 @@ internal sealed partial class OutlookScanner : IOutlookScanner
         _com = com;
         _processCount = processCount;
         _utcNow = utcNow;
+        _applicationProvider = applicationProvider ?? new OutlookApplicationProvider();
     }
 
     public async Task ScanAsync(IBridgeRepository repo)
@@ -136,6 +141,7 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             {
                 return;
             }
+            _applicationProvider.Set(_outlookApp);
 
             outlookNamespace = GetNamespace(_outlookApp);
             if (scanInbox)
@@ -195,6 +201,7 @@ internal sealed partial class OutlookScanner : IOutlookScanner
         }
         finally
         {
+            _applicationProvider.Set(null);
             _com.ReleaseAll(calendarFolder, inboxFolder, outlookNamespace, _outlookApp);
             _outlookApp = null;
         }
@@ -310,45 +317,6 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             _com.ReleaseAll(restrictedItems, items);
         }
     }
-
-    private object GetNamespace(object outlookApp) =>
-        OutlookComHelpers.InvokeMember(outlookApp, "GetNamespace", "MAPI")
-        ?? throw new InvalidOperationException("Outlook MAPI namespace was unavailable.");
-
-    private object? ResolveDefaultFolder(
-        object outlookNamespace,
-        int folderType,
-        string staleReason
-    )
-    {
-        try
-        {
-            return OutlookComHelpers.InvokeMember(outlookNamespace, "GetDefaultFolder", folderType);
-        }
-        catch (Exception ex)
-        {
-            _state.MarkOutlookUnavailable(staleReason);
-            _logger.LogWarning(
-                "Required Outlook folder {FolderType} was unavailable: {Message}",
-                folderType,
-                ex.Message
-            );
-            return null;
-        }
-    }
-
-    private string BuildInboxFilter(
-        DateTimeOffset? lastSuccessfulInboxScan,
-        int inboxOverlapMinutes
-    )
-    {
-        var lastScanUtc = lastSuccessfulInboxScan ?? _utcNow().AddDays(-1);
-        var filterStartUtc = lastScanUtc.AddMinutes(-inboxOverlapMinutes);
-        return $"[ReceivedTime] >= '{filterStartUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}'";
-    }
-
-    private string BuildCalendarFilter(DateTimeOffset startUtc, DateTimeOffset endUtc) =>
-        $"[Start] >= '{startUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}' AND [Start] < '{endUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}'";
 
     private IEnumerable<object> EnumerateItems(object items, int maxItems)
     {

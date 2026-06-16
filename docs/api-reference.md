@@ -46,11 +46,33 @@ The pipe is ACL-restricted to the current interactive user, BUILTIN\Administrato
 | `GET /users/{id}/events/{eventId}` | `get-event --id <bridgeId>` | `ApiEnvelope<EventDto>` |
 | `GET /users/{id}/mailboxSettings` | none (config-sourced) | `ApiEnvelope<MailboxSettingsDto>` |
 | `GET /users/{id}/calendar/getSchedule?startDateTime=<utc>&endDateTime=<utc>` | `list-calendar --start <utc> --end <utc> --limit <n>` | `ApiEnvelope<FreeBusyScheduleDto>` |
+| `POST /users/{assistantMailbox}/sendMail` | `send-mail --subject <s> --body-content-type <Text\|HTML> --body-content <c> --to-recipients <json> --cc-recipients <json> --bcc-recipients <json> --save-to-sent-items <bool>` | `ApiEnvelope<object?>` (202 Accepted) |
 
 The last two routes were added for the scheduling pipeline (issue #74):
 
 - `GET /users/{id}/mailboxSettings` returns the mailbox time zone and working hours. The data is **config-sourced** from the `OpenClaw:HostAdapter:MailboxSettings` subsection; this route does not check bridge readiness and does not shell out to the CLI. On malformed configuration it returns an `ApiEnvelope<MailboxSettingsDto>` failure with error code `CONFIGURATION_ERROR` (HTTP 503). `MailboxSettingsDto` carries `TimeZoneId`, `WorkingDays`, `WorkingHoursStart`, and `WorkingHoursEnd`.
 - `GET /users/{id}/calendar/getSchedule` returns a free/busy grid **computed from bridge calendar data** fetched through the same `list-calendar` CLI chain as `calendarView`. The window is validated like `calendarView` (`startDateTime`/`endDateTime` must be ISO-8601 UTC and `endDateTime` must be later than `startDateTime`, else HTTP 400 `INVALID_REQUEST`). An event contributes a `BusyIntervalDto(Start, End)` when its `BusyStatus` is not `0` (free); a null `BusyStatus` is treated as busy (conservative). An empty window yields an empty `BusyIntervals` list (not an error). `FreeBusyScheduleDto` carries `MailboxUpn` and `BusyIntervals`. (Stage-0 note: real Microsoft Graph `getSchedule` is a POST with a JSON body; the Stage-0 GET-with-query form keeps all routes uniform and is portable — only the `HostAdapterHttpClient` wire construction changes for PI-1 Graph, not the typed method signature.)
+
+The outbound send route was added for the agent write path (issue #75):
+
+- `POST /users/{assistantMailbox}/sendMail` sends a Graph-shaped message through Outlook COM on the bridge STA thread. The request body is `SendMailRequest`:
+  ```json
+  {
+    "message": {
+      "subject": "string",
+      "body": { "contentType": "Text|HTML", "content": "string" },
+      "toRecipients": [{ "emailAddress": { "address": "a@b.c", "name": "optional" } }],
+      "ccRecipients": [ ... ],
+      "bccRecipients": [ ... ]
+    },
+    "saveToSentItems": true
+  }
+  ```
+  Validation: at least one recipient across `toRecipients`/`ccRecipients`/`bccRecipients` is required; `body.contentType` must be `Text` or `HTML` (case-insensitive); an empty `subject` is permitted; `saveToSentItems` defaults to `true` when absent. The `{assistantMailbox}` segment is a Graph placeholder and is not validated against the local profile (single-profile MVP). The pipeline order is `BearerTokenMiddleware` -> bridge-ready check -> validate -> dispatch. On success the route returns **202 Accepted** with `ApiEnvelope<object?>` (`ok: true`, `data: null`); a 202 indicates accepted-for-send, not guaranteed delivery. Failures: validation -> HTTP 400 `INVALID_REQUEST`; bridge not ready -> HTTP 409 `BRIDGE_NOT_READY`; a COM/send failure maps to the bridge `INTERNAL_ERROR` code -> HTTP 502.
+  - Caveat (R-1, 64KB pipe cap): a large HTML body can exceed the named-pipe message limit and return HTTP 502 with the bridge `PAYLOAD_TOO_LARGE` code; there is no MVP mitigation.
+  - Caveat (R-5, offline/Outbox): when Outlook is offline, `MailItem.Send()` may queue to the Outbox and return without error, so a 202 does not guarantee delivery.
+  - `saveToSentItems` maps to Outlook `DeleteAfterSubmit = !saveToSentItems`; `true` saves to Sent Items, `false` does not.
+  - Send-on-behalf (a sending `fromEmailAddress`) is deferred to PI-1; the bridge mail-sender seam already accepts a future `fromEmailAddress` without breaking the `SendMailAsync` signature.
 
 > Breaking change (adapter version `1.0.0`): the earlier bespoke `/v1/*` routes were replaced by the Graph-shaped surface above. Request and response envelope shapes are unchanged. Meeting requests are served by the `/users/{id}/messages` route filtered on `meetingMessageType`. The `OpenClaw.Core` adapter base URL no longer carries a `/v1/` segment.
 

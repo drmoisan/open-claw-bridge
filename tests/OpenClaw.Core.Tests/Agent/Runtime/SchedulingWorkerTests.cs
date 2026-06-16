@@ -11,6 +11,7 @@ using Moq;
 using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.HostAdapter.Contracts;
+using SendMailRequest = OpenClaw.Core.Agent.SendMailRequest;
 
 namespace OpenClaw.Core.Tests.Agent.Runtime;
 

@@ -14,7 +14,8 @@ internal sealed class PipeRpcWorker(
     BridgeSettings settings,
     BridgeStateStore state,
     IBridgeRepository repo,
-    ILogger<PipeRpcWorker> logger
+    ILogger<PipeRpcWorker> logger,
+    IOutlookMailSender? mailSender = null
 ) : BackgroundService
 {
     private readonly JsonSerializerOptions _json = new(JsonSerializerDefaults.Web);
@@ -211,6 +212,7 @@ internal sealed class PipeRpcWorker(
                 BridgeMethods.GetMessage => await HandleGetMessageAsync(req),
                 BridgeMethods.ListCalendarWindow => await HandleListCalendarWindowAsync(req),
                 BridgeMethods.GetEvent => await HandleGetEventAsync(req),
+                BridgeMethods.SendMail => await HandleSendMailAsync(req),
                 _ => RpcResponse.Failure(
                     req.Id,
                     BridgeErrorCodes.InvalidRequest,
@@ -222,6 +224,38 @@ internal sealed class PipeRpcWorker(
         {
             logger.LogWarning("Invalid request for {Method}: {Message}", req.Method, ex.Message);
             return RpcResponse.Failure(req.Id, BridgeErrorCodes.InvalidRequest, ex.Message);
+        }
+        catch (SendMailValidationException ex)
+        {
+            logger.LogWarning("Invalid send_mail request: {Message}", ex.Message);
+            return RpcResponse.Failure(req.Id, BridgeErrorCodes.InvalidRequest, ex.Message);
+        }
+    }
+
+    private async Task<RpcResponse> HandleSendMailAsync(RpcRequest req)
+    {
+        var comRequest = SendMailRpcHandler.Parse(req);
+        if (mailSender is null)
+        {
+            throw new InvalidOperationException("No mail sender is configured.");
+        }
+
+        try
+        {
+            logger.LogInformation(
+                "send_mail dispatch: to {ToCount}, cc {CcCount}, bcc {BccCount}, saveToSentItems {SaveToSentItems}.",
+                comRequest.To.Count,
+                comRequest.Cc.Count,
+                comRequest.Bcc.Count,
+                comRequest.SaveToSentItems
+            );
+            await mailSender.SendMailAsync(comRequest, CancellationToken.None);
+            return RpcResponse.Success(req.Id, null);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError("send_mail failed: {Message}", ex.Message);
+            return RpcResponse.Failure(req.Id, BridgeErrorCodes.InternalError, ex.Message);
         }
     }
 

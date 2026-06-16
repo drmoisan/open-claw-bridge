@@ -19,7 +19,15 @@ public class BridgeContractsCoverageTests
                 BridgeMethods.ListRecentMeetingRequests,
                 BridgeMethods.ListCalendarWindow,
                 BridgeMethods.GetEvent,
+                BridgeMethods.SendMail,
             ]);
+    }
+
+    [TestMethod]
+    public void Bridge_methods_all_should_contain_send_mail_verb()
+    {
+        BridgeMethods.SendMail.Should().Be("send_mail");
+        BridgeMethods.All.Contains(BridgeMethods.SendMail).Should().BeTrue();
     }
 
     [TestMethod]

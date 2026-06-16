@@ -1,2 +1,3 @@
 - [Gitignored harness scan caveat](harness-gitignore-scan.md) — `.claude/`/`.github/agents/*` harness files are gitignored; `rg` default-ignores them, so marker scans need `--no-ignore` for full coverage
 - [Gitignore harness re-inclusion](gitignore-harness-reinclusion.md) — exact negation forms that un-ignore `.github/*` subtrees and `.claude/` for tracking (Issue #66 Option 1A)
+- [CSharpier global vs manifest](csharpier-global-vs-manifest.md) — use global `csharpier format .`/`check .`; local dotnet-tools manifest entry is broken
