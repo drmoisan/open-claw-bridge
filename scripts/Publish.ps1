@@ -22,10 +22,16 @@
     so this orchestrator stays under 500 lines per repo policy.
 
 .PARAMETER Version
-    Mandatory 4-part version (for example '1.2.3.0'). Validated strictly via
+    Optional 4-part version (for example '1.2.3.0'). Validated strictly via
     ValidatePattern '^\d+\.\d+\.\d+\.\d+$'; 3-part inputs are rejected at
     parameter binding time. Planner resolution Q1 (strict validation, no
-    normalization). The value is stamped verbatim into AppxManifest.xml.
+    normalization). When supplied, the value is used verbatim, stamped into
+    AppxManifest.xml, and persisted to OPENCLAW_PACKAGE_VERSION in the
+    repository-root .env. When omitted, the script reads OPENCLAW_PACKAGE_VERSION
+    from the repository-root .env, increments its 4th (revision) segment by one,
+    publishes that next revision, and writes the incremented value back to .env.
+    With no -Version and a missing/blank OPENCLAW_PACKAGE_VERSION the script
+    fails fast with a remediation message before any state-changing stage.
 
 .PARAMETER OutputDir
     Root directory for the versioned bundle. The script writes under
@@ -39,13 +45,14 @@
     SHA-1 thumbprint of the code-signing certificate in Cert:\CurrentUser\My.
     Required unless -SkipSign is supplied. When -SkipSign is not set and this
     parameter is empty, the thumbprint is resolved via Resolve-CertThumbprint in
-    the following precedence:
+    the following precedence (D7):
       1. an explicit -CertThumbprint value (always wins);
-      2. the dotnet user secret 'Signing:CertThumbprint' for
+      2. OPENCLAW_CERT_THUMBPRINT in the repository-root .env;
+      3. the dotnet user secret 'Signing:CertThumbprint' for
          src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj (set via
          `dotnet user-secrets set 'Signing:CertThumbprint' '<thumbprint>'
           --project src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj`);
-      3. the OPENCLAW_CERT_THUMBPRINT environment variable.
+      4. the OPENCLAW_CERT_THUMBPRINT process-environment variable.
     The original fail-fast contract is preserved: if -SkipSign is not set and no
     thumbprint can be resolved from any source, the script throws before any
     state-changing stage.
@@ -73,7 +80,6 @@
 #>
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [Parameter(Mandatory = $true)]
     [ValidatePattern('^\d+\.\d+\.\d+\.\d+$')]
     [string]$Version,
 
@@ -93,28 +99,58 @@ $ErrorActionPreference = 'Stop'
 # Force a reload so a reused PowerShell session does not keep executing an
 # older Publish.Helpers module after the file changes on disk.
 Import-Module (Join-Path $PSScriptRoot 'Publish.Helpers.psm1') -Force -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'Publish.Msix.psm1') -Force -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'Publish.Env.psm1') -Force -ErrorAction Stop
 
 # --- Main (only runs when executed directly, not when dot-sourced for tests) ---
 if ($MyInvocation.InvocationName -ne '.') {
 
     $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+    $EnvFilePath = Join-Path $RepoRoot '.env'
+
+    # Stage 00: resolve the package version from .env when -Version is omitted.
+    # The .env stores the last-published version; with no -Version we read it and
+    # increment the 4th (revision) segment to obtain the version to publish. With
+    # -Version we use it verbatim. The missing-version guard throws here, before
+    # any state-changing stage. The resolved value is persisted to .env later,
+    # after the signing fail-fast gate, so an ambiguous signing configuration
+    # leaves .env unchanged.
+    $envContent = @(Read-EnvFileContent -Path $EnvFilePath)
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        $envMap = Get-EnvFileMap -Content $envContent
+        $storedVersion = if ($envMap.Contains('OPENCLAW_PACKAGE_VERSION')) { [string]$envMap['OPENCLAW_PACKAGE_VERSION'] } else { '' }
+        if ([string]::IsNullOrWhiteSpace($storedVersion)) {
+            throw "No -Version supplied and OPENCLAW_PACKAGE_VERSION is missing or blank in $EnvFilePath. Set OPENCLAW_PACKAGE_VERSION to the last-published 4-part version (for example '1.0.2.0') in .env, or pass -Version explicitly. Refusing to invent a version."
+        }
+        $Version = Step-PackageVersion -Version $storedVersion.Trim()
+    }
 
     # Stage 0a: resolve the signing thumbprint when signing is requested but no
-    # explicit -CertThumbprint was provided. Precedence: explicit > user secret >
-    # OPENCLAW_CERT_THUMBPRINT env var. The env value is injected (not read inside
-    # the resolver) to keep resolution deterministic and testable.
+    # explicit -CertThumbprint was provided. Precedence (D7): explicit > .env
+    # OPENCLAW_CERT_THUMBPRINT > dotnet user secret > process env. The .env value
+    # and the process-env value are both injected (not read inside the resolver)
+    # to keep resolution deterministic and testable.
     if (-not $SkipSign -and [string]::IsNullOrWhiteSpace($CertThumbprint)) {
         $signingProject = Join-Path $RepoRoot 'src/OpenClaw.MailBridge/OpenClaw.MailBridge.csproj'
+        $dotEnvMap = Get-EnvFileMap -Content $envContent
+        $dotEnvThumbprint = if ($dotEnvMap.Contains('OPENCLAW_CERT_THUMBPRINT')) { [string]$dotEnvMap['OPENCLAW_CERT_THUMBPRINT'] } else { '' }
         $CertThumbprint = Resolve-CertThumbprint `
             -ExplicitThumbprint $CertThumbprint `
+            -DotEnvThumbprint $dotEnvThumbprint `
             -ProjectPath $signingProject `
             -EnvThumbprint $env:OPENCLAW_CERT_THUMBPRINT
     }
 
     # Stage 0b: parameter validation. Fail fast before any state-changing stage.
     if (-not $SkipSign -and [string]::IsNullOrWhiteSpace($CertThumbprint)) {
-        throw 'Either -SkipSign or a non-empty -CertThumbprint must be supplied (directly, via the dotnet user secret Signing:CertThumbprint, or via OPENCLAW_CERT_THUMBPRINT). Refusing to proceed with an ambiguous signing configuration.'
+        throw 'Either -SkipSign or a non-empty -CertThumbprint must be supplied (directly, via OPENCLAW_CERT_THUMBPRINT in .env, via the dotnet user secret Signing:CertThumbprint, or via the OPENCLAW_CERT_THUMBPRINT process-environment variable). Refusing to proceed with an ambiguous signing configuration.'
     }
+
+    # Stage 0c: persist the resolved version to .env (the last-published value),
+    # now that the signing gate has passed. Idempotent update-in-place.
+    $persistedContent = Set-EnvFileValue -Content $envContent -Key 'OPENCLAW_PACKAGE_VERSION' -Value $Version
+    Write-EnvFileContent -Path $EnvFilePath -Content $persistedContent
+    Write-Information "[publish] Using version $Version (persisted to $EnvFilePath)" -InformationAction Continue
 
     $BundleRoot = Join-Path $OutputDir $Version
 

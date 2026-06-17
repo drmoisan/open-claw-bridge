@@ -9,3 +9,5 @@
 - [Unify COM vs Modern behind adapter](feedback_unify-com-vs-modern-behind-adapter.md) — model-specific field resolution goes behind a unifying interface + data-type adapter so only the adapter swaps (COM->Modern).
 - [pr-author skill](reference_pr-author-skill.md) — author PR bodies via the pr-author SKILL (not manual, not a subagent); refresh collect_pr_context bundle first.
 - [Clean worktree before ready](feedback_clean-worktree-before-ready.md) — `git status --porcelain` must be empty before declaring a PR ready to merge; commit memory/docs, don't leave them.
+- [Autonomous finish sequence](feedback_autonomous-finish-sequence.md) — after a passing exit gate, commit+push all, open PR, remediate CI, commit memories, ensure green CI — without asking. Overrides "commit only when asked".
+- [.env files denied to tools](project_env-files-permission-denied-to-tools.md) — `.env`/`.env.example` blocked from Read/Write/Edit/Bash cat; inspect via git diff/show, have operator edit.
