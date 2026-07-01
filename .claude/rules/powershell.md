@@ -15,7 +15,7 @@ This rule file summarizes the PowerShell-specific policies for this repository.
 1. **Formatting — Invoke-Formatter**: Format all PowerShell files via PoshQC. MCP command: `mcp__drm-copilot__run_poshqc_format`
 2. **Linting — PSScriptAnalyzer**: Run PoshQC analyzer with repo settings. MCP command: `mcp__drm-copilot__run_poshqc_analyze`. Optional autofix: `mcp__drm-copilot__run_poshqc_analyze_autofix`
 3. **Type checking**: Not applicable for PowerShell; skip to testing.
-4. **Testing — Pester (v5.x)**: Run tests via MCP. MCP command: `mcp__drm-copilot__run_poshqc_test`. CI runs Pester directly as `Invoke-Pester -Path tests/scripts -Output Detailed -CI` (see `.github/workflows/ci.yml`). Note: a PoshQC repo settings file at `scripts/powershell/PoshQC/settings/pester.runsettings.psd1` is not yet present in this repository; do not reference it as an existing config.
+4. **Testing — Pester (v5.x)**: Run tests via MCP. MCP command: `mcp__drm-copilot__run_poshqc_test`. Use repo config at `scripts/powershell/PoshQC/settings/pester.runsettings.psd1`.
 
 Run the toolchain in order: format → analyze → test. Restart from step 1 if any step fails or changes files. Use the MCP server functions; do not substitute VS Code task wrappers.
 

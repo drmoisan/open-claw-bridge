@@ -30,8 +30,11 @@
       "Agent(staged-review)",
       "Agent(epic-review)",
       "Agent(status-updater)",
+      "Agent(pr-author)",
+      "Agent(python-typed-engineer)",
       "Agent(powershell-typed-engineer)",
       "Agent(csharp-typed-engineer)",
+      "Agent(typescript-engineer)",
       "Skill(orchestrate *)",
       "Skill(commit-message *)",
       "Skill(pr-author *)",
@@ -41,6 +44,9 @@
       "Skill(review-epic *)",
       "Skill(update-status *)",
       "Skill(fill-feature-docs *)",
+      "Skill(python-change-budget-router *)",
+      "Skill(python-qa-gate *)",
+      "Skill(invoke-python-engineer *)",
       "Skill(powershell-change-budget-router *)",
       "Skill(powershell-qa-gate *)",
       "Skill(invoke-powershell-engineer *)",
@@ -77,12 +83,24 @@
           {
             "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/enforce-pr-author-skill.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-orchestration-preimplementation-gate.ps1"
           }
         ]
       },
       {
         "matcher": "Write|Edit",
         "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/check-python-test-purity.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-python-batch-budget.ps1"
+          },
           {
             "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/check-powershell-test-purity.ps1"
@@ -97,11 +115,19 @@
           },
           {
             "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-orchestration-preimplementation-gate.ps1"
+          },
+          {
+            "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/enforce-feature-folder-order.ps1"
           },
           {
             "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/enforce-checkpoint-monotonic.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-completion-consistency.ps1"
           }
         ]
       },
@@ -111,13 +137,17 @@
           {
             "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/enforce-prd-feature-before-planner.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-orchestration-preimplementation-gate.ps1"
           }
         ]
       }
     ],
     "SubagentStop": [
       {
-        "matcher": "atomic-planner|atomic-executor|feature-review|task-researcher|prd-feature|staged-review|epic-review|status-updater|powershell-typed-engineer|csharp-typed-engineer",
+        "matcher": "atomic-planner|atomic-executor|feature-review|task-researcher|prd-feature|staged-review|epic-review|status-updater|python-typed-engineer|powershell-typed-engineer|csharp-typed-engineer|typescript-engineer",
         "hooks": [
           {
             "type": "command",
@@ -140,6 +170,15 @@
           {
             "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/validate-planner-output.ps1"
+          }
+        ]
+      },
+      {
+        "matcher": "pr-author",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/validate-pr-author-output.ps1"
           }
         ]
       }

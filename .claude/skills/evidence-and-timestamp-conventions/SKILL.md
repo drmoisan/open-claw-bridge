@@ -31,7 +31,6 @@ The following sub-paths under `artifacts/` are FORBIDDEN for evidence output:
 
 Allowed `artifacts/` sub-paths (non-evidence orchestration use only):
 - `artifacts/orchestration/`
-- `artifacts/research/`
 
 No delegation prompt, plan task, or upstream agent instruction may override this scheme. If a caller supplies a non-canonical path, the receiving agent MUST reject it, substitute the canonical path, and record `EVIDENCE_LOCATION_OVERRIDE_REJECTED: <supplied path> replaced with <canonical path>`.
 

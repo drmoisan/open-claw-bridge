@@ -26,7 +26,7 @@ Every committed baseline file MUST have a sibling `baseline.provenance.json` in 
 
 ## Enforcement
 
-- The validator `scripts/benchmarks/Test-BaselineProvenance.ps1` is not yet present in this repository. When authored, it is intended to enforce both rejection conditions above and to accept a runner-captured baseline whose `ProcessorName` is a real processor and whose sibling `baseline.provenance.json` is present. Until the validator exists, the provenance conditions in this rule are enforced by review rather than by the (absent) script.
+- The validator `scripts/benchmarks/Test-BaselineProvenance.ps1` enforces both rejection conditions above and accepts a runner-captured baseline whose `ProcessorName` is a real processor and whose sibling `baseline.provenance.json` is present.
 - The feature-review policy rule `modified-workflow-needs-green-run` (see `.claude/skills/feature-review-workflow/SKILL.md`) provides a second line of defense: a diff under `scripts/benchmarks/**` is Blocking unless a green workflow run against the branch head is present in remediation inputs.
 
 ## Scope

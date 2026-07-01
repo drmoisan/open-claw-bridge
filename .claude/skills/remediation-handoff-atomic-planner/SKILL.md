@@ -100,7 +100,7 @@ The orchestrator records the preflight outcome in `remediation_loop.cycles[curre
 
 ## Execution and Reaudit
 
-When preflight is clear, `atomic-executor` executes the plan task-by-task. The executor invokes workers (`csharp-typed-engineer`, `powershell-typed-engineer`) internally as needed. The orchestrator does not call workers.
+When preflight is clear, `atomic-executor` executes the plan task-by-task. The executor invokes workers (`python-typed-engineer`, `typescript-engineer`, `csharp-typed-engineer`, `powershell-typed-engineer`) internally as needed. The orchestrator does not call workers.
 
 When execution is complete, the orchestrator delegates to `feature-review`. `feature-review` produces the three reaudit artifacts under the active feature folder using the exit timestamp.
 

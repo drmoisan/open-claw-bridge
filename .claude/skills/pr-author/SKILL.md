@@ -42,6 +42,34 @@ Use these sections in this order:
 10. **Follow-ups** — known TODOs, deferred cleanup, next PRs
 11. **GitHub Auto-close** — `- Closes #NNN` only from verified autoclose lists; do not invent issue numbers
 
+## Output Artifact
+
+The PR body produced by this skill is persisted as a body file plus a sibling receipt so the
+PreToolUse hook can verify the body passed to `gh pr create --body-file` is the one this skill
+produced:
+
+1. Write the body text to `artifacts/pr_body_<N>.md`, where `<N>` is the target issue or PR number.
+2. Compute the SHA-256 of the body file bytes and render it as lowercase hexadecimal.
+3. Write the sibling receipt `artifacts/pr_body_<N>.receipt.json` with the shape:
+
+   ```json
+   {
+     "skill": "pr-author",
+     "pr_body_path": "artifacts/pr_body_<N>.md",
+     "number": <N>,
+     "sha256": "<lowercase-hex SHA-256 of the body bytes>",
+     "context_summary_path": "artifacts/pr_context.summary.txt",
+     "created_at": "<ISO-8601 UTC timestamp newer than pr_context.summary.txt last-write>"
+   }
+   ```
+
+4. Pass the body to the pull request via `--body-file artifacts/pr_body_<N>.md`; do not use inline
+   `--body`.
+
+The body-file and receipt write operations remain in the pr-author agent scope, which holds
+`Write(/artifacts/**)`. This skill authors the body text; the pr-author agent performs the file
+writes and the `gh pr create` / `gh pr edit --body-file` handoff.
+
 ## Issue/PR Reference Rules
 
 - Only mention an issue/PR number if it appears verbatim in the provided context.

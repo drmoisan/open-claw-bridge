@@ -19,9 +19,11 @@
          to reference a feature folder explicitly.
 
     Once the folder is resolved, the hook verifies that both spec.md and
-    user-story.md exist in that folder. If either is missing, the script blocks
-    with a reason naming the missing file(s) and instructing the orchestrator to
-    invoke prd-feature first.
+    user-story.md exist in that folder. If either is missing, the script emits a
+    PreToolUse JSON response with hookSpecificOutput.permissionDecision='deny'
+    and a reason naming the missing file(s) and instructing the orchestrator to
+    invoke prd-feature first. Allowed delegations emit
+    hookSpecificOutput.permissionDecision='allow'.
 
     Filesystem reads and orchestrator-state lookups go through wrapper functions
     so tests can inject fakes without touching disk.
@@ -157,7 +159,7 @@ function Invoke-PrdFeatureBeforePlannerDecision {
     )
 
     if (-not $ToolInputRaw) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     try {
@@ -169,7 +171,7 @@ function Invoke-PrdFeatureBeforePlannerDecision {
 
     $subagent = $toolInput.subagent_type
     if (-not $subagent -or $subagent -ne 'atomic-planner') {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $prompt = [string]$toolInput.prompt
@@ -180,21 +182,27 @@ function Invoke-PrdFeatureBeforePlannerDecision {
 
     if (-not $folder) {
         return [ordered]@{
-            decision = 'block'
-            reason   = "PRD_FEATURE_BLOCKED: atomic-planner delegation must reference a feature folder (either in the prompt or via orchestrator-state.json) so spec.md and user-story.md prerequisites can be verified."
+            hookSpecificOutput = [ordered]@{
+                hookEventName            = 'PreToolUse'
+                permissionDecision       = 'deny'
+                permissionDecisionReason = "PRD_FEATURE_BLOCKED: atomic-planner delegation must reference a feature folder (either in the prompt or via orchestrator-state.json) so spec.md and user-story.md prerequisites can be verified."
+            }
         }
     }
 
     $folderNormalized = ($folder -replace '\\', '/').TrimEnd('/')
     $missing = Get-PrdFeatureMissingFile -FeatureFolder $folderNormalized
     if ($missing.Count -eq 0) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $list = ($missing -join ', ')
     return [ordered]@{
-        decision = 'block'
-        reason   = "PRD_FEATURE_BLOCKED: cannot delegate to atomic-planner before prd-feature outputs are present in '$folderNormalized'. Missing: $list. Invoke the prd-feature subagent first."
+        hookSpecificOutput = [ordered]@{
+            hookEventName            = 'PreToolUse'
+            permissionDecision       = 'deny'
+            permissionDecisionReason = "PRD_FEATURE_BLOCKED: cannot delegate to atomic-planner before prd-feature outputs are present in '$folderNormalized'. Missing: $list. Invoke the prd-feature subagent first."
+        }
     }
 }
 
@@ -211,6 +219,6 @@ catch {
     exit 1
 }
 
-$decision | ConvertTo-Json -Compress | Write-Output
+$decision | ConvertTo-Json -Compress -Depth 5 | Write-Output
 
 exit 0
