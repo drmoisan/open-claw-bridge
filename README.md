@@ -409,8 +409,8 @@ Option A — create and trust a development signing certificate once per machine
 `Publish.ps1` resolves it automatically (no `-CertThumbprint` needed):
 
 ```powershell
-$pwd = ConvertTo-SecureString 'your-password' -AsPlainText -Force
-.\scripts\New-MsixDevCert.ps1 -PfxPassword $pwd -OutputDir artifacts
+$pfxPassword = ConvertTo-SecureString 'your-password' -AsPlainText -Force
+.\scripts\New-MsixDevCert.ps1 -PfxPassword $pfxPassword -OutputDir artifacts
 ```
 
 Option B — store an existing installed code-signing certificate's thumbprint in
@@ -620,6 +620,122 @@ When `-CoreBaseUrl` is omitted, the validation script reads
 The dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` authenticates against the `OPENCLAW_GATEWAY_TOKEN` in `.env` produced by the onboarding script. Open the URL after the container is healthy; the dashboard reads the token without an operator paste step.
 
 Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments of the local wrapper image.
+
+## Start, Stop, And Restart OpenClaw Services
+
+The complete solution has three long-running pieces: the Windows **MailBridge**
+process, the Windows **HostAdapter** process, and the **Docker** containers
+`openclaw-core` and `openclaw-agent`. After a reboot they recover differently:
+
+- MailBridge relaunches at the next interactive logon (its MSIX startup task, or
+  the scheduled task in the published-binaries install).
+- The Docker containers restart automatically when Docker Desktop next starts,
+  because the compose file sets `restart: unless-stopped` (unless you explicitly
+  stopped them).
+- The HostAdapter that `Install.ps1` launches is a plain background process; it
+  is **not** registered as a service or startup task, so it does not restart on
+  reboot and must be started manually.
+
+The commands below restart each piece manually without a reboot. They locate the
+installed paths from the install record so no version or absolute path is
+hard-coded:
+
+```powershell
+$record = Get-Content (Join-Path $env:LOCALAPPDATA 'OpenClaw\install-record.json') -Raw | ConvertFrom-Json
+$composeFile = $record.composeFilePath
+$dockerDir = Split-Path $composeFile -Parent
+```
+
+### Docker services (openclaw-core and openclaw-agent)
+
+The installer runs compose with project name `openclaw` and the bundle's base
+compose file, so use the same project and file here.
+
+```powershell
+# Status
+docker compose --project-name openclaw -f $composeFile ps
+
+# Stop (preserves containers, volumes, and the /workspace volume)
+docker compose --project-name openclaw -f $composeFile stop
+
+# Start the stopped containers again in place
+docker compose --project-name openclaw -f $composeFile start
+
+# Restart a single service
+docker compose --project-name openclaw -f $composeFile restart openclaw-core
+```
+
+If the containers were removed with `down` (not just stopped), recreate them
+(the `--project-directory` lets compose read the installed `.env`):
+
+```powershell
+docker compose --project-name openclaw --project-directory $dockerDir -f $composeFile up -d openclaw-core openclaw-agent
+```
+
+For a run-from-source setup (repo-root compose files with the dev overlay), the
+equivalent commands are documented in
+[`docs/mailbridge-runbook.md`](./docs/mailbridge-runbook.md).
+
+### Windows MailBridge
+
+For the recommended scripted-bundle and MSIX installs, the bridge is a packaged
+app started at logon by its MSIX startup task.
+
+```powershell
+# Status
+Get-Process OpenClaw.MailBridge -ErrorAction SilentlyContinue
+
+# Stop the running instance
+Get-Process OpenClaw.MailBridge -ErrorAction SilentlyContinue | Stop-Process
+
+# Start without signing out (launch the packaged app directly)
+$pkg = Get-AppxPackage -Name 'OpenClaw.MailBridge'
+Start-Process ("shell:appsFolder\{0}!OpenClaw.MailBridge" -f $pkg.PackageFamilyName)
+```
+
+For the published-binaries + scheduled-task install, control the task instead:
+
+```powershell
+# Stop the running instance (task stays registered)
+schtasks /end /tn "OpenClaw MailBridge"
+
+# Start it immediately
+schtasks /run /tn "OpenClaw MailBridge"
+
+# Suppress or re-enable the automatic logon start
+Disable-ScheduledTask -TaskName "OpenClaw MailBridge"
+Enable-ScheduledTask  -TaskName "OpenClaw MailBridge"
+```
+
+### Windows HostAdapter
+
+The scripted installer starts the HostAdapter from the install directory and
+does not auto-register it, so start or restart it manually (for example after a
+reboot):
+
+```powershell
+# Stop the running instance
+Get-Process OpenClaw.HostAdapter -ErrorAction SilentlyContinue | Stop-Process
+
+# Start it again from the installed bundle on the loopback address
+$hostAdapterExe = Join-Path $record.destinationPath 'executables\OpenClaw.HostAdapter\OpenClaw.HostAdapter.exe'
+$env:ASPNETCORE_URLS = 'http://127.0.0.1:4319'
+Start-Process -FilePath $hostAdapterExe
+```
+
+Start order: bring up the MailBridge and HostAdapter before relying on the
+containers, which poll the HostAdapter. If you rotate the HostAdapter token,
+restart the HostAdapter and the `openclaw-core` container so both sides read the
+same token.
+
+Verify after restart:
+
+```powershell
+$token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
+curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/status
+curl.exe http://127.0.0.1:8081/health/ready
+curl.exe http://127.0.0.1:8081/api/status
+```
 
 ## Bridge Configuration
 
