@@ -124,14 +124,23 @@ public sealed class SchedulingWorkerTests
         Mock<ISchedulingService> service,
         Mock<ISchedulingCandidateSource> source,
         AgentPolicyOptions options
-    ) =>
-        new(
+    )
+    {
+        // Default store: nothing is recorded, so existing worker tests keep their
+        // pre-dedupe behavior.
+        var sentActionStore = new Mock<ISentActionStore>();
+        sentActionStore
+            .Setup(s => s.IsRecordedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        return new(
             service.Object,
+            sentActionStore.Object,
             source.Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
             NullLogger<SchedulingWorker>.Instance
         );
+    }
 
     [TestMethod]
     public async Task RunCycle_SendDisabled_NeverInvokesSendMail()

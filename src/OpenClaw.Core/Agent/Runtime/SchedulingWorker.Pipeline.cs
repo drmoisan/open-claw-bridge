@@ -126,8 +126,34 @@ public sealed partial class SchedulingWorker
         }
         else
         {
+            // Send idempotency (issue #101): consult the durable store before sending and
+            // record after a successful send so a restart does not resend the proposal. A
+            // thrown send exception propagates before the record step, preserving the
+            // ProcessMessageSafelyAsync per-message isolation.
+            var dedupeKey = SentActionKey.Build(
+                MailboxUpn(),
+                messageId,
+                SentActionKey.ProposalReply
+            );
+            if (
+                await sentActionStore
+                    .IsRecordedAsync(dedupeKey, cancellationToken)
+                    .ConfigureAwait(false)
+            )
+            {
+                logger.LogInformation(
+                    "Send for message {MessageId} already recorded under dedupe key {DedupeKey}; skipping.",
+                    messageId,
+                    dedupeKey
+                );
+                return;
+            }
+
             await schedulingService
                 .SendMailAsync(BuildProposalReply(context, slots), cancellationToken)
+                .ConfigureAwait(false);
+            await sentActionStore
+                .RecordAsync(dedupeKey, timeProvider.GetUtcNow(), cancellationToken)
                 .ConfigureAwait(false);
         }
 
