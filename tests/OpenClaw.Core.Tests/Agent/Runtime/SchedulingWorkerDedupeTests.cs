@@ -154,6 +154,7 @@ public sealed class SchedulingWorkerDedupeTests
         new(
             service.Object,
             sentActionStore,
+            new Mock<IActionAuditLog>().Object,
             source.Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
@@ -174,7 +175,12 @@ public sealed class SchedulingWorkerDedupeTests
         // Assert
         await act.Should().NotThrowAsync("a dedupe hit is a normal skip, not a failure");
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Never
         );
     }
@@ -186,7 +192,13 @@ public sealed class SchedulingWorkerDedupeTests
         var callOrder = new List<string>();
         var service = ServiceReturningContext("msg-1");
         service
-            .Setup(s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Callback(() => callOrder.Add("send"))
             .Returns(Task.CompletedTask);
         var store = Store(isRecorded: false);
@@ -218,7 +230,13 @@ public sealed class SchedulingWorkerDedupeTests
         // Arrange: every send throws; two candidates exercise the isolation path.
         var service = ServiceReturningContext("msg-1", "msg-2");
         service
-            .Setup(s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .ThrowsAsync(new InvalidOperationException("send failed"));
         var store = Store(isRecorded: false);
         var worker = Worker(
@@ -275,7 +293,12 @@ public sealed class SchedulingWorkerDedupeTests
             Times.Never
         );
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Never
         );
     }
@@ -289,7 +312,13 @@ public sealed class SchedulingWorkerDedupeTests
             $"Data Source=worker-dedupe-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
         var service = ServiceReturningContext("msg-1");
         service
-            .Setup(s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Returns(Task.CompletedTask);
 
         using var firstStore = new OpenClaw.Core.CoreCacheRepository(connectionString);
@@ -303,7 +332,12 @@ public sealed class SchedulingWorkerDedupeTests
 
         // Assert
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Once
         );
     }
@@ -325,7 +359,13 @@ public sealed class SchedulingWorkerDedupeTests
             .Setup(s => s.GetSchedulingMessageAsync("mail-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Message("mail-1", meetingMessageType: null));
         service
-            .Setup(s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Returns(Task.CompletedTask);
         var recordedKeys = new HashSet<string>(StringComparer.Ordinal);
         var store = new Mock<ISentActionStore>();
@@ -351,7 +391,12 @@ public sealed class SchedulingWorkerDedupeTests
         // Assert: exactly one outbound proposal; the store is consulted each cycle and
         // recorded once, always under the unchanged #101 key shape.
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Once
         );
         store.Verify(

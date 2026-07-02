@@ -13,12 +13,15 @@ namespace OpenClaw.Core.Agent.Runtime;
 /// decision class and its reasons are logged. Per-message I/O failures are isolated so a
 /// single failure does not halt the loop. The <c>SendEnabled</c> and
 /// <c>CalendarWriteEnabled</c> kill switches gate all side effects; the deterministic
-/// pipeline still computes and logs when they are off. This worker is part of the
-/// runtime seam (namespace <c>OpenClaw.Core.Agent.Runtime</c>).
+/// pipeline still computes and logs when they are off. Every Stage 0 outbound-action
+/// decision point writes one structured record to the <see cref="IActionAuditLog"/>
+/// audit sink (issue #107). This worker is part of the runtime seam (namespace
+/// <c>OpenClaw.Core.Agent.Runtime</c>).
 /// </summary>
 public sealed partial class SchedulingWorker(
     ISchedulingService schedulingService,
     ISentActionStore sentActionStore,
+    IActionAuditLog actionAuditLog,
     ISchedulingCandidateSource candidateSource,
     IOptions<AgentPolicyOptions> policyOptions,
     TimeProvider timeProvider,

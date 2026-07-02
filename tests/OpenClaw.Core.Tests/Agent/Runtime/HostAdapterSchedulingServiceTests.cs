@@ -299,7 +299,7 @@ public sealed class HostAdapterSchedulingServiceTests
         SetupSendMail(client, new ApiEnvelope<object?>(true, null, Meta, null));
         using var cts = new CancellationTokenSource();
 
-        await Service(client).SendMailAsync(SampleSendRequest(), cts.Token);
+        await Service(client).SendMailAsync(SampleSendRequest(), null, cts.Token);
 
         client.Verify(
             c => c.SendMailAsync(It.IsAny<WireSendMailRequest>(), It.IsAny<string?>(), cts.Token),
@@ -322,7 +322,7 @@ public sealed class HostAdapterSchedulingServiceTests
         );
 
         var act = async () =>
-            await Service(client).SendMailAsync(SampleSendRequest(), CancellationToken.None);
+            await Service(client).SendMailAsync(SampleSendRequest(), null, CancellationToken.None);
 
         (await act.Should().ThrowAsync<InvalidOperationException>())
             .Which.Message.Should()
@@ -345,7 +345,7 @@ public sealed class HostAdapterSchedulingServiceTests
             .ThrowsAsync(new HttpRequestException("socket closed"));
 
         var act = async () =>
-            await Service(client).SendMailAsync(SampleSendRequest(), CancellationToken.None);
+            await Service(client).SendMailAsync(SampleSendRequest(), null, CancellationToken.None);
 
         await act.Should().ThrowExactlyAsync<HttpRequestException>();
     }
@@ -362,7 +362,8 @@ public sealed class HostAdapterSchedulingServiceTests
             )
             .ThrowsAsync(new OperationCanceledException(cts.Token));
 
-        var act = async () => await Service(client).SendMailAsync(SampleSendRequest(), cts.Token);
+        var act = async () =>
+            await Service(client).SendMailAsync(SampleSendRequest(), null, cts.Token);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
@@ -392,8 +393,8 @@ public sealed class HostAdapterSchedulingServiceTests
         var withEmptyCc = SampleSendRequest();
         var service = Service(client);
 
-        await service.SendMailAsync(withCc, CancellationToken.None);
-        await service.SendMailAsync(withEmptyCc, CancellationToken.None);
+        await service.SendMailAsync(withCc, null, CancellationToken.None);
+        await service.SendMailAsync(withEmptyCc, null, CancellationToken.None);
 
         captured.Should().HaveCount(2);
         var first = captured[0];
@@ -411,5 +412,69 @@ public sealed class HostAdapterSchedulingServiceTests
             .Be(new SendMailEmailAddressDto("bob@contoso.com", "Bob"));
         first.SaveToSentItems.Should().BeTrue();
         captured[1].Message.CcRecipients.Should().BeNull();
+    }
+
+    [TestMethod]
+    public async Task SendMailAsync_SuppliedCorrelationId_ForwardsVerbatimAsRequestId()
+    {
+        // Arrange: capture the requestId argument the client receives (issue #107, D5).
+        var client = new Mock<IHostAdapterClient>();
+        var capturedRequestIds = new List<string?>();
+        client
+            .Setup(c =>
+                c.SendMailAsync(
+                    It.IsAny<WireSendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback(
+                (WireSendMailRequest _, string? requestId, CancellationToken _) =>
+                    capturedRequestIds.Add(requestId)
+            )
+            .ReturnsAsync(new ApiEnvelope<object?>(true, null, Meta, null));
+        const string correlationId = "33333333-3333-3333-3333-333333333333";
+
+        // Act
+        await Service(client)
+            .SendMailAsync(SampleSendRequest(), correlationId, CancellationToken.None);
+
+        // Assert
+        capturedRequestIds
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Be(correlationId, "the correlation id must be forwarded verbatim as the request id");
+    }
+
+    [TestMethod]
+    public async Task SendMailAsync_NullCorrelationId_ForwardsNullRequestId()
+    {
+        // Arrange: a null correlation id preserves the client's self-generated request id.
+        var client = new Mock<IHostAdapterClient>();
+        var capturedRequestIds = new List<string?>();
+        client
+            .Setup(c =>
+                c.SendMailAsync(
+                    It.IsAny<WireSendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback(
+                (WireSendMailRequest _, string? requestId, CancellationToken _) =>
+                    capturedRequestIds.Add(requestId)
+            )
+            .ReturnsAsync(new ApiEnvelope<object?>(true, null, Meta, null));
+
+        // Act
+        await Service(client).SendMailAsync(SampleSendRequest(), null, CancellationToken.None);
+
+        // Assert
+        capturedRequestIds
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .BeNull("a null correlation id lets the client self-generate the request id");
     }
 }

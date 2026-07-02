@@ -121,13 +121,17 @@ public sealed class HostAdapterSchedulingService(
     }
 
     /// <inheritdoc />
-    public async Task SendMailAsync(SendMailRequest request, CancellationToken ct)
+    public async Task SendMailAsync(
+        SendMailRequest request,
+        string? correlationId = null,
+        CancellationToken ct = default
+    )
     {
         ArgumentNullException.ThrowIfNull(request);
 
         var wireRequest = mapper.MapSendMailRequest(request);
         var envelope = await hostAdapterClient
-            .SendMailAsync(wireRequest, cancellationToken: ct)
+            .SendMailAsync(wireRequest, requestId: correlationId, cancellationToken: ct)
             .ConfigureAwait(false);
         if (envelope is not { Ok: true })
         {

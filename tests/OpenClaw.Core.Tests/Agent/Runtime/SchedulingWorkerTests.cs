@@ -146,6 +146,7 @@ public sealed class SchedulingWorkerTests
         return new(
             service.Object,
             sentActionStore.Object,
+            new Mock<IActionAuditLog>().Object,
             source.Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
@@ -163,7 +164,12 @@ public sealed class SchedulingWorkerTests
         await worker.RunSchedulingCycleAsync(CancellationToken.None);
 
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Never
         );
     }
@@ -174,7 +180,13 @@ public sealed class SchedulingWorkerTests
         var service = ServiceReturningContext();
         var captured = new List<SendMailRequest>();
         service
-            .Setup(s => s.SendMailAsync(Capture.In(captured), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    Capture.In(captured),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Returns(Task.CompletedTask);
         var source = CandidateSource("msg-1");
         var worker = Worker(service, source, Options(sendEnabled: true));
@@ -182,7 +194,12 @@ public sealed class SchedulingWorkerTests
         await worker.RunSchedulingCycleAsync(CancellationToken.None);
 
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Once
         );
         // The composed agent request (spec "Seeded Test Conditions"): reply subject, one
@@ -208,6 +225,7 @@ public sealed class SchedulingWorkerTests
             .Setup(s =>
                 s.SendMailAsync(
                     It.Is<SendMailRequest>(r => r.InReplyToMessageId == "msg-1"),
+                    It.IsAny<string?>(),
                     It.IsAny<CancellationToken>()
                 )
             )
@@ -225,7 +243,12 @@ public sealed class SchedulingWorkerTests
             Times.Once
         );
         service.Verify(
-            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.SendMailAsync(
+                    It.IsAny<SendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Exactly(2)
         );
     }
@@ -239,6 +262,7 @@ public sealed class SchedulingWorkerTests
             .Setup(s =>
                 s.SendMailAsync(
                     It.Is<SendMailRequest>(r => r.InReplyToMessageId == "msg-1"),
+                    It.IsAny<string?>(),
                     It.IsAny<CancellationToken>()
                 )
             )

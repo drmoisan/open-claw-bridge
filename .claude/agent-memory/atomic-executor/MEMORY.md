@@ -3,3 +3,4 @@
 - [CSharpier global vs manifest](csharpier-global-vs-manifest.md) — use global `csharpier format .`/`check .`; local dotnet-tools manifest entry is broken
 - [Worktree stale main merge-base](worktree-stale-main-merge-base.md) — diff-scope tasks must use `origin/main`; stale local `main` shows false extra files
 - [Coverlet async body exclusion](coverlet-async-body-exclusion.md) — runsettings excludes CompilerGenerated; async bodies have no instrumented lines, argue coverage behaviorally
+- [C# signature/gate pitfalls](csharp-signature-gate-pitfalls.md) — optional-param insertion breaks positional call sites (ct needs default too); CS9113 fires until a partial reads a primary-ctor param — check gate ordering at preflight

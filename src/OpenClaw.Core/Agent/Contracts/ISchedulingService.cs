@@ -58,7 +58,17 @@ public interface ISchedulingService
 
     /// <summary>Sends an outbound mail (gated by the send kill switch upstream).</summary>
     /// <param name="request">The send-mail request.</param>
+    /// <param name="correlationId">
+    /// The worker-generated GUID for this outbound-action evaluation (issue #107, D5),
+    /// forwarded as the HostAdapter request id so the audit row correlates with the
+    /// adapter's <c>X-Request-Id</c>. When <see langword="null"/>, the underlying client
+    /// self-generates a request id (the pre-#107 behavior).
+    /// </param>
     /// <param name="ct">A cancellation token.</param>
     /// <returns>A task that completes when the send finishes.</returns>
-    Task SendMailAsync(SendMailRequest request, CancellationToken ct);
+    Task SendMailAsync(
+        SendMailRequest request,
+        string? correlationId = null,
+        CancellationToken ct = default
+    );
 }

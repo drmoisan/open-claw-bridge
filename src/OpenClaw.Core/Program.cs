@@ -66,6 +66,7 @@ builder.Services.AddSingleton<ISentActionStore>(sp => sp.GetRequiredService<Core
 builder.Services.AddSingleton<ISeriesMoveHistory>(sp =>
     sp.GetRequiredService<CoreCacheRepository>()
 );
+builder.Services.AddSingleton<IActionAuditLog>(sp => sp.GetRequiredService<CoreCacheRepository>());
 builder.Services.AddSingleton<ISchedulingCandidateSource, CacheSchedulingCandidateSource>();
 builder.Services.AddHostedService<SchedulingWorker>();
 
