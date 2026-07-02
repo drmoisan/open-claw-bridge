@@ -85,6 +85,15 @@ an untaken arm — locate it via the JaCoCo per-line `nr`/`mi` attrs in
 command was the wrapper's `RecipientAdministrativeUnitScope` pass-through arm, tested only
 against mocks — graded Minor with a concrete one-case seam-test recommendation).
 
+Recurred on #113 (2026-07-02): NEW file `ClientCredentialsTokenProvider.cs` reported 37/37 = 100%
+line while its entire async `RefreshAsync` body (lines 78-135: semaphore, double-check, credential
+call, both catches, cache write) was uninstrumented — and this time the executor's committed
+coverage-comparison claimed the 100% per-file figure WITHOUT stating the exclusion (it disclosed
+the analogous auto-property file openly). Detection technique: list the instrumented line NUMBERS
+for the file from cobertura and diff against the source's executable ranges — a contiguous gap
+matching an async method body is the tell. Same accepted disposition (behavioral verification per
+arm + exclusion stated explicitly in the audit, Info grade).
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
