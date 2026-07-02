@@ -36,14 +36,14 @@ INSERT INTO events(
     optional_attendees_json, resources_json, body_preview, protected_fields_available,
     is_redacted, bridge_mode, cache_stale, stale_reason, adapter_request_id, observed_at_utc,
     last_modified_utc, categories_json, is_organizer, is_online_meeting, allow_new_time_proposals,
-    ical_uid, series_master_id, body_full, sensitivity_label)
+    ical_uid, series_master_id, body_full, sensitivity_label, response_status)
 VALUES(
     $bridge_id, $global_appointment_id, $subject, $start_utc, $end_utc, $location, $busy_status,
     $meeting_status, $is_recurring, $sensitivity, $organizer, $required_attendees_json,
     $optional_attendees_json, $resources_json, $body_preview, $protected_fields_available,
     $is_redacted, $bridge_mode, $cache_stale, $stale_reason, $adapter_request_id, $observed_at_utc,
     $last_modified_utc, $categories_json, $is_organizer, $is_online_meeting, $allow_new_time_proposals,
-    $ical_uid, $series_master_id, $body_full, $sensitivity_label)
+    $ical_uid, $series_master_id, $body_full, $sensitivity_label, $response_status)
 ON CONFLICT(bridge_id) DO UPDATE SET
     global_appointment_id = excluded.global_appointment_id,
     subject = excluded.subject,
@@ -74,7 +74,8 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     ical_uid = excluded.ical_uid,
     series_master_id = excluded.series_master_id,
     body_full = excluded.body_full,
-    sensitivity_label = excluded.sensitivity_label;";
+    sensitivity_label = excluded.sensitivity_label,
+    response_status = excluded.response_status;";
             AddEventParameters(command, evt, bridgeStatus, requestId, observedAtUtc);
             await command.ExecuteNonQueryAsync();
         }
@@ -183,6 +184,7 @@ LIMIT $limit;";
             "$sensitivity_label",
             (object?)evt.SensitivityLabel ?? DBNull.Value
         );
+        command.Parameters.AddWithValue("$response_status", ToDbValue(evt.ResponseStatus));
     }
 
     /// <summary>
@@ -245,7 +247,7 @@ LIMIT $limit;";
             ReadString(reader, "body_preview"),
             ReadBoolean(reader, "protected_fields_available"),
             ReadBoolean(reader, "is_redacted"),
-            ResponseStatus: null,
+            ResponseStatus: ReadNullableInt(reader, "response_status"),
             Categories: ReadCategories(reader, "categories_json"),
             IsOrganizer: ReadBoolean(reader, "is_organizer"),
             IsOnlineMeeting: ReadBoolean(reader, "is_online_meeting"),
