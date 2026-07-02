@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS ingest_runs(
     started_at_utc TEXT NOT NULL,
     finished_at_utc TEXT NOT NULL,
     error_message TEXT NULL
-);";
+);
+CREATE TABLE IF NOT EXISTS sent_actions(dedupe_key TEXT PRIMARY KEY, mailbox TEXT NOT NULL, message_id TEXT NOT NULL, action_type TEXT NOT NULL, recorded_at_utc TEXT NOT NULL);";
 
     /// <summary>
     /// The issue-#72 columns added to the Core <c>events</c> table on existing databases via

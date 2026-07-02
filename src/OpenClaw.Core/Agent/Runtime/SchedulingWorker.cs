@@ -18,6 +18,7 @@ namespace OpenClaw.Core.Agent.Runtime;
 /// </summary>
 public sealed partial class SchedulingWorker(
     ISchedulingService schedulingService,
+    ISentActionStore sentActionStore,
     ISchedulingCandidateSource candidateSource,
     IOptions<AgentPolicyOptions> policyOptions,
     TimeProvider timeProvider,
