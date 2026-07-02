@@ -5,3 +5,4 @@
 - [Test framework discrepancy](project_test_framework_discrepancy.md) — repo tests use MSTest + FluentAssertions + Moq despite csharp.md saying xUnit + NSubstitute; specs must cite the real stack.
 - [Issue-body staleness](project_issue_body_staleness.md) — April 2026 issue bodies predate #71/#72/#73 DTO fields; re-derive field lists from BridgeContracts.cs and record the delta.
 - [Flag env-naming decision](project_flag_env_naming_decision.md) — master ENABLE_* names are semantic-only; flags bind as OpenClaw__AgentPolicy__* with no alias layer (#109).
+- [PoshQC settings path absent](project_poshqc_settings_path_absent.md) — powershell.md cites scripts/powershell/PoshQC/settings/ but the dir does not exist; MCP supplies settings.
