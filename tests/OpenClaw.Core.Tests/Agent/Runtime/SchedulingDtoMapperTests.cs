@@ -1,10 +1,13 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
+using OpenClaw.HostAdapter.Contracts;
 using OpenClaw.MailBridge.Contracts.Models;
+using SendMailRequest = OpenClaw.Core.Agent.SendMailRequest;
 
 namespace OpenClaw.Core.Tests.Agent.Runtime;
 
@@ -335,6 +338,87 @@ public sealed class SchedulingDtoMapperTests
     public void MapEvent_Null_Throws()
     {
         var act = () => mapper.MapEvent(null!);
+
+        act.Should().Throw<ArgumentNullException>();
+    }
+
+    private static SendMailRequest SendRequest(
+        IReadOnlyList<AttendeeDto>? to = null,
+        IReadOnlyList<AttendeeDto>? cc = null
+    ) =>
+        new(
+            "Re: Project sync",
+            "Proposed times below",
+            "text",
+            to ?? new[] { new AttendeeDto("Alice", "alice@contoso.com") },
+            cc ?? Array.Empty<AttendeeDto>(),
+            null
+        );
+
+    [TestMethod]
+    public void MapSendMailRequest_MapsAllFieldsToWireShape()
+    {
+        var request = new SendMailRequest(
+            "Re: Project sync",
+            "<p>Proposal</p>",
+            "html",
+            new[] { new AttendeeDto("Alice", "alice@contoso.com") },
+            new[] { new AttendeeDto("Bob", "bob@contoso.com") },
+            "msg-1"
+        );
+
+        var result = mapper.MapSendMailRequest(request);
+
+        result.Message.Subject.Should().Be("Re: Project sync");
+        result.Message.Body.Should().Be(new SendMailBodyDto("html", "<p>Proposal</p>"));
+        result
+            .Message.ToRecipients.Should()
+            .ContainSingle()
+            .Which.EmailAddress.Should()
+            .Be(new SendMailEmailAddressDto("alice@contoso.com", "Alice"));
+        result
+            .Message.CcRecipients.Should()
+            .ContainSingle()
+            .Which.EmailAddress.Should()
+            .Be(new SendMailEmailAddressDto("bob@contoso.com", "Bob"));
+        result.Message.BccRecipients.Should().BeNull();
+        result.SaveToSentItems.Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void MapSendMailRequest_EmptyOrWhitespaceRecipientName_MapsToNullName()
+    {
+        var request = SendRequest(
+            to: new[]
+            {
+                new AttendeeDto(string.Empty, "empty@contoso.com"),
+                new AttendeeDto("   ", "blank@contoso.com"),
+            }
+        );
+
+        var result = mapper.MapSendMailRequest(request);
+
+        result
+            .Message.ToRecipients.Select(r => r.EmailAddress)
+            .Should()
+            .Equal(
+                new SendMailEmailAddressDto("empty@contoso.com", null),
+                new SendMailEmailAddressDto("blank@contoso.com", null)
+            );
+    }
+
+    [TestMethod]
+    public void MapSendMailRequest_EmptyCcList_MapsToNull()
+    {
+        var result = mapper.MapSendMailRequest(SendRequest());
+
+        result.Message.CcRecipients.Should().BeNull();
+    }
+
+    [TestMethod]
+    public void MapSendMailRequest_Null_Throws()
+    {
+        var act = () => mapper.MapSendMailRequest(null!);
 
         act.Should().Throw<ArgumentNullException>();
     }

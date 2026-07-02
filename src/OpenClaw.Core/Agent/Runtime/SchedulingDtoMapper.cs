@@ -1,15 +1,19 @@
 using System.Text.Json;
 using OpenClaw.Core.Agent;
+using OpenClaw.HostAdapter.Contracts;
 using OpenClaw.MailBridge.Contracts.Models;
+using WireSendMailRequest = OpenClaw.HostAdapter.Contracts.SendMailRequest;
 
 namespace OpenClaw.Core.Agent.Runtime;
 
 /// <summary>
 /// Translates bridge-cache DTOs (<see cref="MessageDto"/>, <see cref="EventDto"/>) into
-/// the Graph-shaped agent DTOs (OR-4). This is part of the runtime seam (namespace
+/// the Graph-shaped agent DTOs (OR-4), and translates the Graph-shaped agent
+/// <see cref="SendMailRequest"/> into the wire <see cref="WireSendMailRequest"/> for the
+/// outbound (agent-to-wire) send path. This is part of the runtime seam (namespace
 /// <c>OpenClaw.Core.Agent.Runtime</c>) and may reference
-/// <c>OpenClaw.MailBridge.Contracts</c>, which <c>OpenClaw.Core</c> already references;
-/// no new project reference is added.
+/// <c>OpenClaw.MailBridge.Contracts</c> and <c>OpenClaw.HostAdapter.Contracts</c>, which
+/// <c>OpenClaw.Core</c> already references; no new project reference is added.
 /// </summary>
 /// <remarks>
 /// The event Graph fields iCalUId, seriesMasterId, categories, isOrganizer, online-meeting and
@@ -98,6 +102,56 @@ public sealed class SchedulingDtoMapper
             // The series-master type is inferred from the recurrence flag where possible.
             Type: evt.IsRecurring ? "seriesMaster" : null
         );
+    }
+
+    /// <summary>
+    /// Maps a Graph-shaped agent <see cref="SendMailRequest"/> to the wire
+    /// <see cref="WireSendMailRequest"/> consumed by the HostAdapter <c>sendMail</c> route
+    /// (outbound, agent-to-wire). <c>SaveToSentItems</c> is always <see langword="true"/> and
+    /// <c>BccRecipients</c> is always null. <see cref="SendMailRequest.InReplyToMessageId"/> is
+    /// intentionally dropped: the wire contract carries no reply-linkage field, so threading is
+    /// conveyed by the reply subject alone. The mapping is pure — the input is not mutated and
+    /// no I/O is performed.
+    /// </summary>
+    /// <param name="request">The agent send request. Must not be null.</param>
+    /// <returns>The wire send request.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="request"/> is null.</exception>
+    public WireSendMailRequest MapSendMailRequest(SendMailRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return new WireSendMailRequest(
+            new SendMailMessageDto(
+                Subject: request.Subject,
+                Body: new SendMailBodyDto(request.BodyContentType, request.BodyContent),
+                ToRecipients: MapRecipients(request.ToRecipients),
+                CcRecipients: request.CcRecipients.Count == 0
+                    ? null
+                    : MapRecipients(request.CcRecipients),
+                BccRecipients: null
+            ),
+            SaveToSentItems: true
+        );
+    }
+
+    private static IReadOnlyList<SendMailRecipientDto> MapRecipients(
+        IReadOnlyList<AttendeeDto> attendees
+    )
+    {
+        var result = new List<SendMailRecipientDto>(attendees.Count);
+        foreach (var attendee in attendees)
+        {
+            result.Add(
+                new SendMailRecipientDto(
+                    new SendMailEmailAddressDto(
+                        attendee.Email,
+                        string.IsNullOrWhiteSpace(attendee.Name) ? null : attendee.Name
+                    )
+                )
+            );
+        }
+
+        return result;
     }
 
     private static AttendeeDto? BuildAttendee(string? name, string? email)

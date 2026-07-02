@@ -5,9 +5,9 @@ namespace OpenClaw.Core.Agent.Runtime;
 
 /// <summary>
 /// HostAdapter-backed <see cref="ISchedulingService"/> implementation (OR-4). Wraps
-/// <see cref="IHostAdapterClient"/> and the <see cref="SchedulingDtoMapper"/> for the
-/// read methods available today. This is part of the runtime seam (namespace
-/// <c>OpenClaw.Core.Agent.Runtime</c>) and may reference
+/// <see cref="IHostAdapterClient"/> and the <see cref="SchedulingDtoMapper"/> for both the
+/// read delegation and the outbound send delegation. This is part of the runtime seam
+/// (namespace <c>OpenClaw.Core.Agent.Runtime</c>) and may reference
 /// <c>OpenClaw.HostAdapter.Contracts</c>, which <c>OpenClaw.Core</c> already references.
 /// </summary>
 public sealed class HostAdapterSchedulingService(
@@ -121,10 +121,23 @@ public sealed class HostAdapterSchedulingService(
     }
 
     /// <inheritdoc />
-    public Task SendMailAsync(SendMailRequest request, CancellationToken ct) =>
-        throw new NotSupportedException(
-            "Outbound mail is not yet exposed by the HostAdapter/MailBridge surface. "
-                + "This endpoint is deferred to issues #74/#75; no HostAdapter or MailBridge "
-                + "endpoint changes are made by this feature."
-        );
+    public async Task SendMailAsync(SendMailRequest request, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var wireRequest = mapper.MapSendMailRequest(request);
+        var envelope = await hostAdapterClient
+            .SendMailAsync(wireRequest, cancellationToken: ct)
+            .ConfigureAwait(false);
+        if (envelope is not { Ok: true })
+        {
+            // Fail fast on a failure envelope; client exceptions (including
+            // OperationCanceledException) propagate unwrapped and unhandled.
+            var code = envelope.Error?.Code ?? "UNKNOWN_ERROR";
+            var message =
+                envelope.Error?.Message
+                ?? "The HostAdapter returned a failure envelope with no error detail.";
+            throw new InvalidOperationException($"Outbound sendMail failed: {code}: {message}");
+        }
+    }
 }

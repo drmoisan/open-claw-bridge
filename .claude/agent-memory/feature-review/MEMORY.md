@@ -1,4 +1,4 @@
 - [Artifact validator quirks](project_artifact-validator-quirks.md) — exact heading/line-format rules the orchestration-artifact validator enforces for review artifacts
-- [Per-file coverage masking](feedback_per-file-coverage-masking.md) — aggregates can pass while a new file fails, at line AND branch level; re-measure per-file line+branch from cobertura
+- [Per-file coverage masking](feedback_per-file-coverage-masking.md) — aggregates mask per-file line/branch fails AND async bodies are uninstrumented (runsettings CompilerGenerated exclude); re-measure from cobertura
 - [Review env fallbacks](project_review-env-fallbacks.md) — MCP template/validator tools and `dotnet tool restore` can be unavailable; use latest accepted artifact set (#19) as template and global csharpier
-- [T2 property-test gate](project_t2-property-test-gate.md) — no CsCheck repo-wide; new T1/T2 pure functions get PARTIAL/Major; closable via directed deterministic invariant tests + dated decision record (#18 precedent)
+- [T1/T2 property-test gate](project_t2-property-test-gate.md) — CsCheck present in OpenClaw.Core.Tests (expect real property tests there); elsewhere closable via directed deterministic invariant tests + dated decision record (#18 precedent)

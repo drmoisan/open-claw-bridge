@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -10,6 +12,7 @@ using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.HostAdapter.Contracts;
 using OpenClaw.MailBridge.Contracts.Models;
 using SendMailRequest = OpenClaw.Core.Agent.SendMailRequest;
+using WireSendMailRequest = OpenClaw.HostAdapter.Contracts.SendMailRequest;
 
 namespace OpenClaw.Core.Tests.Agent.Runtime;
 
@@ -265,21 +268,148 @@ public sealed class HostAdapterSchedulingServiceTests
         result.BusyIntervals.Should().BeEmpty();
     }
 
-    [TestMethod]
-    public async Task SendMailAsync_Throws_DeferredNotSupported()
-    {
-        var client = new Mock<IHostAdapterClient>();
-        var request = new SendMailRequest(
-            "Subject",
-            "Body",
+    private static SendMailRequest SampleSendRequest() =>
+        new(
+            "Re: Sync",
+            "Proposed slots",
             "text",
-            Array.Empty<AttendeeDto>(),
+            new[] { new AttendeeDto("Alice", "alice@contoso.com") },
             Array.Empty<AttendeeDto>(),
             null
         );
 
-        var act = async () => await Service(client).SendMailAsync(request, CancellationToken.None);
+    private static void SetupSendMail(
+        Mock<IHostAdapterClient> client,
+        ApiEnvelope<object?> envelope
+    ) =>
+        client
+            .Setup(c =>
+                c.SendMailAsync(
+                    It.IsAny<WireSendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(envelope);
 
-        await act.Should().ThrowAsync<NotSupportedException>();
+    [TestMethod]
+    public async Task SendMailAsync_Success_DelegatesToClientOnceWithCallerToken()
+    {
+        var client = new Mock<IHostAdapterClient>();
+        SetupSendMail(client, new ApiEnvelope<object?>(true, null, Meta, null));
+        using var cts = new CancellationTokenSource();
+
+        await Service(client).SendMailAsync(SampleSendRequest(), cts.Token);
+
+        client.Verify(
+            c => c.SendMailAsync(It.IsAny<WireSendMailRequest>(), It.IsAny<string?>(), cts.Token),
+            Times.Once
+        );
+    }
+
+    [TestMethod]
+    public async Task SendMailAsync_EnvelopeNotOk_ThrowsInvalidOperationWithCodeAndMessage()
+    {
+        var client = new Mock<IHostAdapterClient>();
+        SetupSendMail(
+            client,
+            new ApiEnvelope<object?>(
+                false,
+                null,
+                Meta,
+                new ApiError("BRIDGE_UNAVAILABLE", "bridge offline")
+            )
+        );
+
+        var act = async () =>
+            await Service(client).SendMailAsync(SampleSendRequest(), CancellationToken.None);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>())
+            .Which.Message.Should()
+            .Contain("BRIDGE_UNAVAILABLE")
+            .And.Contain("bridge offline");
+    }
+
+    [TestMethod]
+    public async Task SendMailAsync_ClientThrows_PropagatesExceptionUnwrapped()
+    {
+        var client = new Mock<IHostAdapterClient>();
+        client
+            .Setup(c =>
+                c.SendMailAsync(
+                    It.IsAny<WireSendMailRequest>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ThrowsAsync(new HttpRequestException("socket closed"));
+
+        var act = async () =>
+            await Service(client).SendMailAsync(SampleSendRequest(), CancellationToken.None);
+
+        await act.Should().ThrowExactlyAsync<HttpRequestException>();
+    }
+
+    [TestMethod]
+    public async Task SendMailAsync_CanceledToken_PropagatesOperationCanceled()
+    {
+        var client = new Mock<IHostAdapterClient>();
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        client
+            .Setup(c =>
+                c.SendMailAsync(It.IsAny<WireSendMailRequest>(), It.IsAny<string?>(), cts.Token)
+            )
+            .ThrowsAsync(new OperationCanceledException(cts.Token));
+
+        var act = async () => await Service(client).SendMailAsync(SampleSendRequest(), cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [TestMethod]
+    public async Task SendMailAsync_MapsAgentRequestToWireRequest()
+    {
+        var client = new Mock<IHostAdapterClient>();
+        var captured = new List<WireSendMailRequest>();
+        client
+            .Setup(c =>
+                c.SendMailAsync(
+                    Capture.In(captured),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(new ApiEnvelope<object?>(true, null, Meta, null));
+        var withCc = new SendMailRequest(
+            "Re: Sync",
+            "Proposed slots",
+            "text",
+            new[] { new AttendeeDto("Alice", "alice@contoso.com") },
+            new[] { new AttendeeDto("Bob", "bob@contoso.com") },
+            null
+        );
+        var withEmptyCc = SampleSendRequest();
+        var service = Service(client);
+
+        await service.SendMailAsync(withCc, CancellationToken.None);
+        await service.SendMailAsync(withEmptyCc, CancellationToken.None);
+
+        captured.Should().HaveCount(2);
+        var first = captured[0];
+        first.Message.Subject.Should().Be("Re: Sync");
+        first.Message.Body.Should().Be(new SendMailBodyDto("text", "Proposed slots"));
+        first
+            .Message.ToRecipients.Should()
+            .ContainSingle()
+            .Which.EmailAddress.Should()
+            .Be(new SendMailEmailAddressDto("alice@contoso.com", "Alice"));
+        first
+            .Message.CcRecipients.Should()
+            .ContainSingle()
+            .Which.EmailAddress.Should()
+            .Be(new SendMailEmailAddressDto("bob@contoso.com", "Bob"));
+        first.SaveToSentItems.Should().BeTrue();
+        captured[1].Message.CcRecipients.Should().BeNull();
     }
 }

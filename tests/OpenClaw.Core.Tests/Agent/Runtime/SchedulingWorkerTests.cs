@@ -39,9 +39,9 @@ public sealed class SchedulingWorkerTests
             PreferredDays = Array.Empty<string>(),
         };
 
-    private static SchedulingMessageDto Message() =>
+    private static SchedulingMessageDto Message(string id = "msg-1") =>
         new(
-            Id: "msg-1",
+            Id: id,
             Subject: "Project sync",
             BodyPreview: "Let us meet",
             BodyContent: null,
@@ -97,6 +97,20 @@ public sealed class SchedulingWorkerTests
         return service;
     }
 
+    /// <summary>
+    /// Adds hydration setups for an additional candidate id so multi-candidate cycles can
+    /// be exercised alongside the default "msg-1" context.
+    /// </summary>
+    private static void SetupAdditionalCandidate(Mock<ISchedulingService> service, string id)
+    {
+        service
+            .Setup(s => s.GetSchedulingMessageAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Message(id));
+        service
+            .Setup(s => s.GetEventForMessageAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((SchedulingEventDto?)null);
+    }
+
     private static Mock<ISchedulingCandidateSource> CandidateSource(params string[] ids)
     {
         var source = new Mock<ISchedulingCandidateSource>();
@@ -138,6 +152,10 @@ public sealed class SchedulingWorkerTests
     public async Task RunCycle_SendEnabled_InvokesSendMail()
     {
         var service = ServiceReturningContext();
+        var captured = new List<SendMailRequest>();
+        service
+            .Setup(s => s.SendMailAsync(Capture.In(captured), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         var source = CandidateSource("msg-1");
         var worker = Worker(service, source, Options(sendEnabled: true));
 
@@ -146,6 +164,76 @@ public sealed class SchedulingWorkerTests
         service.Verify(
             s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
             Times.Once
+        );
+        // The composed agent request (spec "Seeded Test Conditions"): reply subject, one
+        // To recipient equal to the normalized MessageFrom, and a non-empty plain-text
+        // body produced by the slot-proposal formatter.
+        var request = captured.Should().ContainSingle().Subject;
+        request.Subject.Should().Be("Re: Project sync");
+        request
+            .ToRecipients.Should()
+            .ContainSingle()
+            .Which.Should()
+            .Be(new AttendeeDto(string.Empty, "colleague@contoso.com"));
+        request.BodyContentType.Should().Be("text");
+        request.BodyContent.Should().NotBeNullOrWhiteSpace().And.StartWith("Proposed times:");
+    }
+
+    [TestMethod]
+    public async Task RunCycle_SendFailure_LogsAndContinues()
+    {
+        var service = ServiceReturningContext();
+        SetupAdditionalCandidate(service, "msg-2");
+        service
+            .Setup(s =>
+                s.SendMailAsync(
+                    It.Is<SendMailRequest>(r => r.InReplyToMessageId == "msg-1"),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ThrowsAsync(new InvalidOperationException("send failed"));
+        var source = CandidateSource("msg-1", "msg-2");
+        var worker = Worker(service, source, Options(sendEnabled: true));
+
+        var act = async () => await worker.RunSchedulingCycleAsync(CancellationToken.None);
+
+        // Per-message isolation (ProcessMessageSafelyAsync): the first send failure is
+        // logged, the cycle does not throw, and the second candidate is still processed.
+        await act.Should().NotThrowAsync();
+        service.Verify(
+            s => s.GetSchedulingMessageAsync("msg-2", It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+        service.Verify(
+            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(2)
+        );
+    }
+
+    [TestMethod]
+    public async Task RunCycle_SendCancellation_StopsCycle()
+    {
+        var service = ServiceReturningContext();
+        SetupAdditionalCandidate(service, "msg-2");
+        service
+            .Setup(s =>
+                s.SendMailAsync(
+                    It.Is<SendMailRequest>(r => r.InReplyToMessageId == "msg-1"),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ThrowsAsync(new OperationCanceledException());
+        var source = CandidateSource("msg-1", "msg-2");
+        var worker = Worker(service, source, Options(sendEnabled: true));
+
+        var act = async () => await worker.RunSchedulingCycleAsync(CancellationToken.None);
+
+        // AC-3: cancellation stops the cycle — OperationCanceledException propagates and
+        // the second candidate is never hydrated.
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        service.Verify(
+            s => s.GetSchedulingMessageAsync("msg-2", It.IsAny<CancellationToken>()),
+            Times.Never
         );
     }
 

@@ -33,6 +33,16 @@ Executor coverage copies under `artifacts/csharp/<baseline|post>-<ts>/` CAN be f
 (issue #80: reviewer re-run matched executor pooled numbers to the hundredth). Still re-run and
 re-measure per-file — the match itself is the verification.
 
+Third masking mode — INSTRUMENTATION SCOPE (issue #99, 2026-07-02): `mailbridge.runsettings`
+sets `ExcludeByAttribute=...CompilerGeneratedAttribute...`, so ASYNC method bodies (compiled to
+compiler-generated state machines) contribute zero instrumented lines. A changed file can show
+100% line coverage while its entire new async body is unmeasured (HostAdapterSchedulingService
+dropped 9 -> 4 instrumented lines when a throwing sync method became async). When a diff adds or
+converts async methods, per-line cobertura cannot attest the changed lines — verify behaviorally
+(fail-before/pass-after + branch-by-branch tests of the new body) and state the exclusion
+explicitly in the audit (accepted disposition on the #99 review; pre-existing setting, not a
+finding against the branch, but recommend the runsettings follow-up as Info).
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden

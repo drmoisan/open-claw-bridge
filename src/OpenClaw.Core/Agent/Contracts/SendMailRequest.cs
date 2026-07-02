@@ -2,8 +2,7 @@ namespace OpenClaw.Core.Agent;
 
 /// <summary>
 /// Graph-shaped outbound mail request (D6). The send endpoint is gated by the
-/// <see cref="AgentPolicyOptions.SendEnabled"/> kill switch and is deferred to issues
-/// #74/#75; the runtime adapter throws until it is available.
+/// <see cref="AgentPolicyOptions.SendEnabled"/> kill switch.
 /// </summary>
 /// <param name="Subject">The reply subject.</param>
 /// <param name="BodyContent">The reply body content.</param>
