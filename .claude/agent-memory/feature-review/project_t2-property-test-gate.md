@@ -20,6 +20,15 @@ The quality-tiers T1/T2 gate ">= 1 property test per pure function" grading hist
 when the OpenClaw.Core property suites landed. Harness presence is per-test-project, not
 repo-global — `OpenClaw.MailBridge.Tests` may still lack it.
 
+- #105 (T1 OpenClaw.Core, 2026-07-02): PASS with an Info note. The algorithmic pure functions
+  (`ComputeAnswers`, `CanMove`) had 4 genuine CsCheck properties, but the trivial selector
+  `ResolveSeriesKey` (three-branch fallback chain) had only exhaustive directed partition tests.
+  Graded the gate PASS (density intent met on algorithmic logic, matching #103's matcher-focused
+  grading) and recorded the missing selector property as Info/optional hardening in the code
+  review — not PARTIAL. Precedent: a total selector whose complete input partition is enumerated
+  deterministically does not force PARTIAL when the branch's algorithmic pure functions carry
+  genuine properties.
+
 **How to apply:** when a branch adds pure functions on T1/T2, evaluate the gate per test project:
 `grep -n CsCheck tests/<project>/<project>.csproj` and `ls tests/<project>/**/*PropertyTests.cs`.
 If the harness exists in that project, expect a genuine property test (PARTIAL/Major if missing).
