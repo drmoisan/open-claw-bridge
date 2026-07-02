@@ -11,3 +11,4 @@
 - [Clean worktree before ready](feedback_clean-worktree-before-ready.md) — `git status --porcelain` must be empty before declaring a PR ready to merge; commit memory/docs, don't leave them.
 - [Autonomous finish sequence](feedback_autonomous-finish-sequence.md) — after a passing exit gate, commit+push all, open PR, remediate CI, commit memories, ensure green CI — without asking. Overrides "commit only when asked".
 - [.env files denied to tools](project_env-files-permission-denied-to-tools.md) — `.env`/`.env.example` blocked from Read/Write/Edit/Bash cat; inspect via git diff/show, have operator edit.
+- [Merge-commit policy](feedback_merge-commit-policy.md) — every PR merges to main with a MERGE COMMIT (`gh pr merge --merge`); never squash/rebase; never commit directly to main.
