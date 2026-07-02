@@ -2,5 +2,6 @@
 - [Gitignore harness re-inclusion](gitignore-harness-reinclusion.md) — exact negation forms that un-ignore `.github/*` subtrees and `.claude/` for tracking (Issue #66 Option 1A)
 - [CSharpier global vs manifest](csharpier-global-vs-manifest.md) — use global `csharpier format .`/`check .`; local dotnet-tools manifest entry is broken
 - [Worktree stale main merge-base](worktree-stale-main-merge-base.md) — diff-scope tasks must use `origin/main`; stale local `main` shows false extra files
-- [Coverlet async body exclusion](coverlet-async-body-exclusion.md) — runsettings excludes CompilerGenerated; async bodies have no instrumented lines, argue coverage behaviorally
+- [Coverlet async body exclusion](coverlet-async-body-exclusion.md) — runsettings excludes CompilerGenerated, but async bodies CAN still instrument (verified #113); check Cobertura first, argue behaviorally only as fallback
 - [C# signature/gate pitfalls](csharp-signature-gate-pitfalls.md) — optional-param insertion breaks positional call sites (ct needs default too); CS9113 fires until a partial reads a primary-ctor param — check gate ordering at preflight
+- [csharp.md vs repo reality](csharp-rules-vs-repo-reality.md) — no Directory.Build.props/analyzers/BannedSymbols in this repo; test stack is MSTest+Moq+FluentAssertions, follow repo reality
