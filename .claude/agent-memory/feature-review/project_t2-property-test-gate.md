@@ -1,31 +1,29 @@
 ---
 name: t2-property-test-gate
-description: How the T1/T2 property-test-density gate has been graded in this repo's audits; CsCheck absent repo-wide as of 2026-07-02
+description: How the T1/T2 property-test-density gate is graded; CsCheck 4.7.0 now present in OpenClaw.Core.Tests (six *PropertyTests classes) but still absent from other test projects
 metadata:
   type: project
 ---
 
-The quality-tiers T1/T2 gate ">= 1 property test per pure function" has been graded PASS in prior
-audits (#19, #80) only via "this change adds no new pure functions." CsCheck (the tool named by
-`.claude/rules/csharp.md`) is not referenced anywhere in the repo as of 2026-07-02.
+The quality-tiers T1/T2 gate ">= 1 property test per pure function" grading history:
 
-**Why:** issue #18 (2026-07-02) was the first branch to add new pure functions (`IsSensitive`,
-`RedactMessage`, `RedactEvent` on T2 `OpenClaw.MailBridge`); I graded the gate PARTIAL/Major (not
-Blocking) because the example-based tests exhaustively pinned the boundary partition and full
-field dispositions, and routed it to remediation with two options: add CsCheck (policy-named, so
-dependency-policy-sanctioned) or record a dated exception with owner acceptance.
+- #19, #80: PASS via "this change adds no new pure functions."
+- #18 (T2 OpenClaw.MailBridge): first branch adding new pure functions with no harness in that
+  test project; graded PARTIAL/Major, closed via option (b) below.
+- #99 (T1 OpenClaw.Core, 2026-07-02): PASS directly — CsCheck 4.7.0 is referenced by
+  `tests/OpenClaw.Core.Tests/OpenClaw.Core.Tests.csproj` and the suite has six `*PropertyTests`
+  classes (five under `Agent/`, one under `Agent/Runtime/`) using a seeded `Gen`/`Sample`
+  convention (`iter: 1000`, failing seed printed). New pure functions in OpenClaw.Core can and
+  should get a real CsCheck property test; "no harness" reasoning no longer applies there.
 
-**How to apply:** when a branch adds pure functions on T1/T2, do not reuse the "no new pure
-functions" PASS wording — evaluate the gate. Check `quality-tiers.yml` for the module tier and
-`grep -rn CsCheck Directory.Packages.props tests/` for harness presence. Grade severity by how
-exhaustive the example-based coverage is. See [[per-file-coverage-masking]] for the audit that
-established this.
+**Why:** an earlier version of this memory said CsCheck was absent repo-wide; that became stale
+when the OpenClaw.Core property suites landed. Harness presence is per-test-project, not
+repo-global — `OpenClaw.MailBridge.Tests` may still lack it.
 
-**Resolution precedent (issue #18 remediation cycle 1, accepted PASS at the 2026-07-02T10-23
-re-audit):** the gate can be closed WITHOUT CsCheck via "option (b)" — deterministic
-exhaustive/parameterized invariant tests (full-domain equivalence for predicates; exact-
-transformed-set + complete mechanical-preservation + idempotence matrices for transforms) —
-when (1) the remediation directive/orchestrator directs it, (2) a dated decision record exists
-under `evidence/other/` citing the dependency-minimization policy, and (3) the tests enumerate
-inputs explicitly (no randomness). Grade Section 4 property-test row PASS with the recorded
-exception; keep repo-wide CsCheck adoption as an informational follow-up, not a finding.
+**How to apply:** when a branch adds pure functions on T1/T2, evaluate the gate per test project:
+`grep -n CsCheck tests/<project>/<project>.csproj` and `ls tests/<project>/**/*PropertyTests.cs`.
+If the harness exists in that project, expect a genuine property test (PARTIAL/Major if missing).
+If not, the #18 resolution precedent applies: the gate can be closed WITHOUT CsCheck via
+deterministic exhaustive/parameterized invariant tests when (1) the remediation directive directs
+it, (2) a dated decision record exists under `evidence/other/` citing dependency minimization, and
+(3) the tests enumerate inputs explicitly (no randomness). See [[per-file-coverage-masking]].
