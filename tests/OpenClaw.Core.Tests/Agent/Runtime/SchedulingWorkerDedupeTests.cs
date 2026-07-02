@@ -43,7 +43,10 @@ public sealed class SchedulingWorkerDedupeTests
             PreferredDays = Array.Empty<string>(),
         };
 
-    private static SchedulingMessageDto Message(string id) =>
+    private static SchedulingMessageDto Message(
+        string id,
+        string? meetingMessageType = "meetingRequest"
+    ) =>
         new(
             Id: id,
             Subject: "Project sync",
@@ -56,7 +59,7 @@ public sealed class SchedulingWorkerDedupeTests
             CcRecipients: Array.Empty<AttendeeDto>(),
             ConversationId: "conv-1",
             ReceivedDateTime: Now,
-            MeetingMessageType: "meetingRequest",
+            MeetingMessageType: meetingMessageType,
             Importance: "normal"
         );
 
@@ -73,6 +76,17 @@ public sealed class SchedulingWorkerDedupeTests
                 .ReturnsAsync((SchedulingEventDto?)null);
         }
 
+        // Explicit stub (spec #103 Constraints & Risks): the calendar-view fallback runs
+        // on every direct-lookup miss, so the empty window is stated, not a Moq default.
+        service
+            .Setup(s =>
+                s.GetCalendarViewAsync(
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(Array.Empty<SchedulingEventDto>());
         service
             .Setup(s => s.GetMailboxSettingsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(
@@ -292,5 +306,59 @@ public sealed class SchedulingWorkerDedupeTests
             s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
             Times.Once
         );
+    }
+
+    [TestMethod]
+    public async Task RunCycle_OrdinaryMailAcrossTwoCycles_SendsOnceWithUnchangedKeyShape()
+    {
+        // Arrange (#103 AC-6): a plain-mail candidate (non-meeting MeetingMessageType)
+        // whose direct event lookup misses, re-listed across two scheduling cycles. A
+        // stateful store double proves consult-before-send and record-after-send with
+        // the unchanged #101 key shape.
+        var mailKey = SentActionKey.Build(
+            "owner@contoso.com",
+            "mail-1",
+            SentActionKey.ProposalReply
+        );
+        var service = ServiceReturningContext("mail-1");
+        service
+            .Setup(s => s.GetSchedulingMessageAsync("mail-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Message("mail-1", meetingMessageType: null));
+        service
+            .Setup(s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var recordedKeys = new HashSet<string>(StringComparer.Ordinal);
+        var store = new Mock<ISentActionStore>();
+        store
+            .Setup(s => s.IsRecordedAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string key, CancellationToken _) => recordedKeys.Contains(key));
+        store
+            .Setup(s =>
+                s.RecordAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback((string key, DateTimeOffset _, CancellationToken _) => recordedKeys.Add(key))
+            .Returns(Task.CompletedTask);
+        var worker = Worker(service, store.Object, CandidateSource("mail-1"), Options(true));
+
+        // Act: the cursor-less candidate source re-lists the same message every cycle.
+        await worker.RunSchedulingCycleAsync(CancellationToken.None);
+        await worker.RunSchedulingCycleAsync(CancellationToken.None);
+
+        // Assert: exactly one outbound proposal; the store is consulted each cycle and
+        // recorded once, always under the unchanged #101 key shape.
+        service.Verify(
+            s => s.SendMailAsync(It.IsAny<SendMailRequest>(), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+        store.Verify(
+            s => s.IsRecordedAsync(mailKey, It.IsAny<CancellationToken>()),
+            Times.Exactly(2)
+        );
+        store.Verify(s => s.RecordAsync(mailKey, Now, It.IsAny<CancellationToken>()), Times.Once);
+        recordedKeys.Should().Equal([mailKey], "no other key shape may be recorded");
     }
 }

@@ -80,6 +80,17 @@ public sealed class SchedulingWorkerTests
         service
             .Setup(s => s.GetEventForMessageAsync("msg-1", It.IsAny<CancellationToken>()))
             .ReturnsAsync((SchedulingEventDto?)null);
+        // Explicit stub (spec #103 Constraints & Risks): the calendar-view fallback runs
+        // on every direct-lookup miss, so the empty window is stated, not a Moq default.
+        service
+            .Setup(s =>
+                s.GetCalendarViewAsync(
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(Array.Empty<SchedulingEventDto>());
         service
             .Setup(s => s.GetMailboxSettingsAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(MailboxSettings());

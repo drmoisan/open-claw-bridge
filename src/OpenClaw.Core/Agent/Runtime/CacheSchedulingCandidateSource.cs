@@ -4,8 +4,9 @@ namespace OpenClaw.Core.Agent.Runtime;
 
 /// <summary>
 /// Repository-backed <see cref="ISchedulingCandidateSource"/> that supplies recent
-/// meeting-message identifiers from the local cache populated by the existing polling
-/// workers (OR-3). Part of the runtime seam.
+/// message identifiers — meeting messages plus ordinary mail (#103 candidate
+/// widening) — from the local cache populated by the existing polling workers
+/// (OR-3). Part of the runtime seam.
 /// </summary>
 internal sealed class CacheSchedulingCandidateSource(
     CoreCacheRepository repository,
@@ -21,7 +22,7 @@ internal sealed class CacheSchedulingCandidateSource(
     {
         var sinceUtc = DateTimeOffset.UtcNow.AddHours(-options.Polling.MessageLookbackHours);
         var messages = await repository
-            .ListMessagesAsync("meeting", sinceUtc, options.Defaults.Limit)
+            .ListMessagesAsync("all", sinceUtc, options.Defaults.Limit)
             .ConfigureAwait(false);
         return messages.Select(message => message.BridgeId).ToList();
     }
