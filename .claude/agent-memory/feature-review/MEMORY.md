@@ -1,2 +1,3 @@
 - [Artifact validator quirks](project_artifact-validator-quirks.md) — exact heading/line-format rules the orchestration-artifact validator enforces for review artifacts
-- [Per-file coverage masking](feedback_per-file-coverage-masking.md) — project-aggregate coverage can pass while a new file fails; re-measure per-file from cobertura, and spec.md ACs are prose not checkboxes
+- [Per-file coverage masking](feedback_per-file-coverage-masking.md) — project-aggregate coverage can pass while a new file fails; re-measure per-file from cobertura; spec AC format varies (prose vs checkboxes)
+- [Review env fallbacks](project_review-env-fallbacks.md) — MCP template/validator tools and `dotnet tool restore` can be unavailable; use archived #70 artifacts as template and global csharpier

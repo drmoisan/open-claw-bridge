@@ -21,6 +21,11 @@ per `filename` for each new/changed file individually. The on-disk artifacts und
 `artifacts/coverage/*` are gitignored and frequently stale/missing the new classes, so generate a
 fresh run. See [[artifact-validator-quirks]].
 
-Also: spec.md ACs in this repo are authored as bold prose (`- **AC-01:** ...`), NOT markdown
-checkboxes, so feature-audit AC check-off has no box to toggle — record status in the audit only and
-do not reformat the source.
+Also: spec.md AC format varies by feature. Some specs use bold prose (`- **AC-01:** ...`, no box
+to toggle — record status in the audit only); others (e.g. issue #80, full-bug mode) use real
+`- [x]` checkboxes that the executor checks off during execution. Inspect the actual format before
+assuming; never reformat the source either way.
+
+Executor coverage copies under `artifacts/csharp/<baseline|post>-<ts>/` CAN be fresh and exact
+(issue #80: reviewer re-run matched executor pooled numbers to the hundredth). Still re-run and
+re-measure per-file — the match itself is the verification.
