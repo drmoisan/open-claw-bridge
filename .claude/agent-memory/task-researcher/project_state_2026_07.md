@@ -1,0 +1,23 @@
+---
+name: project-state-july-2026
+description: Current implementation state of OpenClaw as of 2026-07-01 — Stage 0 Local MVP contract parity + action layer landed (issues #71-76, #92); concrete Stage 0 defects and a stale runtime-wiring gap identified via full code read; Stage 1/2 (cloud) fully unstarted
+metadata:
+  type: project
+---
+
+As of 2026-07-01, verified by reading `src/OpenClaw.HostAdapter*`, `src/OpenClaw.MailBridge*`, and `src/OpenClaw.Core*` end-to-end against `docs/open-claw-approach.master.md`: the Local MVP (Stage 0) contract-parity and action-layer track (issues #71-#76, #92) is complete. `OpenClaw.HostAdapter` now exposes the Graph-shaped surface (`/users/{id}/mailboxSettings`, `/users/{id}/calendar/getSchedule`, `POST /users/{assistantMailbox}/sendMail`) instead of the old bespoke `/v1/*` routes, `OpenClaw.MailBridge` has a `send_mail` RPC backed by live Outlook COM send, and the deterministic Section 9/10 triage+priority+slot-proposal engines are fully implemented as pure, unit-tested C# in `src/OpenClaw.Core/Agent/`. This supersedes [project-state-june-2026](project_state_2026_06.md), whose gap list (bespoke `/v1/*` surface, six read-only RPCs, no quality-tiers.yml) is now stale — `quality-tiers.yml` exists at repo root and classifies `OpenClaw.Core`/`OpenClaw.HostAdapter` as T1.
+
+**Why:** Full gap-analysis research conducted for `docs/research/2026-07-01-open-claw-vision-gap-analysis.md` (one-off program research, no active feature folder existed for this program).
+
+**Key remaining Stage 0 gaps found by direct code read (not from issue titles alone):**
+1. `HostAdapterSchedulingService.SendMailAsync` (`src/OpenClaw.Core/Agent/Runtime/HostAdapterSchedulingService.cs`) still throws `NotSupportedException` citing "deferred to issues #74/#75" even though those issues are closed and the `sendMail` route/RPC now exist — this is the single largest concrete blocker to a working read-and-reply loop, and it is a stale-wiring gap, not a missing-endpoint gap.
+2. Issue #80 (EventDto.ResponseStatus dropped on round-trip) is real: `CoreCacheRepository.Schema.cs` explicitly has no `response_status` column ("Non-Goals (issue #80)") while the MailBridge-side cache already has one; `CoreCacheRepository.Events.cs` hardcodes `ResponseStatus: null` in `ReadEvent`.
+3. Issue #19 (calendar overlap filter bug) is real: `OutlookScanner.Helpers.cs` `BuildCalendarFilter` filters on `[Start]` only (`Start >= windowStart AND Start < windowEnd`), missing events that started earlier and overlap the window.
+4. Issue #18 (sensitivity-based redaction) is real: `ResponseShaper.cs` redacts by **global** `BridgeMode` (safe/enhanced) only, never inspecting per-item `Sensitivity`/`SensitivityLabel`; a private event's body/attendees persist unredacted in enhanced mode.
+5. Issue #82 (split `CoreCacheRepository.cs` for 500-line cap) appears **already resolved or non-reproducible**: current line counts are all well under 500 (271/259/204/242 across the four partial files) and the split is already attributed in comments to issue #73 RF-2. Worth re-verifying against `main` before continuing to plan around it as open.
+6. Two additional Stage-0 gaps not named by any filed issue: (a) `CacheSchedulingCandidateSource` only surfaces `item_kind='meeting'` messages — ordinary scheduling mail (master §2.2 input class 2) is never a candidate, and no `calendarView`-fallback matching heuristic exists; (b) the master §10.3 1:1 rolling-six-occurrence move-history rule has no persistence anywhere (`MovePolicy.CanMove` explicitly defers it to "the orchestration layer," which doesn't yet exist).
+7. Test-framework note: `.claude/rules/csharp.md` says xUnit+NSubstitute, but the actual `tests/` tree uses MSTest (`[TestClass]`/`[TestMethod]`) + FluentAssertions throughout — a known pre-existing rule-vs-repo mismatch (previously tracked as issue #66 harness-migration residue). Follow the repo's actual convention for new tests.
+8. Stage 1 (cloud/Graph/Exchange RBAC) and Stage 2 (calendar writes) have zero code: no MSAL/Azure.Identity/Key Vault/Bicep/Terraform references anywhere in `src/` or `deploy/`; `deploy/` contains only Docker artifacts.
+9. No feature folder exists under `docs/features/` for stale epic #21 or its children #18/#19/#20 — none of that work has been started as a tracked feature despite being real code-level defects.
+
+**How to apply:** Use this as the current ground truth for OpenClaw planning; treat [project-state-june-2026](project_state_2026_06.md) as historical only. Before recommending any of the above, re-verify against current `src/` since this snapshot will itself go stale as the delivery-order queue in the 2026-07-01 gap analysis executes.

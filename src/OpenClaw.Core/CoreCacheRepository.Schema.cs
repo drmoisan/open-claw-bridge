@@ -7,7 +7,8 @@ namespace OpenClaw.Core;
 /// partial-class file so the (pre-existing over-cap) <c>CoreCacheRepository.cs</c> does not grow
 /// further after the issue-#72 column additions. The Core <c>events</c> schema mirrors the bridge
 /// cache's Graph-field columns and adds <c>last_modified_utc</c>, which the Core schema previously
-/// lacked. Per the spec Non-Goals (issue #80), no <c>response_status</c> column is added here.
+/// lacked. The <c>response_status</c> column is present (added by issue #80) on both the
+/// fresh-database DDL path and the guarded-ALTER upgrade path.
 /// </summary>
 internal sealed partial class CoreCacheRepository
 {
@@ -84,7 +85,8 @@ CREATE TABLE IF NOT EXISTS events(
     ical_uid TEXT NULL,
     series_master_id TEXT NULL,
     body_full TEXT NULL,
-    sensitivity_label TEXT NULL
+    sensitivity_label TEXT NULL,
+    response_status INTEGER NULL
 );
 CREATE TABLE IF NOT EXISTS poll_cursors(
     key TEXT PRIMARY KEY,
@@ -104,9 +106,9 @@ CREATE TABLE IF NOT EXISTS ingest_runs(
     /// <summary>
     /// The issue-#72 columns added to the Core <c>events</c> table on existing databases via
     /// guarded ALTER. Includes <c>last_modified_utc</c> because the Core schema did not previously
-    /// have it. The <c>response_status</c> column is intentionally NOT added here; that gap is
-    /// deferred to issue #80 per the spec Non-Goals. Each entry is a column name plus its
-    /// column definition.
+    /// have it. The <c>response_status</c> column is not part of this issue-#72 set; it is added
+    /// separately in <see cref="MigrateEventsSchemaAsync"/> (issue #80). Each entry is a column
+    /// name plus its column definition.
     /// </summary>
     private static readonly (string Name, string Definition)[] GraphFieldColumns =
     [
@@ -122,13 +124,22 @@ CREATE TABLE IF NOT EXISTS ingest_runs(
     ];
 
     /// <summary>
-    /// Idempotent schema migration for the Core <c>events</c> table. Adds the issue-#72 Graph-field
-    /// columns (and <c>last_modified_utc</c>) when absent on an existing database. Running this
-    /// twice is safe: each ALTER is guarded by a <c>PRAGMA table_info</c> check, so no
-    /// "duplicate column" error occurs.
+    /// Idempotent schema migration for the Core <c>events</c> table. Adds the
+    /// <c>response_status</c> column (issue #80) and the issue-#72 Graph-field columns (and
+    /// <c>last_modified_utc</c>) when absent on an existing database. Running this twice is safe:
+    /// each ALTER is guarded by a <c>PRAGMA table_info</c> check, so no "duplicate column" error
+    /// occurs.
     /// </summary>
     private static async Task MigrateEventsSchemaAsync(SqliteConnection connection)
     {
+        if (!await EventsColumnExistsAsync(connection, "response_status"))
+        {
+            var alterResponseStatus = connection.CreateCommand();
+            alterResponseStatus.CommandText =
+                "ALTER TABLE events ADD COLUMN response_status INTEGER NULL;";
+            await alterResponseStatus.ExecuteNonQueryAsync();
+        }
+
         foreach (var (name, definition) in GraphFieldColumns)
         {
             if (!await EventsColumnExistsAsync(connection, name))
