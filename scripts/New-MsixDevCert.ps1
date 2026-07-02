@@ -40,6 +40,42 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Import the .env helper module so the created certificate thumbprint can be
+# persisted to OPENCLAW_CERT_THUMBPRINT in the repository-root .env (D8/AC-5).
+Import-Module (Join-Path $PSScriptRoot 'Publish.Env.psm1') -Force -ErrorAction Stop
+
+function Save-CertThumbprintToEnv {
+    <#
+    .SYNOPSIS
+        Persists a certificate thumbprint to OPENCLAW_CERT_THUMBPRINT in a .env file.
+    .DESCRIPTION
+        Reads the .env file via the Publish.Env file seam, sets (update-in-place
+        or append) OPENCLAW_CERT_THUMBPRINT to the supplied thumbprint preserving
+        other keys and comments, and writes it back. Defined above the Main guard
+        so it is loadable (and unit-testable) when this script is dot-sourced.
+    .PARAMETER Thumbprint
+        The SHA-1 certificate thumbprint to persist.
+    .PARAMETER EnvPath
+        Absolute path to the .env file to update.
+    #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$Thumbprint,
+
+        [Parameter(Mandatory = $true)]
+        [ValidateNotNullOrEmpty()]
+        [string]$EnvPath
+    )
+
+    $content = @(Read-EnvFileContent -Path $EnvPath)
+    $updated = Set-EnvFileValue -Content $content -Key 'OPENCLAW_CERT_THUMBPRINT' -Value $Thumbprint
+    if ($PSCmdlet.ShouldProcess($EnvPath, 'Persist OPENCLAW_CERT_THUMBPRINT')) {
+        Write-EnvFileContent -Path $EnvPath -Content $updated
+    }
+}
+
 function Get-CertificateExportPaths {
     <#
     .SYNOPSIS Returns the PFX and CER export paths for the MSIX development certificate.
@@ -162,6 +198,12 @@ if ($MyInvocation.InvocationName -ne '.') {
         Write-Information "Certificate thumbprint: $($cert.Thumbprint)" -InformationAction Continue
         Write-Information "PFX: $($exported.PfxPath)" -InformationAction Continue
         Write-Information "CER: $($exported.CerPath)" -InformationAction Continue
+
+        # Persist the thumbprint to OPENCLAW_CERT_THUMBPRINT in the repo-root .env
+        # so Publish.ps1 can resolve it without an explicit -CertThumbprint (AC-5).
+        $envPath = Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path '.env'
+        Save-CertThumbprintToEnv -Thumbprint $cert.Thumbprint -EnvPath $envPath
+        Write-Information "Persisted OPENCLAW_CERT_THUMBPRINT to $envPath" -InformationAction Continue
 
         # Return thumbprint for use in build pipeline
         return $cert.Thumbprint

@@ -20,7 +20,11 @@ variants that the parser rejects.
 - policy-audit per-language comparison line (Section 1.2.1) must be a SINGLE line per language
   containing all of: `Baseline: ...`, `-> Post-change: ...`, `Change: ...`,
   `New/changed-code coverage: ...`, `Disposition: ...`, `Evidence: ...`. Wrapping it across
-  multiple physical lines breaks the parser ("comparison line missing ... for <lang>").
+  multiple physical lines breaks the parser ("comparison line missing ... for <lang>"). The
+  three numeric tokens must use the literal labels with colons: `Baseline: N%`,
+  `Post-change: N%`, and `Change: +/-N%` — prose like "Baseline 88.96% -> Post-change 89.95%"
+  WITHOUT a `Change:` token fails with "missing explicit change text" (verified 2026-06-16
+  env-driven-publish-versioning minor-audit).
 - feature-audit requires the heading spelled exactly `## Acceptance Criteria Check-off`
   (lowercase "off"); the template ships it as `## Acceptance Criteria Check-Off` which fails.
 - policy-audit per-language-comparison parser is anchored off `**bold**` table-row labels and

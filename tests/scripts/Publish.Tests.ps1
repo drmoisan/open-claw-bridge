@@ -26,15 +26,42 @@ Describe 'scripts/Publish.ps1' {
     BeforeAll {
         $script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Publish.ps1'
         $script:HelpersPath = Join-Path $PSScriptRoot '..\..\scripts\Publish.Helpers.psm1'
+        $script:EnvModulePath = Join-Path $PSScriptRoot '..\..\scripts\Publish.Env.psm1'
         Import-Module $script:HelpersPath -Force
+        Import-Module $script:EnvModulePath -Force
         # Shared call log. Use a mutable collection so Mock script blocks can
         # append via the same object reference without rebinding a local.
         $global:PublishTestCalls = [System.Collections.ArrayList]::new()
+        # Shared in-memory .env content the script will "read". Tests set this
+        # before invoking the script so no real .env is read from disk.
+        $global:PublishTestEnvContent = @('OPENCLAW_PACKAGE_VERSION=1.0.2.0')
+        # Captures what the script would persist back to .env (no disk write).
+        $global:PublishTestEnvWrites = [System.Collections.ArrayList]::new()
     }
 
     BeforeEach {
         # Clear prior calls in-place (keeps the same ArrayList reference).
         $global:PublishTestCalls.Clear()
+        $global:PublishTestEnvWrites.Clear()
+        # Reset the in-memory .env content to the default for each test.
+        $global:PublishTestEnvContent = @('OPENCLAW_PACKAGE_VERSION=1.0.2.0')
+
+        # Mock the .env file seam (imported from Publish.Env.psm1) at the
+        # caller's scope so no disk .env is read or written. The pure helpers
+        # (Get-EnvFileMap, Set-EnvFileValue, Step-PackageVersion) run for real.
+        Mock Read-EnvFileContent {
+            param([string]$Path)
+            $null = $Path
+            # Emit each line as separate output so the script's @(...) collects a
+            # flat string[]; a unary-comma return would yield a nested array.
+            return [string[]]@($global:PublishTestEnvContent)
+        }
+        Mock Write-EnvFileContent {
+            param([string]$Path, [string[]]$Content)
+            [void]$global:PublishTestEnvWrites.Add(
+                [pscustomobject]@{ Path = $Path; Content = @($Content) }
+            )
+        }
 
         # Mock the module-exported functions at the caller's scope (the test
         # file's scope, which is also where the script's main body runs because
@@ -96,12 +123,13 @@ Describe 'scripts/Publish.ps1' {
         Mock Resolve-CertThumbprint {
             param(
                 [string]$ExplicitThumbprint = '',
+                [string]$DotEnvThumbprint = '',
                 [string]$ProjectPath = '',
                 [string]$EnvThumbprint = ''
             )
             $null = $ProjectPath
             $null = $EnvThumbprint
-            $entry = [pscustomobject]@{ Name = 'Resolve-CertThumbprint'; Args = [pscustomobject]@{ ExplicitThumbprint = $ExplicitThumbprint; ProjectPath = $ProjectPath; EnvThumbprint = $EnvThumbprint } }
+            $entry = [pscustomobject]@{ Name = 'Resolve-CertThumbprint'; Args = [pscustomobject]@{ ExplicitThumbprint = $ExplicitThumbprint; DotEnvThumbprint = $DotEnvThumbprint; ProjectPath = $ProjectPath; EnvThumbprint = $EnvThumbprint } }
             [void]$global:PublishTestCalls.Add($entry)
             return ''
         }
@@ -250,6 +278,118 @@ Describe 'scripts/Publish.ps1' {
             $manifestCall = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Write-PublishManifest' })[0]
             $manifestCall.Args.BundleRoot | Should -Be (Join-Path 'D:\out' '1.2.3.0')
             $manifestCall.Args.Version | Should -Be '1.2.3.0'
+        }
+    }
+
+    Context 'env-driven version (AC-1, AC-2, AC-3)' {
+        It 'AC-1: with no -Version reads OPENCLAW_PACKAGE_VERSION, publishes the next revision, and persists it' {
+            $global:PublishTestEnvContent = @('# header', 'OPENCLAW_PACKAGE_VERSION=1.0.2.0', 'OTHER=keep')
+            & $script:ScriptPath -SkipSign -OutputDir 'D:\out' | Out-Null
+
+            # Published version is the incremented revision (1.0.2.0 -> 1.0.2.1).
+            $manifestCall = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Write-PublishManifest' })[0]
+            $manifestCall.Args.Version | Should -Be '1.0.2.1'
+
+            # The incremented value is persisted back to .env (update in place,
+            # unrelated keys/comments preserved).
+            $global:PublishTestEnvWrites.Count | Should -Be 1
+            $written = @($global:PublishTestEnvWrites[0].Content)
+            ($written -contains 'OPENCLAW_PACKAGE_VERSION=1.0.2.1') | Should -BeTrue
+            ($written -contains 'OTHER=keep') | Should -BeTrue
+            ($written -contains '# header') | Should -BeTrue
+            (@($written | Where-Object { $_ -like 'OPENCLAW_PACKAGE_VERSION=*' })).Count | Should -Be 1
+        }
+        It 'AC-2: with -Version supplied uses it verbatim and persists it' {
+            $global:PublishTestEnvContent = @('OPENCLAW_PACKAGE_VERSION=1.0.2.0')
+            & $script:ScriptPath -Version '5.6.7.8' -SkipSign -OutputDir 'D:\out' | Out-Null
+
+            $manifestCall = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Write-PublishManifest' })[0]
+            $manifestCall.Args.Version | Should -Be '5.6.7.8'
+
+            $global:PublishTestEnvWrites.Count | Should -Be 1
+            $written = @($global:PublishTestEnvWrites[0].Content)
+            ($written -contains 'OPENCLAW_PACKAGE_VERSION=5.6.7.8') | Should -BeTrue
+        }
+        It 'AC-3: with no -Version and a missing OPENCLAW_PACKAGE_VERSION throws before any state change' {
+            $global:PublishTestEnvContent = @('OTHER=x')
+            { & $script:ScriptPath -SkipSign -OutputDir 'D:\out' } |
+                Should -Throw -ExpectedMessage '*OPENCLAW_PACKAGE_VERSION is missing or blank*'
+            # No state-changing stage ran and nothing was persisted to .env.
+            $global:PublishTestEnvWrites.Count | Should -Be 0
+            (@($global:PublishTestCalls | Where-Object { $_.Name -eq 'Write-PublishManifest' })).Count | Should -Be 0
+        }
+        It 'AC-3: with no -Version and a blank OPENCLAW_PACKAGE_VERSION throws before any state change' {
+            $global:PublishTestEnvContent = @('OPENCLAW_PACKAGE_VERSION=   ')
+            { & $script:ScriptPath -SkipSign -OutputDir 'D:\out' } |
+                Should -Throw -ExpectedMessage '*OPENCLAW_PACKAGE_VERSION is missing or blank*'
+            $global:PublishTestEnvWrites.Count | Should -Be 0
+        }
+        It 'does not persist the version when the signing gate fails (no -SkipSign, no thumbprint)' {
+            $global:PublishTestEnvContent = @('OPENCLAW_PACKAGE_VERSION=1.0.2.0')
+            { & $script:ScriptPath -Version '1.2.3.0' } |
+                Should -Throw -ExpectedMessage '*Either -SkipSign or a non-empty -CertThumbprint*'
+            $global:PublishTestEnvWrites.Count | Should -Be 0
+        }
+    }
+
+    Context 'Stage 0a .env thumbprint resolution (AC-4, D7)' {
+        It 'passes the .env OPENCLAW_CERT_THUMBPRINT to the new -DotEnvThumbprint precedence parameter' {
+            $global:PublishTestEnvContent = @(
+                'OPENCLAW_PACKAGE_VERSION=1.0.2.0',
+                'OPENCLAW_CERT_THUMBPRINT=DOTENVTHUMB'
+            )
+            # Return a resolved value so the signing gate passes; capture the args.
+            Mock Resolve-CertThumbprint {
+                param(
+                    [string]$ExplicitThumbprint = '',
+                    [string]$DotEnvThumbprint = '',
+                    [string]$ProjectPath = '',
+                    [string]$EnvThumbprint = ''
+                )
+                $entry = [pscustomobject]@{ Name = 'Resolve-CertThumbprint'; Args = [pscustomobject]@{ ExplicitThumbprint = $ExplicitThumbprint; DotEnvThumbprint = $DotEnvThumbprint; ProjectPath = $ProjectPath; EnvThumbprint = $EnvThumbprint } }
+                [void]$global:PublishTestCalls.Add($entry)
+                return 'DOTENVTHUMB'
+            }
+            & $script:ScriptPath -Version '1.2.3.0' -OutputDir 'D:\out' | Out-Null
+            $resolveCall = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Resolve-CertThumbprint' })[0]
+            $resolveCall.Args.DotEnvThumbprint | Should -Be 'DOTENVTHUMB'
+            $resolveCall.Args.EnvThumbprint | Should -Be ([string]$env:OPENCLAW_CERT_THUMBPRINT)
+        }
+        It 'AC-4: at the call site, .env OPENCLAW_CERT_THUMBPRINT beats both the dotnet user secret and the process-env value' {
+            # Drive the REAL Resolve-CertThumbprint (from Publish.Helpers) by
+            # mocking only the Invoke-DotnetExe wrapper (user secret) and setting
+            # a distinct process-env value; assert .env wins.
+            $global:PublishTestEnvContent = @(
+                'OPENCLAW_PACKAGE_VERSION=1.0.2.0',
+                'OPENCLAW_CERT_THUMBPRINT=FROMDOTENV'
+            )
+            Mock -ModuleName Publish.Helpers Invoke-DotnetExe {
+                param([string[]]$DotnetArgs)
+                $null = $DotnetArgs
+                'Signing:CertThumbprint = FROMUSERSECRET'
+            }
+            # Use the real resolver (remove the default empty-returning mock for
+            # this It) and inject a process-env value via the seam.
+            Mock Resolve-CertThumbprint {
+                param(
+                    [string]$ExplicitThumbprint = '',
+                    [string]$DotEnvThumbprint = '',
+                    [string]$ProjectPath = '',
+                    [string]$EnvThumbprint = ''
+                )
+                # Delegate to the real module function to exercise precedence.
+                $resolved = & (Get-Module Publish.Helpers) {
+                    param($e, $d, $p, $v)
+                    Resolve-CertThumbprint -ExplicitThumbprint $e -DotEnvThumbprint $d -ProjectPath $p -EnvThumbprint $v
+                } $ExplicitThumbprint $DotEnvThumbprint $ProjectPath $EnvThumbprint
+                $entry = [pscustomobject]@{ Name = 'Invoke-SignTool-precedence'; Args = [pscustomobject]@{ Resolved = $resolved } }
+                [void]$global:PublishTestCalls.Add($entry)
+                return $resolved
+            }
+            & $script:ScriptPath -Version '1.2.3.0' -OutputDir 'D:\out' | Out-Null
+            $signCalls = @($global:PublishTestCalls | Where-Object { $_.Name -eq 'Invoke-SignTool' })
+            $signCalls.Count | Should -Be 1
+            $signCalls[0].Args.CertThumbprint | Should -Be 'FROMDOTENV'
         }
     }
 }
