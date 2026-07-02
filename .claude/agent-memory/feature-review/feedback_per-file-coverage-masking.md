@@ -76,6 +76,15 @@ regression is possible; accepted disposition is the same as the async cases: sta
 explicitly and verify behaviorally (defaults/binding/truth-table/property tests reading and
 writing the added properties directly).
 
+PowerShell variant (#111, 2026-07-02): Pester v5 emits COMMAND coverage only — no branch
+percentage exists for PowerShell at all. Accepted disposition (precedent #58/#62, re-accepted
+on the #111 review): grade the 75% branch gate on the command-coverage proxy, because commands
+inside untaken branch arms register as uncovered commands. Corollary: every missed command IS
+an untaken arm — locate it via the JaCoCo per-line `nr`/`mi` attrs in
+`artifacts/pester/powershell-coverage.xml` and NAME the scenario (on #111 the single missed
+command was the wrapper's `RecipientAdministrativeUnitScope` pass-through arm, tested only
+against mocks — graded Minor with a concrete one-case seam-test recommendation).
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden

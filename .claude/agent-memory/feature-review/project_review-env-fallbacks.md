@@ -40,6 +40,20 @@ prose (`#AC-1`, `#ISO-8601` on #105; `#74`/`#75`/`#ISO-8601` on #107; `#107`/`#A
 and ignore. Newest artifact-set templates after #99: #103
 `2026-07-02-ordinary-mail-candidates-103/*.2026-07-02T13-36.md`, #105
 `2026-07-02-one-on-one-move-history-105/*.2026-07-02T14-35.md`, #107
-`2026-07-02-outbound-audit-log-107/*.2026-07-02T15-50.md`, and #109
-`2026-07-02-calendar-write-flags-109/*.2026-07-02T16-42.md` (structural self-check passed;
-validator tool unavailable).
+`2026-07-02-outbound-audit-log-107/*.2026-07-02T15-50.md`, #109
+`2026-07-02-calendar-write-flags-109/*.2026-07-02T16-42.md`, and #111 (first PowerShell-only
+branch) `2026-07-02-exchange-rbac-scripts-111/*.2026-07-02T18-20.md` (structural self-check
+passed; validator tool unavailable). The C#-branch misclassification did NOT occur on the
+PowerShell-only #111 branch — the summary categorized it correctly.
+
+Fourth recurring quirk — **`run_poshqc_test` MCP tool fails in this repo** (pre-existing
+workspace defect, first hit on #111 execution, accepted on the #111 review): the bundled
+`pester.runsettings.psd1` hardcodes drm-copilot `CodeCoverage.Path` entries, six of which do
+not exist here, so Pester 5.6.1 coverage fails at RunStart and the wrapper exits 4294967295
+even though tests pass. Accepted fallback (precedent features #58/#62): run the identical
+bundled `Invoke-PoshQCTest` pipeline directly with repo-scoped coverage settings; raw outputs
+land at `artifacts/pester/powershell-coverage.xml` (JaCoCo format — parse per-file LINE
+counters and per-line `nr`/`mi` attrs to find missed commands). `run_poshqc_format` and
+`run_poshqc_analyze` work fine. Reviewer-side independent signal when MCP tools are absent
+from the toolset: PSScriptAnalyzer 1.24.0 + `Invoke-Formatter -ScriptDefinition` idempotency
+check with defaults, plus a plain `Invoke-Pester` re-run (all clean on #111).
