@@ -59,6 +59,15 @@ it openly in coverage-comparison.md). For all-new async files there is no fail-b
 behavioral evidence IS the dedicated test suite; check every branch arm has a test (blank-key
 DataRows, ON CONFLICT via direct row count, both lazy-ensure flag states, upgrade, restart).
 
+Recurred on #107 (2026-07-02): all-async persistence partial `CoreCacheRepository.AuditLog.cs`
+(185 lines, only 13 sync guard/helper lines instrumented) plus the async `WriteAuditSafelyAsync`
+D4 helper. Same accepted disposition: behavioral verification (22 directed cases + CsCheck
+round-trip property for the store; red/green expect-fail pair EXIT 1 -> EXIT 0 for the four
+worker emission points and both resilience catch paths), exclusion stated explicitly. The #103
+baseline-line-mapping technique (prove partial branches are pre-existing lines merely shifted:
+same condition-coverage 1/2 at baseline line numbers, confirmed via `git show <base>:<file>`)
+worked again for two unchanged ternaries.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
