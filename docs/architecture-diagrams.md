@@ -316,10 +316,10 @@ flowchart TD
     TYPE{{"DTO type?"}}
     TYPE2{{"DTO type?"}}
 
-    SAFE_MSG["MessageDto safe mode<br/>BodyPreview = null<br/>SenderName = null<br/>SenderEmail = null<br/>IsRedacted = true"]
-    SAFE_EVT["EventDto safe mode<br/>BodyPreview = null<br/>IsRedacted = true"]
-    ENH_MSG["MessageDto enhanced mode<br/>Sanitized BodyPreview<br/>SenderName<br/>SenderEmail<br/>IsRedacted = false"]
-    ENH_EVT["EventDto enhanced mode<br/>Sanitized BodyPreview<br/>IsRedacted = false"]
+    SAFE_MSG["MessageDto safe mode<br/>BodyPreview = null<br/>SenderName / SenderEmail = null<br/>SenderEmailResolved / FromEmailAddress = null<br/>ToJson / CcJson = null<br/>ProtectedFieldsAvailable = false<br/>IsRedacted untouched"]
+    SAFE_EVT["EventDto safe mode<br/>BodyPreview / BodyFull = null<br/>Attendee JSON fields = null<br/>Organizer = null<br/>Categories = empty<br/>ProtectedFieldsAvailable = false<br/>IsRedacted untouched"]
+    ENH_MSG["MessageDto enhanced mode<br/>Sanitized BodyPreview<br/>SenderName<br/>SenderEmail<br/>IsRedacted untouched"]
+    ENH_EVT["EventDto enhanced mode<br/>Sanitized BodyPreview<br/>IsRedacted untouched"]
     OUT["cached result returned to client / HostAdapter / Core"]
 
     REQ --> MODE
@@ -335,7 +335,7 @@ flowchart TD
     ENH_EVT --> OUT
 ```
 
-The privacy boundary still belongs to the Windows bridge. HostAdapter and Core surface `isRedacted`, `protectedFieldsAvailable`, bridge mode, and stale-cache state, but they do not attempt to reconstruct redacted fields.
+The privacy boundary still belongs to the Windows bridge. HostAdapter and Core surface `isRedacted`, `protectedFieldsAvailable`, bridge mode, and stale-cache state, but they do not attempt to reconstruct redacted fields. `isRedacted` signals only normalization-time sensitivity redaction (Outlook `Sensitivity` 2/3) and is never mutated by shaping; `protectedFieldsAvailable: false` signals that protected fields are absent (never available, sensitivity-redacted, or safe-mode-suppressed).
 
 ## 8. SQLite Data Models
 

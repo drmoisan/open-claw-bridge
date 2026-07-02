@@ -287,8 +287,8 @@ List email messages received since a given timestamp.
       "toJson": null,
       "ccJson": null,
       "bodyPreview": null,
-      "protectedFieldsAvailable": true,
-      "isRedacted": true
+      "protectedFieldsAvailable": false,
+      "isRedacted": false
     }
   ]
 }
@@ -299,10 +299,16 @@ List email messages received since a given timestamp.
 In **safe mode** (default), each message has:
 - `senderName`: `null`
 - `senderEmail`: `null`
+- `senderEmailResolved`: `null`
+- `fromEmailAddress`: `null`
+- `toJson`: `null`
+- `ccJson`: `null`
 - `bodyPreview`: `null`
-- `isRedacted`: `true`
+- `protectedFieldsAvailable`: `false`
 
-In **enhanced mode**, these fields are populated with actual values and `isRedacted` is `false`.
+In **enhanced mode**, these fields are populated with actual values and `protectedFieldsAvailable` reflects scan-time availability.
+
+`isRedacted` is independent of mode: it is `true` only for items redacted at scan time because Outlook marks them Private or Confidential (`sensitivity` 2 or 3), and shaping never changes it.
 
 **Items are sorted by `receivedUtc` descending** (newest first).
 
@@ -431,8 +437,8 @@ List calendar events whose start time falls within a given window.
       "optionalAttendeesJson": null,
       "resourcesJson": null,
       "bodyPreview": null,
-      "protectedFieldsAvailable": true,
-      "isRedacted": true
+      "protectedFieldsAvailable": false,
+      "isRedacted": false
     }
   ]
 }
@@ -440,9 +446,11 @@ List calendar events whose start time falls within a given window.
 
 **Safe mode vs Enhanced mode:**
 
-In **safe mode**, `bodyPreview` and `bodyFull` are `null` and `isRedacted` is `true`.
+In **safe mode**, `bodyPreview`, `bodyFull`, `organizer`, `requiredAttendeesJson`, `optionalAttendeesJson`, and `resourcesJson` are `null`, `categories` is an empty array, and `protectedFieldsAvailable` is `false`. `location` is retained.
 
-In **enhanced mode**, `bodyPreview` contains sanitized event body text, `bodyFull` contains the full untruncated body text, and `isRedacted` is `false`.
+In **enhanced mode**, `bodyPreview` contains sanitized event body text, `bodyFull` contains the full untruncated body text, and all fields pass through with `protectedFieldsAvailable` reflecting scan-time availability.
+
+`isRedacted` is independent of mode: it is `true` only for items redacted at scan time because Outlook marks them Private or Confidential (`sensitivity` 2 or 3), and shaping never changes it.
 
 **Items are sorted by `startUtc` ascending** (earliest first).
 
@@ -495,11 +503,11 @@ Retrieve a single calendar event by its bridge ID.
 | `messageClass` | string? | Outlook message class (e.g. `"IPM.Note"`, `"IPM.Schedule.Meeting.Request"`). |
 | `senderName` | string? | Display name of the sender. **Null in safe mode.** |
 | `senderEmail` | string? | Email address of the sender. **Null in safe mode.** |
-| `toJson` | string? | Reserved for future use. |
-| `ccJson` | string? | Reserved for future use. |
+| `toJson` | string? | JSON string of To recipients. **Null in safe mode** and on redacted items. |
+| `ccJson` | string? | JSON string of Cc recipients. **Null in safe mode** and on redacted items. |
 | `bodyPreview` | string? | Sanitized body text (HTML/file paths stripped). **Null in safe mode.** |
-| `protectedFieldsAvailable` | bool | Whether protected fields could be retrieved from Outlook. |
-| `isRedacted` | bool | `true` in safe mode, `false` in enhanced mode. |
+| `protectedFieldsAvailable` | bool | Whether protected fields are present. **Forced `false` in safe-mode responses and on sensitivity-redacted items.** |
+| `isRedacted` | bool | `true` only when the item was redacted at scan time because Outlook marks it Private or Confidential (`sensitivity` 2/3). Independent of mode; never mutated by shaping. |
 
 ### EventDto
 
@@ -515,15 +523,15 @@ Retrieve a single calendar event by its bridge ID.
 | `meetingStatus` | int? | 0=NonMeeting, 1=Meeting, 3=Received, 5=Canceled. |
 | `isRecurring` | bool | Whether this is an instance of a recurring series. |
 | `sensitivity` | int? | 0=Normal, 1=Personal, 2=Private, 3=Confidential. |
-| `organizer` | string? | Display name of the meeting organizer. |
-| `requiredAttendeesJson` | string? | JSON string of required attendees. |
-| `optionalAttendeesJson` | string? | JSON string of optional attendees. |
-| `resourcesJson` | string? | JSON string of resource attendees (rooms, etc.). |
+| `organizer` | string? | Display name of the meeting organizer. **Null in safe mode** and on redacted items. |
+| `requiredAttendeesJson` | string? | JSON string of required attendees. **Null in safe mode** and on redacted items. |
+| `optionalAttendeesJson` | string? | JSON string of optional attendees. **Null in safe mode** and on redacted items. |
+| `resourcesJson` | string? | JSON string of resource attendees (rooms, etc.). **Null in safe mode** and on redacted items. |
 | `bodyPreview` | string? | Sanitized event body text. **Null in safe mode.** |
-| `protectedFieldsAvailable` | bool | Whether protected fields could be retrieved from Outlook. |
-| `isRedacted` | bool | `true` in safe mode, `false` in enhanced mode. |
+| `protectedFieldsAvailable` | bool | Whether protected fields are present. **Forced `false` in safe-mode responses and on sensitivity-redacted items.** |
+| `isRedacted` | bool | `true` only when the item was redacted at scan time because Outlook marks it Private or Confidential (`sensitivity` 2/3). Independent of mode; never mutated by shaping. |
 | `responseStatus` | int? | Outlook response status: 0=None, 1=Organized, 2=Tentative, 3=Accepted, 4=Declined, 5=NotResponded. |
-| `categories` | string[]? | Outlook categories assigned to the event. |
+| `categories` | string[]? | Outlook categories assigned to the event. **Empty in safe mode** and on redacted items. |
 | `isOrganizer` | bool | Whether the mailbox owner organized the event (derived from `responseStatus == 1`). |
 | `isOnlineMeeting` | bool | Whether Outlook flags the event as an online meeting. May report `false` for some third-party add-in meetings. |
 | `allowNewTimeProposals` | bool | Whether the organizer permits new time proposals. |
@@ -722,9 +730,11 @@ Console.WriteLine(response);
 
 ### Handling safe mode
 
-If `isRedacted` is `true` on returned items, the bridge is running in safe mode. The agent should:
-- Tell the user that sender details and email body previews are not available.
+If `protectedFieldsAvailable` is `false` on returned items while `isRedacted` is `false`, the bridge is running in safe mode. The agent should:
+- Tell the user that sender details, recipient lists, and email body previews are not available.
 - Explain that the administrator can switch to `"enhanced"` mode in `bridge.settings.json` to enable these fields.
+
+If `isRedacted` is `true`, the item is Private or Confidential in Outlook and was redacted at scan time; its content, identity, attendee, and category fields are withheld in every mode. Only scheduling-mechanical fields (times, busy status, ids, `sensitivity`, `sensitivityLabel`) remain usable.
 
 ### Handling degraded state
 

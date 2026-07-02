@@ -36,8 +36,23 @@ internal sealed partial class OutlookScanner
         DateTimeOffset endUtc
     )
     {
-        var body = OutlookComHelpers.GetOptionalString(item, "Body");
+        // Issue #18 (never-ingest ordering): Sensitivity is read before Body, Organizer,
+        // attendees, Location, and Categories so a Private/Confidential item never ingests
+        // protected content; the sensitive branch constructs from mechanical members only.
         var sensitivity = OutlookComHelpers.GetOptionalInt(item, "Sensitivity");
+        if (IsSensitive(sensitivity))
+        {
+            return BuildSensitiveEventDto(
+                item,
+                bridgeId,
+                globalAppointmentId,
+                startUtc,
+                endUtc,
+                sensitivity
+            );
+        }
+
+        var body = OutlookComHelpers.GetOptionalString(item, "Body");
         var recurrenceState = OutlookComHelpers.GetOptionalInt(item, "RecurrenceState");
         var responseStatus = OutlookComHelpers.GetOptionalInt(item, "ResponseStatus");
         var attendees = ReadAttendees(item);
