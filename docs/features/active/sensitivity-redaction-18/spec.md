@@ -218,6 +218,7 @@ The `IsRedacted`-in-safe-mode removal breaks these current assertions (enumerate
 ### Toolchain and coverage
 
 - [x] Full toolchain passes in a single pass (format, lint, type check, architecture, unit tests, contract checks, integration tests); line coverage >= 85%, branch coverage >= 75%, and changed lines are covered with no regression.
+  - Re-verified 2026-07-02T10-11 (remediation cycle 1): OutlookScanner.Redaction.cs branch coverage >= 75% per evidence/qa-gates/coverage-remediation-verification.2026-07-02T10-11.md.
 
 ## Definition of Done
 

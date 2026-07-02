@@ -35,13 +35,15 @@ internal sealed class AccessRecordingSensitiveMailItem
 
     // Mechanical members — safe to read for any sensitivity value.
     public string EntryID { get; init; } = "entry-sensitive-mail";
-    public string MessageClass { get; init; } = "IPM.Note";
+    public string? MessageClass { get; init; } = "IPM.Note";
     public string? Subject { get; init; } = "Secret subject";
     public DateTimeOffset ReceivedTime { get; init; }
     public DateTimeOffset SentOn { get; init; }
     public int Importance { get; init; }
     public int? Sensitivity { get; init; }
     public bool Unread { get; init; }
+    public int? MeetingType { get; init; }
+    public bool Attachments { get; init; }
     public bool HasAttachments { get; init; }
     public string? ConversationID { get; init; } = "conv-sensitive";
     public FakeOutlookParent Parent { get; init; } = new();

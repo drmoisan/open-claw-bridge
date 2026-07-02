@@ -32,3 +32,11 @@ assuming; never reformat the source either way.
 Executor coverage copies under `artifacts/csharp/<baseline|post>-<ts>/` CAN be fresh and exact
 (issue #80: reviewer re-run matched executor pooled numbers to the hundredth). Still re-run and
 re-measure per-file — the match itself is the verification.
+
+Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
+executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
+was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
+behind a passing package branch aggregate (87.31%). Always compute per-file line AND branch
+(condition-coverage attrs) for every new/changed file. Root cause there: all sensitive-message
+tests used non-meeting items, leaving ternary true-arms uncovered — uncovered branches usually
+point at a real untested scenario, name it in the finding.
