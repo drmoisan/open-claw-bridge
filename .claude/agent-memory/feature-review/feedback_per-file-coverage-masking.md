@@ -68,6 +68,14 @@ baseline-line-mapping technique (prove partial branches are pre-existing lines m
 same condition-coverage 1/2 at baseline line numbers, confirmed via `git show <base>:<file>`)
 worked again for two unchanged ternaries.
 
+Auto-property variant on #109 (2026-07-02): a MODIFIED production file consisting solely of
+auto-properties (`AgentPolicyOptions.cs`) is entirely absent from cobertura at both baseline and
+head — auto-property accessors are compiler-generated and fall under the same runsettings
+`ExcludeByAttribute=CompilerGeneratedAttribute` filter. No changed-line denominator exists, so no
+regression is possible; accepted disposition is the same as the async cases: state the exclusion
+explicitly and verify behaviorally (defaults/binding/truth-table/property tests reading and
+writing the added properties directly).
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden

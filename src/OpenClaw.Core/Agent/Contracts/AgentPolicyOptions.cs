@@ -92,4 +92,25 @@ public sealed class AgentPolicyOptions
     /// calendar; the deterministic pipeline still computes and logs.
     /// </summary>
     public bool CalendarWriteEnabled { get; set; }
+
+    /// <summary>
+    /// Per-path kill switch for the organizer-reschedule calendar write path. Mirrors
+    /// the master's canonical flag <c>ENABLE_ORGANIZER_RESCHEDULE</c>, realized through
+    /// the environment variable <c>OpenClaw__AgentPolicy__EnableOrganizerReschedule</c>.
+    /// Composition is three-flag: an organizer reschedule is allowed only when the
+    /// <see cref="CalendarWriteEnabled"/> global kill switch is <see langword="true"/>
+    /// AND this per-path flag is <see langword="true"/>. Default <see langword="false"/>.
+    /// </summary>
+    public bool EnableOrganizerReschedule { get; set; }
+
+    /// <summary>
+    /// Per-path kill switch for the attendee propose-new-time calendar write path.
+    /// Mirrors the master's canonical flag <c>ENABLE_ATTENDEE_PROPOSE_NEW_TIME</c>,
+    /// realized through the environment variable
+    /// <c>OpenClaw__AgentPolicy__EnableAttendeeProposeNewTime</c>. Composition is
+    /// three-flag: an attendee propose-new-time is allowed only when the
+    /// <see cref="CalendarWriteEnabled"/> global kill switch is <see langword="true"/>
+    /// AND this per-path flag is <see langword="true"/>. Default <see langword="false"/>.
+    /// </summary>
+    public bool EnableAttendeeProposeNewTime { get; set; }
 }
