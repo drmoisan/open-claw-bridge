@@ -46,5 +46,5 @@ internal sealed partial class OutlookScanner
     }
 
     private string BuildCalendarFilter(DateTimeOffset startUtc, DateTimeOffset endUtc) =>
-        $"[Start] >= '{startUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}' AND [Start] < '{endUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}'";
+        $"[Start] < '{endUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}' AND [End] > '{startUtc.LocalDateTime:MM/dd/yyyy hh:mm tt}'";
 }
