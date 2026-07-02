@@ -63,6 +63,9 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<SchedulingDtoMapper>();
 builder.Services.AddSingleton<ISchedulingService, HostAdapterSchedulingService>();
 builder.Services.AddSingleton<ISentActionStore>(sp => sp.GetRequiredService<CoreCacheRepository>());
+builder.Services.AddSingleton<ISeriesMoveHistory>(sp =>
+    sp.GetRequiredService<CoreCacheRepository>()
+);
 builder.Services.AddSingleton<ISchedulingCandidateSource, CacheSchedulingCandidateSource>();
 builder.Services.AddHostedService<SchedulingWorker>();
 

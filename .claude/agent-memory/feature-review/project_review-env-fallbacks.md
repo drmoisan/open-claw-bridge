@@ -29,10 +29,12 @@ Also: no `validate_evidence_locations.py` exists in this repo — do the evidenc
 `git diff --name-only <base>..HEAD | grep -E '^artifacts/(baselines|baseline|qa|qa-gates|evidence|coverage|regression-testing|post-change)/'`.
 
 Third recurring quirk — **PR-context summary misclassifies C# branches as docs-only.** On the
-#99, #101, and #103 reviews (2026-07-02) `artifacts/pr_context.summary.txt` "Changed files overview"
-reported "Core logic changes: 0 files" while the authoritative git diff contained 4-7+ production
-and 4-6 test `.cs` files. Never scope from the summary's file categorization; always use
+#99, #101, #103, and #105 reviews (2026-07-02) `artifacts/pr_context.summary.txt` "Changed files
+overview" reported "Core logic changes: 0 files" while the authoritative git diff contained 3-7+
+production and 3-6 test `.cs` files. Never scope from the summary's file categorization; always use
 `git diff --stat <merge-base>..HEAD` and record the mismatch as an observation under Rejected
-Scope Narrowing (accepted pattern on all three reviews). Newest accepted artifact-set templates
-after #99: #101 `2026-07-02-send-idempotency-dedupe-101/*.2026-07-02T12-27.md` and #103
-`2026-07-02-ordinary-mail-candidates-103/*.2026-07-02T13-36.md`.
+Scope Narrowing (accepted pattern on all four reviews). The summary's author-asserted autoclose
+list can also contain non-issue tokens parsed from AC labels (`#AC-1`, `#ISO-8601` on #105) —
+noise, note and ignore. Newest accepted artifact-set templates after #99: #103
+`2026-07-02-ordinary-mail-candidates-103/*.2026-07-02T13-36.md` and #105
+`2026-07-02-one-on-one-move-history-105/*.2026-07-02T14-35.md`.

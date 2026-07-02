@@ -51,6 +51,14 @@ DataRows) with the exclusion stated explicitly in the audit. Useful technique: m
 partial-condition line numbers to source at BOTH baseline and head to prove the residual
 branch misses are the same pre-existing members merely shifted by the added lines.
 
+Extreme form on #105 (2026-07-02): an ENTIRE new production file (`CoreCacheRepository.SeriesMoves.cs`,
+all members async) reported zero instrumented lines — "NOT INSTRUMENTED" in cobertura, not a low
+percentage. Same accepted disposition (behavioral verification: 12 dedicated tests covering both
+public methods and every branch, exclusion stated explicitly in the audit; executor had disclosed
+it openly in coverage-comparison.md). For all-new async files there is no fail-before run — the
+behavioral evidence IS the dedicated test suite; check every branch arm has a test (blank-key
+DataRows, ON CONFLICT via direct row count, both lazy-ensure flag states, upgrade, restart).
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
