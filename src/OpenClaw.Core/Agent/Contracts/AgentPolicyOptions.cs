@@ -69,6 +69,16 @@ public sealed class AgentPolicyOptions
     /// </summary>
     public IReadOnlyList<string> PreferredDays { get; set; } = Array.Empty<string>();
 
+    // --- Calendar-view fallback (master Section 9.2) ---
+
+    /// <summary>
+    /// The forward calendar-view window, in days, fetched when the direct
+    /// event-for-message lookup misses (master Section 9.2 uses a 14-day forward
+    /// window). Default 14. A non-positive value skips the fallback entirely
+    /// (documented opt-out).
+    /// </summary>
+    public int CalendarViewFallbackDays { get; set; } = 14;
+
     // --- Kill switches (master Section 7.5) ---
 
     /// <summary>

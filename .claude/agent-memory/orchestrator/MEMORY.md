@@ -1,5 +1,7 @@
 # Orchestrator Memory Index
 
+- [OpenClaw delivery loop](project_openclaw-delivery-loop.md) — validated per-feature loop (PRs 96-102): hooks force full-feature docs; pr-author receipt recipe; origin/main for merge-base.
+- [OpenClaw vision program status](project_openclaw-vision-program-status.md) — 4-epic/20-feature program; F1-F6 done as of 2026-07-02; queue + resume instructions.
 - [Surface consequential decisions](feedback_surface-consequential-decisions.md) — confirm only NOVEL irreversible forks; policy-defined steps (PR open, commits, CI monitoring) run autonomously.
 - [Harness governance](project_harness-governance.md) — harness is now version-controlled (Issue #66/PR #68); `.claude/rules/*` is canonical; AGENTS.md + .github/instructions match it.
 - [Core agent = namespace not project](project_core-agent-namespace-not-project.md) — new logic for OpenClaw.Core folds into a namespace, not a new project (arch rule 6); enforce with namespace NetArchTest.

@@ -26,6 +26,18 @@ public sealed partial class SchedulingWorker
             .GetEventForMessageAsync(messageId, cancellationToken)
             .ConfigureAwait(false);
 
+        // Calendar-view fallback (#103, master Section 9.2/9.3 step 3): any direct-lookup
+        // miss consults the forward window; a non-positive window opts out entirely.
+        if (meetingEvent is null && options.CalendarViewFallbackDays > 0)
+        {
+            meetingEvent = await ChooseRelatedEventFromWindowAsync(
+                    messageId,
+                    message,
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
+        }
+
         // Normalize (D1).
         var context = MeetingContextNormalizer.Normalize(MailboxUpn(), message, meetingEvent);
 
@@ -57,6 +69,57 @@ public sealed partial class SchedulingWorker
 
         await ProposeAndActAsync(messageId, context, priority, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Fetches the forward calendar window from the injected clock and applies the pure
+    /// <see cref="RelatedEventMatcher"/> to select the most likely related event. Returns
+    /// null when nothing clears the threshold, which flows into the same message-only
+    /// Normalize call the pipeline already uses (no new exception path). I/O goes
+    /// through the <see cref="ISchedulingService"/> seam only.
+    /// </summary>
+    private async Task<SchedulingEventDto?> ChooseRelatedEventFromWindowAsync(
+        string messageId,
+        SchedulingMessageDto message,
+        CancellationToken cancellationToken
+    )
+    {
+        var windowStart = timeProvider.GetUtcNow();
+        var windowEnd = windowStart.AddDays(options.CalendarViewFallbackDays);
+        logger.LogDebug(
+            "Direct event lookup missed for message {MessageId}; attempting calendar-view "
+                + "fallback over {WindowStart:o}..{WindowEnd:o}.",
+            messageId,
+            windowStart,
+            windowEnd
+        );
+
+        var windowEvents = await schedulingService
+            .GetCalendarViewAsync(windowStart, windowEnd, cancellationToken)
+            .ConfigureAwait(false);
+        var (matched, score) = RelatedEventMatcher.ChooseMostLikelyRelatedEventWithScore(
+            message,
+            windowEvents
+        );
+        if (matched is null)
+        {
+            logger.LogDebug(
+                "No calendar-view event matched message {MessageId}; proceeding message-only.",
+                messageId
+            );
+        }
+        else
+        {
+            logger.LogInformation(
+                "Calendar-view fallback matched message {MessageId} to event {EventId} "
+                    + "with score {Score}.",
+                messageId,
+                matched.Id,
+                score
+            );
+        }
+
+        return matched;
     }
 
     private async Task ProposeAndActAsync(
