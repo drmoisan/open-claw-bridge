@@ -20,3 +20,12 @@ functions" PASS wording — evaluate the gate. Check `quality-tiers.yml` for the
 `grep -rn CsCheck Directory.Packages.props tests/` for harness presence. Grade severity by how
 exhaustive the example-based coverage is. See [[per-file-coverage-masking]] for the audit that
 established this.
+
+**Resolution precedent (issue #18 remediation cycle 1, accepted PASS at the 2026-07-02T10-23
+re-audit):** the gate can be closed WITHOUT CsCheck via "option (b)" — deterministic
+exhaustive/parameterized invariant tests (full-domain equivalence for predicates; exact-
+transformed-set + complete mechanical-preservation + idempotence matrices for transforms) —
+when (1) the remediation directive/orchestrator directs it, (2) a dated decision record exists
+under `evidence/other/` citing the dependency-minimization policy, and (3) the tests enumerate
+inputs explicitly (no randomness). Grade Section 4 property-test row PASS with the recorded
+exception; keep repo-wide CsCheck adoption as an informational follow-up, not a finding.
