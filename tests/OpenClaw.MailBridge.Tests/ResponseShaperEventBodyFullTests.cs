@@ -40,7 +40,7 @@ public sealed class ResponseShaperEventBodyFullTests
         );
 
     [TestMethod]
-    public void ShapeEvent_in_safe_mode_should_null_body_full_and_set_redacted()
+    public void ShapeEvent_in_safe_mode_should_null_body_full_and_preserve_is_redacted()
     {
         // Arrange
         var evt = CreateEvent(bodyFull: "Full confidential appointment body text.");
@@ -52,7 +52,10 @@ public sealed class ResponseShaperEventBodyFullTests
         // Assert
         shaped.BodyFull.Should().BeNull("safe mode must null bodyFull alongside BodyPreview");
         shaped.BodyPreview.Should().BeNull();
-        shaped.IsRedacted.Should().BeTrue();
+        // Deliberate change (#18 x #20 conflation fix): IsRedacted is now exclusively the
+        // sensitivity-redaction signal; safe-mode suppression is signaled by
+        // ProtectedFieldsAvailable = false, so the shaper must preserve the input false value.
+        shaped.IsRedacted.Should().BeFalse();
     }
 
     private static EventDto CreateEventWithAttendees() =>
@@ -78,7 +81,10 @@ public sealed class ResponseShaperEventBodyFullTests
         shaped.RequiredAttendeesJson.Should().BeNull("safe mode must redact attendee PII");
         shaped.OptionalAttendeesJson.Should().BeNull("safe mode must redact attendee PII");
         shaped.ResourcesJson.Should().BeNull("safe mode must redact attendee PII");
-        shaped.IsRedacted.Should().BeTrue();
+        // Deliberate change (#18 x #20 conflation fix): IsRedacted is now exclusively the
+        // sensitivity-redaction signal; safe-mode suppression is signaled by
+        // ProtectedFieldsAvailable = false, so the shaper must preserve the input false value.
+        shaped.IsRedacted.Should().BeFalse();
     }
 
     [TestMethod]

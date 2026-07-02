@@ -12,7 +12,7 @@ public class ResponseShaperTests
     );
 
     [TestMethod]
-    public void ShapeMessage_in_safe_mode_should_redact_sender_fields_and_clear_preview()
+    public void ShapeMessage_in_safe_mode_should_suppress_protected_fields_without_setting_is_redacted()
     {
         var message = CreateMessage(bodyPreview: "Preview text");
         var settings = BridgeSettings.Default with { Mode = "safe" };
@@ -22,7 +22,15 @@ public class ResponseShaperTests
         shaped.BodyPreview.Should().BeNull();
         shaped.SenderName.Should().BeNull();
         shaped.SenderEmail.Should().BeNull();
-        shaped.IsRedacted.Should().BeTrue();
+        shaped.ToJson.Should().BeNull();
+        shaped.CcJson.Should().BeNull();
+        shaped.SenderEmailResolved.Should().BeNull();
+        shaped.FromEmailAddress.Should().BeNull();
+        shaped.ProtectedFieldsAvailable.Should().BeFalse();
+        // Deliberate change (#18 x #20 conflation fix): IsRedacted is now exclusively the
+        // sensitivity-redaction signal; safe-mode suppression is signaled by
+        // ProtectedFieldsAvailable = false, so the shaper must preserve the input false value.
+        shaped.IsRedacted.Should().BeFalse();
         shaped.Subject.Should().Be(message.Subject);
     }
 
@@ -45,7 +53,7 @@ public class ResponseShaperTests
     }
 
     [TestMethod]
-    public void ShapeEvent_in_safe_mode_should_clear_preview_and_redact()
+    public void ShapeEvent_in_safe_mode_should_clear_preview_and_suppress_without_setting_is_redacted()
     {
         var evt = CreateEvent(bodyPreview: "Event preview");
         var settings = BridgeSettings.Default with { Mode = "safe" };
@@ -53,7 +61,12 @@ public class ResponseShaperTests
         var shaped = ResponseShaper.ShapeEvent(evt, settings);
 
         shaped.BodyPreview.Should().BeNull();
-        shaped.IsRedacted.Should().BeTrue();
+        shaped.Organizer.Should().BeNull();
+        shaped.ProtectedFieldsAvailable.Should().BeFalse();
+        // Deliberate change (#18 x #20 conflation fix): IsRedacted is now exclusively the
+        // sensitivity-redaction signal; safe-mode suppression is signaled by
+        // ProtectedFieldsAvailable = false, so the shaper must preserve the input false value.
+        shaped.IsRedacted.Should().BeFalse();
         shaped.Subject.Should().Be(evt.Subject);
     }
 
@@ -113,11 +126,13 @@ public class ResponseShaperTests
             "IPM.Note",
             senderName,
             senderEmail,
-            null,
-            null,
+            "[{\"name\":\"To\",\"email\":\"to@example.com\"}]",
+            "[{\"name\":\"Cc\",\"email\":\"cc@example.com\"}]",
             bodyPreview,
             true,
-            false
+            false,
+            SenderEmailResolved: "sender.resolved@example.com",
+            FromEmailAddress: "from@example.com"
         );
 
     private static EventDto CreateEvent(string? bodyPreview = "Preview") =>

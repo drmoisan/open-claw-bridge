@@ -20,14 +20,17 @@ internal static class ResponseShaper
             ? message with
             {
                 BodyPreview = preview,
-                IsRedacted = false,
             }
             : message with
             {
                 BodyPreview = null,
                 SenderName = null,
                 SenderEmail = null,
-                IsRedacted = true,
+                SenderEmailResolved = null,
+                FromEmailAddress = null,
+                ToJson = null,
+                CcJson = null,
+                ProtectedFieldsAvailable = false,
             };
     }
 
@@ -42,17 +45,18 @@ internal static class ResponseShaper
 
         // Enhanced mode returns the full untruncated COM Body verbatim in BodyFull; it is NOT
         // routed through BodySanitizer.NormalizePreview (which truncates/collapses whitespace).
-        // Safe mode nulls BodyFull alongside BodyPreview to preserve redaction parity, otherwise
-        // the full body text would leak in safe mode. Issue #71: safe mode also nulls the three
-        // attendee JSON fields (RequiredAttendeesJson/OptionalAttendeesJson/ResourcesJson) because
-        // attendee names and emails are PII; this matches the message-path redaction of
-        // SenderName/SenderEmail in ShapeMessage. Null here is the redaction signal, distinct from
-        // the empty array "[]" the scanner emits for a type with no attendees.
+        // Safe mode nulls BodyFull alongside BodyPreview to preserve suppression parity, otherwise
+        // the full body text would leak in safe mode. Issues #18 x #20: IsRedacted is exclusively
+        // the sensitivity-redaction signal written at normalization time — neither branch touches
+        // it — while ProtectedFieldsAvailable = false is the safe-mode suppression signal. Safe
+        // mode suppresses the full protected field set (body, attendee JSON, Organizer) and
+        // empties Categories; Location is retained (decided behavior, spec section B). Null is
+        // the suppression signal for the JSON fields, distinct from the empty array "[]" the
+        // scanner emits for a type with no attendees.
         return enhancedMode
             ? evt with
             {
                 BodyPreview = preview,
-                IsRedacted = false,
             }
             : evt with
             {
@@ -61,7 +65,9 @@ internal static class ResponseShaper
                 RequiredAttendeesJson = null,
                 OptionalAttendeesJson = null,
                 ResourcesJson = null,
-                IsRedacted = true,
+                Organizer = null,
+                Categories = Array.Empty<string>(),
+                ProtectedFieldsAvailable = false,
             };
     }
 

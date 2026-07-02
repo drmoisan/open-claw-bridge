@@ -358,6 +358,14 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             return null;
         }
 
+        // Issue #18 (never-ingest ordering): read Sensitivity before any protected member so a
+        // Private/Confidential item never ingests body, sender, or recipient content.
+        var sensitivity = OutlookComHelpers.GetOptionalInt(item, "Sensitivity");
+        if (IsSensitive(sensitivity))
+        {
+            return NormalizeSensitiveMessage(item, entryId, sensitivity);
+        }
+
         var messageClass = OutlookComHelpers.GetOptionalString(item, "MessageClass");
         var isMeeting = IsMeetingItem(item, messageClass);
         var bridgeId = BridgeIdCodec.MessageId(entryId, isMeeting);
@@ -385,7 +393,7 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             OutlookComHelpers.GetOptionalDateTimeOffset(item, "ReceivedTime"),
             OutlookComHelpers.GetOptionalDateTimeOffset(item, "SentOn"),
             OutlookComHelpers.GetOptionalInt(item, "Importance"),
-            OutlookComHelpers.GetOptionalInt(item, "Sensitivity"),
+            sensitivity,
             OutlookComHelpers.GetOptionalBool(item, "Unread"),
             OutlookComHelpers.GetOptionalBool(item, "Attachments")
                 || OutlookComHelpers.GetOptionalBool(item, "HasAttachments"),
@@ -427,17 +435,6 @@ internal sealed partial class OutlookScanner : IOutlookScanner
         var dto = BuildEventDto(item, bridgeId, globalAppointmentId, startUtc.Value, endUtc.Value);
 
         return new NormalizedEvent(entryId, GetStoreId(item), globalAppointmentId, dto);
-    }
-
-    private static bool IsMeetingItem(object item, string? messageClass)
-    {
-        if (item.GetType().Name.Contains("Meeting", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return !string.IsNullOrWhiteSpace(messageClass)
-            && messageClass.Contains("Meeting", StringComparison.OrdinalIgnoreCase);
     }
 
     private string? GetStoreId(object item)
