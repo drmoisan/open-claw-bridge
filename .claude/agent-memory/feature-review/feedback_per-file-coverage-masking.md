@@ -15,9 +15,12 @@ MailBridge project aggregate passed. The masking happened because the new file's
 SMTP-resolution chain was a small fraction of the project's total lines.
 
 **How to apply:** Do not trust per-project aggregates for the new-code verdict. Re-run
-`dotnet test ... --collect:"XPlat Code Coverage"` to the canonical
-`<FEATURE>/evidence/qa-gates/coverage-review/` path, then parse the cobertura and aggregate hits
-per `filename` for each new/changed file individually. The on-disk artifacts under
+`dotnet test ... --collect:"XPlat Code Coverage" --results-directory "<FEATURE>/evidence/qa-gates/coverage-review"`
+(the `--results-directory` flag routes cobertura output straight to the canonical path — worked on
+the #19 review, 2026-07-02), then parse the cobertura and aggregate hits per `filename` for each
+new/changed file individually. Cobertura may contain duplicate `<class>` entries per partial-class
+file and the results dir may hold stale runs from an interrupted attempt — dedupe/delete before
+pooling (on #19 an interrupted attempt left 3 byte-identical extra reports that doubled raw counts). The on-disk artifacts under
 `artifacts/coverage/*` are gitignored and frequently stale/missing the new classes, so generate a
 fresh run. See [[artifact-validator-quirks]].
 
