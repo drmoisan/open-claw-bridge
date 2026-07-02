@@ -29,12 +29,15 @@ Also: no `validate_evidence_locations.py` exists in this repo — do the evidenc
 `git diff --name-only <base>..HEAD | grep -E '^artifacts/(baselines|baseline|qa|qa-gates|evidence|coverage|regression-testing|post-change)/'`.
 
 Third recurring quirk — **PR-context summary misclassifies C# branches as docs-only.** On the
-#99, #101, #103, and #105 reviews (2026-07-02) `artifacts/pr_context.summary.txt` "Changed files
-overview" reported "Core logic changes: 0 files" while the authoritative git diff contained 3-7+
-production and 3-6 test `.cs` files. Never scope from the summary's file categorization; always use
-`git diff --stat <merge-base>..HEAD` and record the mismatch as an observation under Rejected
-Scope Narrowing (accepted pattern on all four reviews). The summary's author-asserted autoclose
-list can also contain non-issue tokens parsed from AC labels (`#AC-1`, `#ISO-8601` on #105) —
-noise, note and ignore. Newest accepted artifact-set templates after #99: #103
-`2026-07-02-ordinary-mail-candidates-103/*.2026-07-02T13-36.md` and #105
-`2026-07-02-one-on-one-move-history-105/*.2026-07-02T14-35.md`.
+#99, #101, #103, #105, and #107 reviews (2026-07-02) `artifacts/pr_context.summary.txt` "Changed
+files overview" reported "Core logic changes: 0 files" while the authoritative git diff contained
+3-11 production and 3-7 test `.cs` files. Never scope from the summary's file categorization;
+always use `git diff --stat <merge-base>..HEAD` and record the mismatch as an observation under
+Rejected Scope Narrowing (accepted pattern on all five reviews). The summary's author-asserted
+autoclose list can also contain non-issue tokens parsed from AC labels or spec prose (`#AC-1`,
+`#ISO-8601` on #105; `#74`/`#75`/`#ISO-8601` on #107 — real issue numbers cited as context in
+spec text, not closed by the branch) — noise, note and ignore. Newest artifact-set templates
+after #99: #103 `2026-07-02-ordinary-mail-candidates-103/*.2026-07-02T13-36.md`, #105
+`2026-07-02-one-on-one-move-history-105/*.2026-07-02T14-35.md`, and #107
+`2026-07-02-outbound-audit-log-107/*.2026-07-02T15-50.md` (structural self-check passed;
+validator tool unavailable).

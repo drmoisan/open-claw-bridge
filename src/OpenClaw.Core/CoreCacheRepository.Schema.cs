@@ -103,7 +103,24 @@ CREATE TABLE IF NOT EXISTS ingest_runs(
     error_message TEXT NULL
 );
 CREATE TABLE IF NOT EXISTS sent_actions(dedupe_key TEXT PRIMARY KEY, mailbox TEXT NOT NULL, message_id TEXT NOT NULL, action_type TEXT NOT NULL, recorded_at_utc TEXT NOT NULL);
-CREATE TABLE IF NOT EXISTS series_moves(series_key TEXT NOT NULL, occurrence_start_utc TEXT NOT NULL, moved_at_utc TEXT NOT NULL, PRIMARY KEY(series_key, occurrence_start_utc));";
+CREATE TABLE IF NOT EXISTS series_moves(series_key TEXT NOT NULL, occurrence_start_utc TEXT NOT NULL, moved_at_utc TEXT NOT NULL, PRIMARY KEY(series_key, occurrence_start_utc));
+CREATE TABLE IF NOT EXISTS audit_log(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mailbox TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    event_id TEXT NULL,
+    action_type TEXT NOT NULL,
+    acting_flags TEXT NOT NULL,
+    correlation_id TEXT NOT NULL,
+    result_code TEXT NOT NULL,
+    error_detail TEXT NULL,
+    original_start_utc TEXT NULL,
+    original_end_utc TEXT NULL,
+    new_start_utc TEXT NULL,
+    new_end_utc TEXT NULL,
+    recorded_at_utc TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_message_id ON audit_log(message_id);";
 
     /// <summary>
     /// The issue-#72 columns added to the Core <c>events</c> table on existing databases via

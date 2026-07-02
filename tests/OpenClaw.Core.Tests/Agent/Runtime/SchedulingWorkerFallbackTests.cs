@@ -162,6 +162,7 @@ public sealed class SchedulingWorkerFallbackTests
         return new(
             service.Object,
             sentActionStore.Object,
+            new Mock<IActionAuditLog>().Object,
             CandidateSource("msg-1").Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
@@ -196,7 +197,13 @@ public sealed class SchedulingWorkerFallbackTests
         var service = ServiceWithLookupMiss([matched]);
         var captured = new List<SendMailRequest>();
         service
-            .Setup(s => s.SendMailAsync(Capture.In(captured), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    Capture.In(captured),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Returns(Task.CompletedTask);
         var worker = Worker(service, Options(sendEnabled: true));
 
@@ -219,7 +226,13 @@ public sealed class SchedulingWorkerFallbackTests
         var service = ServiceWithLookupMiss(Array.Empty<SchedulingEventDto>());
         var captured = new List<SendMailRequest>();
         service
-            .Setup(s => s.SendMailAsync(Capture.In(captured), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    Capture.In(captured),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Returns(Task.CompletedTask);
         var worker = Worker(service, Options(sendEnabled: true));
 
@@ -278,7 +291,13 @@ public sealed class SchedulingWorkerFallbackTests
         var service = ServiceWithLookupMiss([belowThreshold]);
         var captured = new List<SendMailRequest>();
         service
-            .Setup(s => s.SendMailAsync(Capture.In(captured), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.SendMailAsync(
+                    Capture.In(captured),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .Returns(Task.CompletedTask);
         var worker = Worker(service, Options(sendEnabled: true));
 

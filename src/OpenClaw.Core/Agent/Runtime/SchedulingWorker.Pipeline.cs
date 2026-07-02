@@ -179,13 +179,28 @@ public sealed partial class SchedulingWorker
         );
 
         // Kill switches gate all side effects. The deterministic pipeline above always
-        // computes and logs; only the outbound actions are gated.
+        // computes and logs; only the outbound actions are gated. One correlation id is
+        // generated per outbound-action evaluation and stamped on every audit record for
+        // this action (issue #107, D5/D6); all audit writes go through the D4 boundary.
+        var auditMailbox = MailboxUpn();
+        var correlationId = Guid.NewGuid().ToString();
         if (!options.SendEnabled)
         {
             logger.LogInformation(
                 "SendEnabled is false; not sending mail for message {MessageId}.",
                 messageId
             );
+            await WriteAuditSafelyAsync(
+                    BuildAuditRecord(
+                        auditMailbox,
+                        context,
+                        correlationId,
+                        ActionAuditResultCode.SendDisabled,
+                        errorDetail: null
+                    ),
+                    cancellationToken
+                )
+                .ConfigureAwait(false);
         }
         else
         {
@@ -194,7 +209,7 @@ public sealed partial class SchedulingWorker
             // thrown send exception propagates before the record step, preserving the
             // ProcessMessageSafelyAsync per-message isolation.
             var dedupeKey = SentActionKey.Build(
-                MailboxUpn(),
+                auditMailbox,
                 messageId,
                 SentActionKey.ProposalReply
             );
@@ -209,11 +224,61 @@ public sealed partial class SchedulingWorker
                     messageId,
                     dedupeKey
                 );
+                await WriteAuditSafelyAsync(
+                        BuildAuditRecord(
+                            auditMailbox,
+                            context,
+                            correlationId,
+                            ActionAuditResultCode.DedupeSkipped,
+                            errorDetail: null
+                        ),
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
                 return;
             }
 
-            await schedulingService
-                .SendMailAsync(BuildProposalReply(context, slots), cancellationToken)
+            try
+            {
+                await schedulingService
+                    .SendMailAsync(
+                        BuildProposalReply(context, slots),
+                        correlationId,
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // The send_failed record is durable before the original exception
+                // propagates to ProcessMessageSafelyAsync (D6).
+                await WriteAuditSafelyAsync(
+                        BuildAuditRecord(
+                            auditMailbox,
+                            context,
+                            correlationId,
+                            ActionAuditResultCode.SendFailed,
+                            $"{exception.GetType().Name}: {exception.Message}"
+                        ),
+                        cancellationToken
+                    )
+                    .ConfigureAwait(false);
+                throw;
+            }
+
+            // The sent record is written immediately after the send completes and before
+            // the dedupe bookkeeping, so the audit trail reflects the actual outbound
+            // side effect even if the dedupe record subsequently fails.
+            await WriteAuditSafelyAsync(
+                    BuildAuditRecord(
+                        auditMailbox,
+                        context,
+                        correlationId,
+                        ActionAuditResultCode.Sent,
+                        errorDetail: null
+                    ),
+                    cancellationToken
+                )
                 .ConfigureAwait(false);
             await sentActionStore
                 .RecordAsync(dedupeKey, timeProvider.GetUtcNow(), cancellationToken)
