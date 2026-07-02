@@ -57,77 +57,140 @@ function Get-CheckpointFileContent {
     return @{ Exists = $true; Content = $content }
 }
 
-function Test-RemediationLoopShape {
+function Test-HumanInteractionShape {
     <#
     .SYNOPSIS
-        Validates the optional remediation_loop sub-object against the schema
-        at .claude/schemas/orchestrator-state.schema.json.
+        Validates the optional human_interaction sub-object against the
+        invariants documented in .claude/rules/orchestrator-state.md and
+        enforced by scripts/dev_tools/validate_orchestrator_state.py,
+        enforcing the autonomous-execution mandate at the completion gate.
     .DESCRIPTION
         Returns a hashtable with keys:
-          - Ok:      $true if the field is absent or every cycle is well-formed.
-          - Message: rejection message naming the first malformed cycle; $null on success.
-        Rejection conditions, in order:
-          - cycles array missing or non-array.
-          - any cycle missing required field plan_path (or plan_path empty).
-          - any cycle where exit_condition_met == true and blocking_count != 0.
-          - any cycle where execution_status in {in_progress, complete, failed}
-            while preflight.final_status != 'clear'.
+          - Ok:      $true if the field is absent or every requirement is resolved.
+          - Message: rejection message naming the first unresolved requirement; $null on success.
+        A null human_interaction (absent key) passes the gate. When present,
+        the requirements array is inspected and DONE is blocked when, in order:
+          - requirements is missing or non-array.
+          - any requirement has a missing/blank response.
+          - any requirement has a response outside the enum
+            (scope_change | exception | halt).
+          - any requirement has response == 'halt'.
+          - any requirement has response == 'exception' with a missing/empty
+            runbook_path, or a runbook_path whose file does not exist on disk
+            (existence is checked through the injected FileExistsCheck seam).
+        FileExistsCheck is an injectable scriptblock so tests can exercise the
+        existence branch without writing temporary files. It defaults to
+        Test-Path -PathType Leaf.
     #>
     [CmdletBinding()]
     [OutputType([hashtable])]
     param(
         [Parameter(Mandatory = $true)]
         [AllowNull()]
-        $RemediationLoop
+        $HumanInteraction,
+
+        [Parameter(Mandatory = $false)]
+        [scriptblock] $FileExistsCheck = { param($Path) Test-Path -LiteralPath $Path -PathType Leaf }
     )
 
-    if ($null -eq $RemediationLoop) {
+    if ($null -eq $HumanInteraction) {
         return @{ Ok = $true; Message = $null }
     }
 
-    $loopProps = @($RemediationLoop.PSObject.Properties.Name)
-    if ($loopProps -notcontains 'cycles') {
-        return @{ Ok = $false; Message = "orchestrator hook: 'remediation_loop' is present but 'cycles' array is missing." }
+    $hiProps = @($HumanInteraction.PSObject.Properties.Name)
+    if ($hiProps -notcontains 'requirements') {
+        return @{ Ok = $false; Message = "orchestrator hook: 'human_interaction' is present but 'requirements' array is missing." }
     }
 
-    $cycles = @($RemediationLoop.cycles)
-    $executionInProgress = @('in_progress', 'complete', 'failed')
+    $requirements = @($HumanInteraction.requirements)
+    $allowedResponses = @('scope_change', 'exception', 'halt')
 
-    for ($i = 0; $i -lt $cycles.Count; $i++) {
-        $cycle = $cycles[$i]
-        $cycleProps = @($cycle.PSObject.Properties.Name)
+    for ($i = 0; $i -lt $requirements.Count; $i++) {
+        $req = $requirements[$i]
+        $reqProps = @($req.PSObject.Properties.Name)
 
-        if ($cycleProps -notcontains 'plan_path' -or [string]::IsNullOrWhiteSpace([string]$cycle.plan_path)) {
-            return @{ Ok = $false; Message = "orchestrator hook: 'remediation_loop.cycles[$i]' is missing required field 'plan_path'." }
+        $response = $null
+        if ($reqProps -contains 'response') { $response = [string]$req.response }
+
+        if ([string]::IsNullOrWhiteSpace($response)) {
+            return @{ Ok = $false; Message = "orchestrator hook: 'human_interaction.requirements[$i]' has no resolved 'response'. Every unautomatable requirement must resolve to one of: scope_change, exception, halt." }
         }
 
-        $exitMet = $null
-        if ($cycleProps -contains 'exit_condition_met') { $exitMet = $cycle.exit_condition_met }
-        $blockingCount = $null
-        if ($cycleProps -contains 'blocking_count') { $blockingCount = $cycle.blocking_count }
-
-        if ($exitMet -eq $true -and $blockingCount -ne 0) {
-            return @{ Ok = $false; Message = "orchestrator hook: 'remediation_loop.cycles[$i]' is malformed: 'exit_condition_met' is true but 'blocking_count' is '$blockingCount' (must be 0)." }
+        if ($allowedResponses -notcontains $response) {
+            return @{ Ok = $false; Message = "orchestrator hook: 'human_interaction.requirements[$i]' has 'response' value '$response' outside the allowed set (scope_change, exception, halt)." }
         }
 
-        $execStatus = $null
-        if ($cycleProps -contains 'execution_status') { $execStatus = [string]$cycle.execution_status }
+        if ($response -eq 'halt') {
+            return @{ Ok = $false; Message = "orchestrator hook: 'human_interaction.requirements[$i]' has 'response' == 'halt'; DONE is blocked while a halt is present." }
+        }
 
-        if ($executionInProgress -contains $execStatus) {
-            $preflight = $null
-            if ($cycleProps -contains 'preflight') { $preflight = $cycle.preflight }
-            $finalStatus = $null
-            if ($null -ne $preflight) {
-                $preflightProps = @($preflight.PSObject.Properties.Name)
-                if ($preflightProps -contains 'final_status') { $finalStatus = [string]$preflight.final_status }
+        if ($response -eq 'exception') {
+            $runbookPath = $null
+            if ($reqProps -contains 'runbook_path') { $runbookPath = [string]$req.runbook_path }
+
+            if ([string]::IsNullOrWhiteSpace($runbookPath)) {
+                return @{ Ok = $false; Message = "orchestrator hook: 'human_interaction.requirements[$i]' has 'response' == 'exception' but no non-empty 'runbook_path'. A permitted exception requires a runbook." }
             }
-            if ($finalStatus -ne 'clear') {
-                return @{ Ok = $false; Message = "orchestrator hook: 'remediation_loop.cycles[$i]' is malformed: 'execution_status' is '$execStatus' but 'preflight.final_status' is '$finalStatus' (must be 'clear')." }
+
+            if (-not (& $FileExistsCheck $runbookPath)) {
+                return @{ Ok = $false; Message = "orchestrator hook: 'human_interaction.requirements[$i]' references runbook_path '$runbookPath' but no file exists at that location." }
             }
         }
     }
 
     return @{ Ok = $true; Message = $null }
+}
+
+function Invoke-RoutingContractValidation {
+    <#
+    .SYNOPSIS
+        Runs the authoritative Python routing-contract validator against the
+        on-disk checkpoint and reports whether it emitted errors.
+    .DESCRIPTION
+        Invokes the validator through an injectable subprocess scriptblock seam.
+        The default Invoker runs the authoritative Python CLI:
+          python -m scripts.dev_tools.validate_orchestration_artifacts \
+              orchestrator-state <CheckpointPath> --require-complete
+        Tests inject a mock scriptblock so no Python process runs. The function
+        does not reimplement routing logic; it delegates to the Python validator.
+
+        Returns a hashtable with keys:
+          - HasErrors:  $true when the validator reported a non-zero exit or
+                        produced any error text; $false when clean.
+          - ErrorText:  the validator's combined output text (empty on success).
+    #>
+    [CmdletBinding()]
+    [OutputType([hashtable])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $CheckpointPath,
+
+        [Parameter(Mandatory = $false)]
+        [scriptblock] $Invoker = {
+            param($Path)
+            $output = & python -m scripts.dev_tools.validate_orchestration_artifacts `
+                orchestrator-state $Path --require-complete 2>&1
+            [pscustomobject]@{
+                ExitCode = $LASTEXITCODE
+                Output   = ($output | Out-String)
+            }
+        }
+    )
+
+    $result = & $Invoker $CheckpointPath
+    $exitCode = 0
+    if ($null -ne $result -and ($result.PSObject.Properties.Name -contains 'ExitCode')) {
+        $exitCode = [int]$result.ExitCode
+    }
+    $outputText = ''
+    if ($null -ne $result -and ($result.PSObject.Properties.Name -contains 'Output')) {
+        $outputText = ([string]$result.Output).Trim()
+    }
+
+    # The validator signals a routing-contract failure either through a non-zero
+    # exit code or through emitted error text; either condition blocks DONE.
+    $hasErrors = ($exitCode -ne 0) -or (-not [string]::IsNullOrWhiteSpace($outputText))
+    return @{ HasErrors = $hasErrors; ErrorText = $outputText }
 }
 
 function Invoke-OrchestratorOutputValidation {
@@ -143,7 +206,10 @@ function Invoke-OrchestratorOutputValidation {
     [OutputType([hashtable])]
     param(
         [string] $RawPayload,
-        [string] $CheckpointPath = 'artifacts/orchestration/orchestrator-state.json'
+        [string] $CheckpointPath = 'artifacts/orchestration/orchestrator-state.json',
+
+        [Parameter(Mandatory = $false)]
+        [scriptblock] $RoutingInvoker
     )
 
     if ([string]::IsNullOrWhiteSpace($RawPayload)) {
@@ -197,13 +263,25 @@ function Invoke-OrchestratorOutputValidation {
         return @{ Ok = $false; Message = "orchestrator hook: checkpoint file '$CheckpointPath' has an empty 'objective' field; orchestrator must record the active objective." }
     }
 
-    $remediationLoop = $null
-    if ($checkpointProps -contains 'remediation_loop') {
-        $remediationLoop = $checkpoint.remediation_loop
+    $humanInteraction = $null
+    if ($checkpointProps -contains 'human_interaction') {
+        $humanInteraction = $checkpoint.human_interaction
     }
-    $loopResult = Test-RemediationLoopShape -RemediationLoop $remediationLoop
-    if (-not $loopResult.Ok) {
-        return @{ Ok = $false; Message = $loopResult.Message }
+    $hiResult = Test-HumanInteractionShape -HumanInteraction $humanInteraction
+    if (-not $hiResult.Ok) {
+        return @{ Ok = $false; Message = $hiResult.Message }
+    }
+
+    # Delegate to the authoritative Python routing-contract validator. The
+    # optional RoutingInvoker seam lets tests inject a mock; the default seam
+    # produces the real subprocess call.
+    $routingArgs = @{ CheckpointPath = $CheckpointPath }
+    if ($PSBoundParameters.ContainsKey('RoutingInvoker') -and $null -ne $RoutingInvoker) {
+        $routingArgs['Invoker'] = $RoutingInvoker
+    }
+    $routingResult = Invoke-RoutingContractValidation @routingArgs
+    if ($routingResult.HasErrors) {
+        return @{ Ok = $false; Message = "ROUTING_CONTRACT_BLOCKED: $($routingResult.ErrorText)" }
     }
 
     return @{ Ok = $true; Message = $null }

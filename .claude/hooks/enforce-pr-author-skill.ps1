@@ -10,36 +10,38 @@
 
     Required sequence:
       1. mcp__drm-copilot__collect_pr_context writes artifacts/pr_context.summary.txt
-      2. pr-author skill reads that file and writes artifacts/pr_body_<N>.md AND a sibling
-         provenance receipt artifacts/pr_body_<N>.receipt.json
+      2. pr-author skill produces the body text; the pr-author agent writes
+         artifacts/pr_body_<N>.md and a sibling integrity receipt
+         artifacts/pr_body_<N>.receipt.json
       3. gh pr create --body-file artifacts/pr_body_<N>.md
          (or gh pr edit --body-file ...)
 
-    Shape-only block cases (preserved):
-      Case A - gh pr create with --body (inline, no --body-file): blocked.
+    Block cases:
+      Case A - gh pr create or gh pr edit with --body (inline, no --body-file): blocked.
       Case B - gh pr create with neither --body nor --body-file: blocked.
       Case C - gh pr create or gh pr edit with --body-file but context artifact absent: blocked.
+      Receipt - --body-file present and context artifact present: the SHA-256 receipt is verified
+                in five ordered checks (Section below). The first failing check blocks.
 
-    Provenance block cases (added). After Case C passes for a --body-file command, the
-    following checks run in order and the FIRST failure is returned:
-      Case D - PR_BODY_PATH_NONCANONICAL: body-file path is not artifacts/pr_body_<N>.md.
-      Case E - PR_AUTHOR_RECEIPT_MISSING: sibling artifacts/pr_body_<N>.receipt.json absent.
-      Case G - PR_AUTHOR_RECEIPT_NUMBER_MISMATCH: receipt.number != <N> from the filename.
-      Case F - PR_AUTHOR_RECEIPT_HASH_MISMATCH: SHA-256 of the body file != receipt.sha256.
-      Case H - PR_AUTHOR_RECEIPT_STALE: receipt.created_at is not strictly newer than the
-               last-write time of artifacts/pr_context.summary.txt.
-
-    Together these require a canonical, hash-verified, fresh pr-author receipt rather than
-    merely a command of the right shape.
+    Receipt verification decision order on the --body-file-with-context path:
+      PR_BODY_PATH_NONCANONICAL -> PR_AUTHOR_RECEIPT_MISSING -> PR_AUTHOR_RECEIPT_NUMBER_MISMATCH
+      -> PR_AUTHOR_RECEIPT_HASH_MISMATCH -> PR_AUTHOR_RECEIPT_STALE -> allow.
 
 .NOTES
     Compatible with PowerShell 7+. No external module dependencies.
+
+    Enforcement strength: the SHA-256 receipt is a policy-level integrity check that binds the
+    PR body bytes to the receipt the pr-author agent wrote. It is not a cryptographic or security
+    boundary: any actor with Write access to artifacts/ can replace both the body file and the
+    receipt together, because all agents share the same filesystem and the runtime exposes no
+    native agent-identity signal at Bash PreToolUse time. The mechanism prevents accidental bypass
+    and requires a deliberate, documented act to circumvent. It MUST NOT be described as
+    tamper-proof or as a security boundary.
 #>
 [CmdletBinding()]
 param()
 
 $script:PrContextArtifactPath = 'artifacts/pr_context.summary.txt'
-$script:PrBodyCanonicalPattern = '^artifacts[/\\]pr_body_(\d+)\.md$'
 
 function Get-PrContextArtifactExistence {
     <#
@@ -55,98 +57,105 @@ function Get-PrContextArtifactExistence {
     return [bool](Test-Path -LiteralPath $script:PrContextArtifactPath)
 }
 
-function Get-PrContextWriteTime {
+function Get-PrBodyFileBytes {
     <#
     .SYNOPSIS
-        Return the last-write time of the PR context summary artifact.
+        Read the raw bytes of the PR body file. Tests mock this function (read seam).
     .DESCRIPTION
-        Adapter seam over the filesystem clock. Tests mock this function so the staleness
-        comparison (Case H) can be exercised without touching disk or the real clock.
+        Returns the byte content of the supplied body-file path, or $null when the file is absent.
+        This is the injectable boundary for body-file bytes in tests; no test writes the body file
+        to disk. The bytes are hashed inline by the receipt verification function.
+    .PARAMETER BodyFilePath
+        The relative path to the PR body file (for example artifacts/pr_body_5.md).
     .OUTPUTS
-        System.DateTime
+        System.Byte[] or $null
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification = 'The plural noun names the byte-array return; the seam name is fixed by the receipt contract.')]
     [CmdletBinding()]
-    [OutputType([datetime])]
-    param()
-
-    return (Get-Item -LiteralPath $script:PrContextArtifactPath).LastWriteTimeUtc
-}
-
-function Test-PrBodyReceiptPresence {
-    <#
-    .SYNOPSIS
-        Return whether the pr-author provenance receipt is present for a given receipt path.
-    .DESCRIPTION
-        Adapter seam over Test-Path. Tests mock this function to control Case E.
-    .PARAMETER Path
-        The receipt file path (artifacts/pr_body_<N>.receipt.json).
-    .OUTPUTS
-        System.Boolean
-    #>
-    [CmdletBinding()]
-    [OutputType([bool])]
+    [OutputType([byte[]])]
     param(
         [Parameter(Mandatory)]
-        [string] $Path
+        [string] $BodyFilePath
     )
 
-    return [bool](Test-Path -LiteralPath $Path)
+    if (-not (Test-Path -LiteralPath $BodyFilePath)) {
+        return $null
+    }
+
+    return [System.IO.File]::ReadAllBytes($BodyFilePath)
 }
 
-function Get-PrBodyReceipt {
+function Get-PrAuthorReceiptContent {
     <#
     .SYNOPSIS
-        Read and parse the pr-author provenance receipt JSON.
+        Read the raw JSON text of the PR body receipt. Tests mock this function (read seam).
     .DESCRIPTION
-        Adapter seam over the filesystem and JSON parsing. Returns an object exposing the
-        number, sha256, and created_at fields. Tests mock this function to control Cases
-        G, F, and H without touching disk.
-    .PARAMETER Path
-        The receipt file path (artifacts/pr_body_<N>.receipt.json).
+        Returns the raw text content of the sibling receipt file artifacts/pr_body_<N>.receipt.json,
+        or $null when the receipt file is absent. This is the injectable boundary for receipt
+        content in tests; no test writes the receipt file to disk.
+    .PARAMETER ReceiptFilePath
+        The relative path to the receipt file (for example artifacts/pr_body_5.receipt.json).
     .OUTPUTS
-        System.Management.Automation.PSCustomObject
-    #>
-    [CmdletBinding()]
-    [OutputType([pscustomobject])]
-    param(
-        [Parameter(Mandatory)]
-        [string] $Path
-    )
-
-    return (Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json -ErrorAction Stop)
-}
-
-function Get-PrBodyFileHash {
-    <#
-    .SYNOPSIS
-        Return the lowercase hex SHA-256 of the PR body file's bytes.
-    .DESCRIPTION
-        Wraps Get-FileHash so tests can mock the hashing seam (Case F) without a real file.
-    .PARAMETER Path
-        The PR body file path (artifacts/pr_body_<N>.md).
-    .OUTPUTS
-        System.String
+        System.String or $null
     #>
     [CmdletBinding()]
     [OutputType([string])]
     param(
         [Parameter(Mandatory)]
-        [string] $Path
+        [string] $ReceiptFilePath
     )
 
-    return (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
+    if (-not (Test-Path -LiteralPath $ReceiptFilePath)) {
+        return $null
+    }
+
+    return (Get-Content -LiteralPath $ReceiptFilePath -Raw)
 }
 
-function Get-PrBodyFilePath {
+function Get-PrContextSummaryLastWriteUtc {
     <#
     .SYNOPSIS
-        Extract the --body-file value from a command string.
+        Return the UTC last-write time of the PR context summary. Tests mock this function (seam).
     .DESCRIPTION
-        Pure parser. Supports both `--body-file <value>` and `--body-file=<value>` forms,
-        and values wrapped in single or double quotes. Returns the unquoted path, or $null
-        when no --body-file value is present.
+        Returns the LastWriteTimeUtc of artifacts/pr_context.summary.txt, or $null when the file is
+        absent. The staleness check compares the receipt's created_at against this value; both are
+        artifact metadata, so no wall-clock seam is required.
+    .OUTPUTS
+        System.DateTime or $null
+    #>
+    [CmdletBinding()]
+    [OutputType([datetime])]
+    param()
+
+    if (-not (Test-Path -LiteralPath $script:PrContextArtifactPath)) {
+        return $null
+    }
+
+    return (Get-Item -LiteralPath $script:PrContextArtifactPath).LastWriteTimeUtc
+}
+
+function Test-PrAuthorReceiptVerification {
+    <#
+    .SYNOPSIS
+        Verify the SHA-256 receipt and return a block-reason string, or $null when verified.
+    .DESCRIPTION
+        Runs the five ordered receipt checks on the --body-file-with-context path. Each check is its
+        own short-circuiting branch; the first failure returns its reason code:
+          1. PR_BODY_PATH_NONCANONICAL        - --body-file path does not match the canonical
+                                                 artifacts/pr_body_<N>.md pattern (case-sensitive).
+          2. PR_AUTHOR_RECEIPT_MISSING        - sibling artifacts/pr_body_<N>.receipt.json absent.
+          3. PR_AUTHOR_RECEIPT_NUMBER_MISMATCH- receipt.number (integer) != <N> from the path.
+          4. PR_AUTHOR_RECEIPT_HASH_MISMATCH  - inline SHA-256 (lowercase hex) of the body bytes
+                                                 != receipt.sha256.
+          5. PR_AUTHOR_RECEIPT_STALE          - receipt.created_at (UTC) not strictly newer than the
+                                                 context summary last-write time.
+        Returns $null when all five checks pass (allow). All disk access flows through the three
+        injectable seams (Get-PrBodyFileBytes, Get-PrAuthorReceiptContent,
+        Get-PrContextSummaryLastWriteUtc); SHA-256 is computed inline. This is a policy-level
+        integrity check, not a cryptographic control: any actor with Write access to artifacts/ can
+        replace the body file and the receipt together.
     .PARAMETER CommandText
-        The Bash command text extracted from CLAUDE_TOOL_INPUT.
+        The Bash command text containing the --body-file argument.
     .OUTPUTS
         System.String or $null
     #>
@@ -157,101 +166,71 @@ function Get-PrBodyFilePath {
         [string] $CommandText
     )
 
-    # --body-file=VALUE or --body-file VALUE, where VALUE is a quoted string or a bare token.
-    $pattern = '(?i)--body-file(?:=|\s+)(?:"([^"]*)"|''([^'']*)''|([^\s]+))'
-    $match = [regex]::Match($CommandText, $pattern)
-    if (-not $match.Success) {
-        return $null
+    # Check 1: the --body-file argument must match the canonical artifacts/pr_body_<N>.md pattern.
+    # The match is case-sensitive (-cmatch) so a non-canonical path is rejected before any read.
+    if ($CommandText -cnotmatch '--body-file\s+artifacts/pr_body_(\d+)\.md\b') {
+        return "PR_BODY_PATH_NONCANONICAL: ``--body-file`` must reference a canonical ``artifacts/pr_body_<N>.md`` file produced by the pr-author skill. The path supplied does not match ``artifacts/pr_body_<N>.md``."
     }
 
-    foreach ($groupIndex in 1, 2, 3) {
-        $group = $match.Groups[$groupIndex]
-        if ($group.Success) {
-            return $group.Value
-        }
+    $bodyNumber = [int]$Matches[1]
+    $bodyFilePath = "artifacts/pr_body_$bodyNumber.md"
+    $receiptFilePath = "artifacts/pr_body_$bodyNumber.receipt.json"
+
+    # Check 2: the sibling receipt file must exist (read via the injectable seam).
+    $receiptRaw = Get-PrAuthorReceiptContent -ReceiptFilePath $receiptFilePath
+    if ([string]::IsNullOrWhiteSpace($receiptRaw)) {
+        return "PR_AUTHOR_RECEIPT_MISSING: ``$receiptFilePath`` is absent. The pr-author agent must write the SHA-256 receipt alongside ``$bodyFilePath`` before issuing ``gh pr create``/``gh pr edit --body-file``."
     }
 
-    return $null
-}
-
-function Get-PrAuthorProvenanceReason {
-    <#
-    .SYNOPSIS
-        Pure decision core for provenance checks D, E, G, F, and H over resolved facts.
-    .DESCRIPTION
-        Given the already-resolved facts about the body-file path and receipt, return the
-        first failing block reason string, or $null when all provenance checks pass. This
-        function performs no I/O; the caller resolves facts through the adapter seams.
-    .PARAMETER BodyFilePath
-        The parsed --body-file value.
-    .PARAMETER ReceiptExists
-        Whether the sibling receipt file exists.
-    .PARAMETER Receipt
-        The parsed receipt object (number, sha256, created_at), or $null when absent.
-    .PARAMETER BodyFileHash
-        The lowercase hex SHA-256 of the body file, or $null when not computed.
-    .PARAMETER ContextWriteTime
-        The last-write time (UTC) of the PR context summary artifact.
-    .OUTPUTS
-        System.String or $null
-    #>
-    [CmdletBinding()]
-    [OutputType([string])]
-    param(
-        [Parameter(Mandatory)]
-        [AllowEmptyString()]
-        [string] $BodyFilePath,
-
-        [Parameter(Mandatory)]
-        [bool] $ReceiptExists,
-
-        [Parameter()]
-        [object] $Receipt,
-
-        [Parameter()]
-        [AllowNull()]
-        [string] $BodyFileHash,
-
-        [Parameter()]
-        [AllowNull()]
-        [Nullable[datetime]] $ContextWriteTime
-    )
-
-    # Case D: path must match the canonical regex artifacts/pr_body_<N>.md.
-    $canonicalMatch = [regex]::Match($BodyFilePath, $script:PrBodyCanonicalPattern)
-    if (-not $canonicalMatch.Success) {
-        return "PR_BODY_PATH_NONCANONICAL: ``--body-file`` value ``$BodyFilePath`` is not a canonical pr-author body. The path must match ``artifacts/pr_body_<N>.md``. Apply the pr-author handoff to produce ``artifacts/pr_body_<N>.md`` and its sibling receipt, then reference that file."
+    # A receipt that is present but not valid JSON cannot be verified; treat it as missing content.
+    try {
+        $receipt = $receiptRaw | ConvertFrom-Json -ErrorAction Stop
+    } catch {
+        return "PR_AUTHOR_RECEIPT_MISSING: ``$receiptFilePath`` is not valid JSON. The pr-author agent must write a well-formed receipt with ``number``, ``sha256``, and ``created_at``."
     }
 
-    $bodyNumber = $canonicalMatch.Groups[1].Value
-
-    # Case E: sibling receipt must exist.
-    if (-not $ReceiptExists) {
-        return "PR_AUTHOR_RECEIPT_MISSING: the pr-author receipt ``artifacts/pr_body_$bodyNumber.receipt.json`` is absent. The pr-author handoff must emit a provenance receipt alongside ``$BodyFilePath`` before the PR body can be used."
+    # Check 3: the receipt number must equal the <N> extracted from the canonical path.
+    $receiptNumber = $null
+    $parsedNumber = 0
+    if ([int]::TryParse([string]$receipt.number, [ref] $parsedNumber)) {
+        $receiptNumber = $parsedNumber
     }
-
-    # Case G: receipt number must match the filename number.
-    $receiptNumber = [string]$Receipt.number
     if ($receiptNumber -ne $bodyNumber) {
-        return "PR_AUTHOR_RECEIPT_NUMBER_MISMATCH: receipt ``number`` (``$receiptNumber``) does not match the body filename number (``$bodyNumber``). Re-run the pr-author handoff so the receipt and ``$BodyFilePath`` agree."
+        return "PR_AUTHOR_RECEIPT_NUMBER_MISMATCH: ``$receiptFilePath`` ``number`` ($($receipt.number)) does not equal the body-file number ($bodyNumber). The receipt must bind to ``$bodyFilePath``."
     }
 
-    # Case F: body-file hash must match the receipt hash.
-    $receiptHash = ([string]$Receipt.sha256).ToLowerInvariant()
-    $actualHash = ([string]$BodyFileHash).ToLowerInvariant()
-    if ($actualHash -ne $receiptHash) {
-        return "PR_AUTHOR_RECEIPT_HASH_MISMATCH: SHA-256 of ``$BodyFilePath`` (``$actualHash``) does not match the receipt ``sha256`` (``$receiptHash``). The body was modified after the pr-author handoff; re-run the handoff to regenerate the body and receipt."
+    # Check 4: the inline SHA-256 (lowercase hex) of the body bytes must equal receipt.sha256.
+    $bodyBytes = Get-PrBodyFileBytes -BodyFilePath $bodyFilePath
+    if ($null -eq $bodyBytes) {
+        return "PR_AUTHOR_RECEIPT_HASH_MISMATCH: ``$bodyFilePath`` could not be read to verify its SHA-256 against ``$receiptFilePath``."
     }
 
-    # Case H: receipt must be strictly newer than the context summary write time.
-    $createdAt = [datetimeoffset]::Parse(
-        [string]$Receipt.created_at,
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $hashBytes = $sha256.ComputeHash($bodyBytes)
+    } finally {
+        $sha256.Dispose()
+    }
+    $computedHash = ([System.BitConverter]::ToString($hashBytes) -replace '-', '').ToLowerInvariant()
+
+    if ($computedHash -ne ([string]$receipt.sha256).ToLowerInvariant()) {
+        return "PR_AUTHOR_RECEIPT_HASH_MISMATCH: the SHA-256 of ``$bodyFilePath`` does not equal ``sha256`` in ``$receiptFilePath``. The body file was modified after the receipt was written."
+    }
+
+    # Check 5: receipt.created_at (UTC) must be strictly newer than the context summary last-write.
+    $createdAt = [DateTime]::MinValue
+    $createdParsed = [DateTime]::TryParse(
+        [string]$receipt.created_at,
         [System.Globalization.CultureInfo]::InvariantCulture,
-        [System.Globalization.DateTimeStyles]::AssumeUniversal -bor [System.Globalization.DateTimeStyles]::AdjustToUniversal
-    ).UtcDateTime
-    $contextTime = ([datetime]$ContextWriteTime).ToUniversalTime()
-    if ($createdAt -le $contextTime) {
-        return "PR_AUTHOR_RECEIPT_STALE: receipt ``created_at`` (``$($Receipt.created_at)``) is not newer than the PR context summary write time (``$($contextTime.ToString('o'))``). The receipt predates the current context; re-run ``mcp__drm-copilot__collect_pr_context`` and the pr-author handoff."
+        [System.Globalization.DateTimeStyles]::AdjustToUniversal -bor [System.Globalization.DateTimeStyles]::AssumeUniversal,
+        [ref] $createdAt)
+    if (-not $createdParsed) {
+        return "PR_AUTHOR_RECEIPT_STALE: ``$receiptFilePath`` has a missing or unparseable ``created_at``. The pr-author agent must record a UTC ISO-8601 ``created_at`` strictly newer than ``$script:PrContextArtifactPath``."
+    }
+
+    $contextLastWrite = Get-PrContextSummaryLastWriteUtc
+    if (($null -eq $contextLastWrite) -or ($createdAt -le $contextLastWrite)) {
+        return "PR_AUTHOR_RECEIPT_STALE: ``$receiptFilePath`` ``created_at`` is not strictly newer than the last-write time of ``$script:PrContextArtifactPath``. The pr-author agent must regenerate the body and receipt after refreshing the PR context."
     }
 
     return $null
@@ -262,11 +241,14 @@ function Get-PrAuthorBypassReason {
     .SYNOPSIS
         Inspect the command text and return a block reason string, or $null when the command is allowed.
     .DESCRIPTION
-        Returns PR_AUTHOR_SKILL_BLOCKED when gh pr create is run with --body (inline) or with no body
-        flag at all (Cases A and B). Returns PR_CONTEXT_MISSING when --body-file is present but the
-        context artifact does not exist on disk (Case C). When --body-file is present and the context
-        exists, resolves provenance facts through the adapter seams and delegates to
-        Get-PrAuthorProvenanceReason for Cases D, E, G, F, and H. Returns $null for all allowed patterns.
+        Returns PR_AUTHOR_SKILL_BLOCKED when gh pr create or gh pr edit is run with --body (inline,
+        no --body-file), or when gh pr create is run with no body flag at all. Returns
+        PR_CONTEXT_MISSING when --body-file is present but the context artifact does not exist on
+        disk. When --body-file is present and the context artifact exists, verifies the SHA-256
+        receipt via Test-PrAuthorReceiptVerification and returns its block reason
+        (PR_BODY_PATH_NONCANONICAL / PR_AUTHOR_RECEIPT_*) when verification fails. Returns $null for
+        all allowed patterns. Cases A, B, and C are evaluated first and unchanged; receipt
+        verification only extends the previously-allowed --body-file-with-context path.
     .PARAMETER CommandText
         The Bash command text extracted from CLAUDE_TOOL_INPUT.
     .PARAMETER ContextExists
@@ -295,12 +277,13 @@ function Get-PrAuthorBypassReason {
     $hasBodyFile = $CommandText -match '(?i)--body-file\b'
     $hasInlineBody = $CommandText -match '(?i)--body(?!-file)\b'
 
-    if ($isPrCreate) {
-        # Case A: gh pr create with inline --body (not --body-file).
-        if ($hasInlineBody -and -not $hasBodyFile) {
-            return "PR_AUTHOR_SKILL_BLOCKED: ``gh pr create`` must use ``--body-file`` with a file produced by the pr-author skill from ``$script:PrContextArtifactPath``. Run ``mcp__drm-copilot__collect_pr_context`` to generate the context file, apply the pr-author skill to produce ``artifacts/pr_body_<N>.md``, then pass that file via ``--body-file``."
-        }
+    # Case A: gh pr create OR gh pr edit with inline --body (not --body-file). Evaluated before the
+    # gh pr edit no-body allow short-circuit so inline-body edits are blocked, not allowed.
+    if (($isPrCreate -or $isPrEdit) -and $hasInlineBody -and -not $hasBodyFile) {
+        return "PR_AUTHOR_SKILL_BLOCKED: ``gh pr create`` and ``gh pr edit`` must use ``--body-file`` with a file produced by the pr-author skill from ``$script:PrContextArtifactPath``. Run ``mcp__drm-copilot__collect_pr_context`` to generate the context file, apply the pr-author skill to produce ``artifacts/pr_body_<N>.md``, then pass that file via ``--body-file``."
+    }
 
+    if ($isPrCreate) {
         # Case B: gh pr create with no body flag at all.
         if (-not $hasInlineBody -and -not $hasBodyFile) {
             return "PR_AUTHOR_SKILL_BLOCKED: New PRs require ``--body-file``. Run ``mcp__drm-copilot__collect_pr_context`` to generate ``$script:PrContextArtifactPath``, apply the pr-author skill to produce ``artifacts/pr_body_<N>.md``, then pass that file via ``--body-file``."
@@ -319,38 +302,13 @@ function Get-PrAuthorBypassReason {
         return "PR_CONTEXT_MISSING: ``$script:PrContextArtifactPath`` is absent. Run ``mcp__drm-copilot__collect_pr_context`` before creating or editing the PR body."
     }
 
-    # Provenance checks (Cases D, E, G, F, H) for --body-file commands once Case C passes.
-    if ($hasBodyFile) {
-        $bodyFilePath = Get-PrBodyFilePath -CommandText $CommandText
-        if ($null -eq $bodyFilePath) {
-            # --body-file flag present but no parseable value: treat as non-canonical.
-            $bodyFilePath = ''
+    # Receipt verification: --body-file present and context artifact exists. Verify the SHA-256
+    # receipt in five ordered checks. This extends, and does not replace, the previously-allowed path.
+    if ($hasBodyFile -and $ContextExists) {
+        $receiptReason = Test-PrAuthorReceiptVerification -CommandText $CommandText
+        if ($receiptReason) {
+            return $receiptReason
         }
-
-        # Resolve provenance facts lazily through the adapter seams. Only read the receipt
-        # and hash when the path is canonical and the receipt exists, so earlier failure
-        # cases do not trigger unnecessary I/O.
-        $receiptExists = $false
-        $receipt = $null
-        $bodyFileHash = $null
-        $contextWriteTime = $null
-
-        if ($bodyFilePath -match $script:PrBodyCanonicalPattern) {
-            $receiptPath = $bodyFilePath -replace '\.md$', '.receipt.json'
-            $receiptExists = Test-PrBodyReceiptPresence -Path $receiptPath
-            if ($receiptExists) {
-                $receipt = Get-PrBodyReceipt -Path $receiptPath
-                $bodyFileHash = Get-PrBodyFileHash -Path $bodyFilePath
-                $contextWriteTime = Get-PrContextWriteTime
-            }
-        }
-
-        return Get-PrAuthorProvenanceReason `
-            -BodyFilePath $bodyFilePath `
-            -ReceiptExists $receiptExists `
-            -Receipt $receipt `
-            -BodyFileHash $bodyFileHash `
-            -ContextWriteTime $contextWriteTime
     }
 
     return $null
@@ -374,32 +332,72 @@ function Invoke-PrAuthorSkillDecision {
     )
 
     if (-not $ToolInputRaw) {
-        return [ordered]@{ decision = 'allow' }
+        return Get-PrAuthorSkillAllowDecision
     }
 
     try {
         $toolInput = $ToolInputRaw | ConvertFrom-Json -ErrorAction Stop
-    }
-    catch {
+    } catch {
         throw "enforce-pr-author-skill hook received malformed JSON in CLAUDE_TOOL_INPUT: $_"
     }
 
     $commandText = $toolInput.command
     if (-not $commandText) {
-        return [ordered]@{ decision = 'allow' }
+        return Get-PrAuthorSkillAllowDecision
     }
 
     $contextExists = Get-PrContextArtifactExistence
     $reason = Get-PrAuthorBypassReason -CommandText $commandText -ContextExists $contextExists
 
     if ($reason) {
-        return [ordered]@{
-            decision = 'block'
-            reason   = $reason
-        }
+        return Get-PrAuthorSkillBlockDecision -Reason $reason
     }
 
-    return [ordered]@{ decision = 'allow' }
+    return Get-PrAuthorSkillAllowDecision
+}
+
+function Get-PrAuthorSkillAllowDecision {
+    <#
+    .SYNOPSIS
+        Construct the PreToolUse allow decision for a permitted Bash command.
+    .OUTPUTS
+        System.Collections.Specialized.OrderedDictionary
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
+    param()
+
+    return [ordered]@{
+        hookSpecificOutput = [ordered]@{
+            hookEventName      = 'PreToolUse'
+            permissionDecision = 'allow'
+        }
+    }
+}
+
+function Get-PrAuthorSkillBlockDecision {
+    <#
+    .SYNOPSIS
+        Construct the PreToolUse deny decision for a forbidden Bash command.
+    .PARAMETER Reason
+        The specific deny reason to surface in the decision.
+    .OUTPUTS
+        System.Collections.Specialized.OrderedDictionary
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Reason
+    )
+
+    return [ordered]@{
+        hookSpecificOutput = [ordered]@{
+            hookEventName            = 'PreToolUse'
+            permissionDecision       = 'deny'
+            permissionDecisionReason = $Reason
+        }
+    }
 }
 
 function Test-PrAuthorBypassRequired {
@@ -433,12 +431,11 @@ if ($MyInvocation.InvocationName -eq '.') {
 
 try {
     $decision = Invoke-PrAuthorSkillDecision -ToolInputRaw $env:CLAUDE_TOOL_INPUT
-}
-catch {
+} catch {
     Write-Error $_
     exit 1
 }
 
-$decision | ConvertTo-Json -Compress | Write-Output
+$decision | ConvertTo-Json -Compress -Depth 5 | Write-Output
 
 exit 0

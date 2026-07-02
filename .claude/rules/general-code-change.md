@@ -32,12 +32,12 @@ Module rigor tiers (T1–T4) and the uniform-versus-tier-dependent gate matrix a
 
 Run the full seven-stage toolchain in this exact order and repeat until all stages pass in a single pass:
 
-1. **Formatting** (CSharpier for C#; Invoke-Formatter for PowerShell)
-2. **Linting** (.NET analyzers for C#; PSScriptAnalyzer for PowerShell)
-3. **Type checking** (C# nullable reference analysis; skip for PowerShell)
-4. **Architecture-boundary tests** (NetArchTest.Rules or equivalent assertions for C#)
-5. **Unit tests** (MSTest for C#; Pester for PowerShell) including property-based tests where applicable per `quality-tiers.md`
-6. **Contract / schema compatibility checks** (schema-snapshot diff at host-service boundaries)
+1. **Formatting** (e.g., Black, Prettier, CSharpier, Invoke-Formatter)
+2. **Linting** (e.g., Ruff, ESLint, PSScriptAnalyzer, .NET analyzers)
+3. **Type checking** (e.g., Pyright, TSC, nullable analysis; skip for PowerShell)
+4. **Architecture-boundary tests** (e.g., dependency-cruiser, NetArchTest.Rules)
+5. **Unit tests** (e.g., Pytest, Vitest, MSTest, Pester) including property-based tests where applicable per `quality-tiers.md`
+6. **Contract / schema compatibility checks** (e.g., oasdiff, schema-snapshot diff)
 7. **Integration tests**
 
 **Restart from step 1** if any stage fails or auto-fixes any files. Do not stop the loop until all seven stages complete without errors in a single pass.

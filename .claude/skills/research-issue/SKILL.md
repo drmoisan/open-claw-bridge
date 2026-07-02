@@ -1,6 +1,6 @@
 ---
 name: research-issue
-description: Investigate the best implementation approach for a feature or bug by analyzing the codebase and external references, then writing structured findings to artifacts/research/.
+description: Investigate the best implementation approach for a feature or bug by analyzing the codebase and external references, then writing structured findings to the resolved research path under docs/features/<feature>/research/ (feature-associated) or docs/research/ (one-off).
 allowed-tools:
   - Read
   - Grep
@@ -22,9 +22,11 @@ Accept one or more feature documents as context:
 
 ## Output
 
-Create or update a single research file:
+Create or update a single research file at one of the two tracked research roots:
 
-- Path: `artifacts/research/<timestamp>-<short-name>-research.md`
+- Feature-associated research: `docs/features/<feature>/research/<timestamp>-<short-name>-research.md` (for example `docs/features/active/<feature>/research/<timestamp>-<short-name>-research.md`).
+- One-off research not tied to a feature: `docs/research/<timestamp>-<short-name>-research.md`.
+- Routing rule: write to the feature research root when an active feature folder is in scope (the orchestrator supplies the resolved path from `feature-folder` in `orchestrator-state.json`); otherwise write to `docs/research/`. The filename convention `<timestamp>-<short-name>-research.md` is unchanged.
 - Use the Task Researcher template from the repository exactly.
 - Place rejected-alternatives summaries inside `## Recommended Approach`, not as a separate top-level header.
 

@@ -10,9 +10,10 @@
     docs/features/(active|archive)/<folder>/plan.md, the script verifies that
     each of issue.md, spec.md, and user-story.md exists in the same folder.
 
-    If any of the three sibling files is missing, the script emits a JSON
-    response with decision='block' and exits 0 so Claude Code surfaces the
-    reason. All other paths pass through with decision='allow'.
+    If any of the three sibling files is missing, the script emits a PreToolUse
+    JSON response with hookSpecificOutput.permissionDecision='deny' and exits 0 so
+    Claude Code surfaces the reason. All other paths pass through with
+    permissionDecision='allow'.
 
     Filesystem reads go through Get-FeatureFolderFileExistence so tests can
     inject a fake without touching disk.
@@ -97,7 +98,7 @@ function Invoke-FeatureFolderOrderDecision {
     )
 
     if (-not $ToolInputRaw) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     try {
@@ -109,24 +110,27 @@ function Invoke-FeatureFolderOrderDecision {
 
     $filePath = $toolInput.file_path
     if (-not $filePath) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $normalized = $filePath -replace '\\', '/'
 
     if (-not (Test-IsFeaturePlanPath -NormalizedPath $normalized)) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $missing = Get-FeatureFolderMissingFile -PlanFilePath $normalized
     if ($missing.Count -eq 0) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $list = ($missing -join ', ')
     return [ordered]@{
-        decision = 'block'
-        reason   = "FEATURE_FOLDER_ORDER_BLOCKED: cannot write plan.md before producing prerequisite documents. Missing in feature folder: $list. Invoke the prd-feature subagent to generate the missing file(s) before authoring plan.md."
+        hookSpecificOutput = [ordered]@{
+            hookEventName            = 'PreToolUse'
+            permissionDecision       = 'deny'
+            permissionDecisionReason = "FEATURE_FOLDER_ORDER_BLOCKED: cannot write plan.md before producing prerequisite documents. Missing in feature folder: $list. Invoke the prd-feature subagent to generate the missing file(s) before authoring plan.md."
+        }
     }
 }
 
@@ -143,6 +147,6 @@ catch {
     exit 1
 }
 
-$decision | ConvertTo-Json -Compress | Write-Output
+$decision | ConvertTo-Json -Compress -Depth 5 | Write-Output
 
 exit 0

@@ -24,6 +24,36 @@ On every invocation, the main session must:
 2. If a valid checkpoint exists with a matching objective, resume from the recorded `next_step`.
 3. If no checkpoint exists or the objective is new, begin the orchestration lifecycle from the start.
 
+## Autonomous-Execution Mandate
+
+The orchestrator must achieve all actions agentically with no human interaction; full autonomy is a hard requirement. A silent manual blocker discovered at the end of a workflow is a defect, not an acceptable outcome. Every unautomatable (human-interaction) requirement must be detected early, resolved by exactly one of three permitted responses, and recorded in orchestrator state.
+
+### Detection points
+
+- Unautomatable requirements are enumerated as mandatory-unachievable requirements **before kickoff** wherever they are knowable up front.
+- Where research is needed to discover them, they MUST be surfaced **no later than the research stage**.
+- Research that touches third-party UIs (for example the Azure portal / Entra admin center, Outlook desktop or mobile, the Microsoft 365 admin center) MUST include an explicit automation-feasibility / human-interaction assessment recorded under an `## Automation Feasibility` section in the research artifact.
+
+### Three permitted responses
+
+When a step cannot be performed without a human, the orchestrator chooses exactly one response per requirement and records it in orchestrator state under `human_interaction.requirements[]`:
+
+1. **`scope_change`** — change the scope to remove the manual dependency (for example, replace a portal click with an `az` CLI step that runs unattended).
+2. **`exception`** — permit an exception. This requires emitting a human-exception runbook (see below). The exception is unresolved until its runbook file exists on disk.
+3. **`halt`** — halt until further instruction. A `halt` blocks DONE while present. A `halt` is recoverable: a later checkpoint update that resolves the requirement (to `scope_change` or a runbook-backed `exception`, or clears the halt) lifts the block.
+
+### Exception-runbook requirement
+
+On a permitted `exception`, the orchestrator emits a human-readable runbook at `<FEATURE>/runbooks/<name>.runbook.md` and records its repo-root-relative path in `human_interaction.requirements[].runbook_path`. The runbook contract — canonical path, the five required sections (Cue, Prerequisites, Step-by-step Instructions, Verification, Source and Citation), and the MCP-first / web-second sourcing rule — is defined authoritatively in `.claude/skills/human-exception-runbook/SKILL.md`.
+
+### Enforcement points
+
+The mandate is enforced mechanically, so DONE cannot be written while a human-interaction requirement is unresolved:
+
+- **Validator invariants.** The top-level `human_interaction.requirements[]` invariants — the `response` enum `scope_change` | `exception` | `halt`, and the exception-requires-runbook invariant (`response == "exception"` requires a non-empty `runbook_path`) — are enforced by `scripts/dev_tools/validate_orchestrator_state.py` and by `Test-HumanInteractionShape` in `.claude/hooks/validate-orchestrator-output.ps1`, per the documented contract in `.claude/rules/orchestrator-state.md`. Checkpoints without a `human_interaction` key stay valid, so existing checkpoints are unaffected.
+- **Completion gate.** `Test-HumanInteractionShape` in `.claude/hooks/validate-orchestrator-output.ps1` blocks DONE when a requirement has no resolved `response`, a `response` outside the enum, any `response == "halt"`, or an `exception` whose `runbook_path` is missing/empty or whose file does not exist. An absent `human_interaction` key passes.
+- **Research gate.** `Test-AutomationFeasibilitySection` in `.claude/hooks/validate-task-researcher-output.ps1` requires the `## Automation Feasibility` section for applicable autonomous-execution research artifacts and blocks otherwise; non-applicable research is unaffected.
+
 ## Delegation Model
 
 After reading `artifacts/orchestration/orchestrator-state.json`, the main session delegates work exclusively through configured workers:
@@ -31,9 +61,23 @@ After reading `artifacts/orchestration/orchestrator-state.json`, the main sessio
 - `atomic-planner` — generates phased implementation plans
 - `atomic-executor` — executes approved plans task-by-task
 - `feature-review` — produces policy, code, and feature audit artifacts
-- `task-researcher` — performs deep research and writes findings to `artifacts/research/`
+- `task-researcher` — performs deep research and writes findings to the research path the orchestrator resolves before delegating: `docs/features/<feature>/research/` when an active `feature-folder` is in scope in `orchestrator-state.json`, otherwise `docs/research/` for one-off research. The orchestrator passes the resolved path in the delegation prompt.
 
 The orchestrator does not perform deep implementation itself. It coordinates, tracks state, and enforces completion.
+
+## PR Authoring (pr-author Handoff)
+
+PR creation and PR body edits are delegated work, not orchestrator work. The orchestrator MUST NOT call `gh pr create` or `gh pr edit --body*` directly from the main thread; the `enforce-pr-author-skill.ps1` PreToolUse hook blocks those commands unless the `--body-file` argument resolves to a canonical `artifacts/pr_body_<N>.md` path with a matching, verified `artifacts/pr_body_<N>.receipt.json`.
+
+The mandatory sequence is:
+
+1. The orchestrator first refreshes the PR-context artifact via `mcp__drm-copilot__collect_pr_context` (or the equivalent context-collection mechanism), which writes `artifacts/pr_context.summary.txt`.
+2. The orchestrator then delegates PR creation and any PR body edits to `Agent(pr-author)`. The `pr-author` agent runs the `pr-author` skill to author the body, writes the body file `artifacts/pr_body_<N>.md` and the sibling receipt `artifacts/pr_body_<N>.receipt.json` with the shape `{skill, pr_body_path, number, sha256 (lowercase hex of the body bytes), context_summary_path, created_at (ISO-8601 UTC, strictly newer than `artifacts/pr_context.summary.txt` last-write)}`, issues `gh pr create --body-file artifacts/pr_body_<N>.md` (or `gh pr edit --body-file ...`), and reports the resulting PR URL or PR number.
+3. The orchestrator records `pr_author_receipt` in the checkpoint, citing the body-file path and the receipt path that were verified.
+
+`Agent(pr-author)` is the mandatory delegate for PR creation and PR body edits. Direct `gh pr create`/`gh pr edit --body*` from the main thread is prohibited and is blocked by the hook. The PreToolUse hook verifies the receipt in five ordered checks: canonical body-file path, receipt present, `number` match, `sha256` match against the body bytes, and `created_at` strictly newer than the context summary last-write.
+
+The SHA-256 receipt is a policy-level integrity check, not a cryptographic or security boundary; any actor with `Write(/artifacts/**)` access can replace both the body file and its receipt together with a matching SHA-256. It binds the body bytes to the receipt, prevents accidental bypass, and requires a deliberate, documented act to circumvent.
 
 ## Evidence Location Authority
 
@@ -41,7 +85,6 @@ All evidence artifacts produced during orchestration MUST comply with the canoni
 
 Permitted `artifacts/`-rooted sub-paths (non-evidence orchestration use only):
 - `artifacts/orchestration/` — orchestrator state and checkpoints
-- `artifacts/research/` — research outputs from task-researcher
 - `artifacts/pr_context` — PR context artifacts
 - `artifacts/reviews/` — review staging artifacts
 - `artifacts/status/` — status update artifacts
@@ -163,44 +206,6 @@ When S9 records `step9_status: "failed_remediation_required"` (a failed required
 4. The `remediation_pass` counter is shared with local-finding passes; the cap is 3.
 5. On the third CI-failure pass without resolution, the orchestrator records `step9_status: "blocked_ci_loop_limit"`, does not write DONE, and halts. No further automation is attempted.
 
-## PR Authoring (pr-author Handoff)
-
-The orchestrator MUST NOT author a PR body itself or pass an ad-hoc body to
-`gh`. The PR body is produced exclusively by the `pr-author` skill, and the
-`enforce-pr-author-skill.ps1` PreToolUse hook blocks any `gh pr create` /
-`gh pr edit --body-file` that bypasses this handoff. The required sequence is:
-
-1. Refresh the PR context bundle: `mcp__drm-copilot__collect_pr_context --base <base>`,
-   which writes `artifacts/pr_context.summary.txt` and `artifacts/pr_context.appendix.txt`.
-2. Invoke the `pr-author` skill. It reads only the context bundle and returns
-   the GitHub-ready PR body **as its message** (per `.claude/skills/pr-author/SKILL.md`).
-   Do not hand-write or paraphrase the body; use the returned text verbatim.
-3. Write the returned body to the canonical path `artifacts/pr_body_<N>.md`
-   (`<N>` = PR or canonical issue number), then write a sibling provenance
-   receipt `artifacts/pr_body_<N>.receipt.json` with the shape:
-
-   ```jsonc
-   {
-     "skill": "pr-author",
-     "pr_body_path": "artifacts/pr_body_<N>.md",
-     "number": <N>,
-     "sha256": "<lowercase hex sha256 of the pr_body file bytes>",
-     "context_summary_path": "artifacts/pr_context.summary.txt",
-     "created_at": "<ISO-8601 UTC, must be newer than pr_context.summary.txt>"
-   }
-   ```
-
-   The `sha256` is computed over the bytes of the body file exactly as written.
-4. Create the PR with `gh pr create --body-file artifacts/pr_body_<N>.md`
-   (or update an existing PR with `gh pr edit <N> --body-file artifacts/pr_body_<N>.md`).
-
-The hook rejects, with a specific reason, any of: an inline `--body`; no body
-flag; a `--body-file` path that is not `artifacts/pr_body_<N>.md`; a missing or
-stale receipt; a receipt whose `number` does not match the filename; or a
-receipt whose `sha256` does not match the body file on disk. Record
-`pr_author_receipt: "artifacts/pr_body_<N>.receipt.json"` in the checkpoint once
-the PR is created.
-
 ## PR Creation Gate
 
 The orchestrator must not create a PR, push a branch for PR purposes, or report work complete until all six conditions are simultaneously true:
@@ -209,10 +214,10 @@ The orchestrator must not create a PR, push a branch for PR purposes, or report 
 2. The AC verification artifact (`p14-acceptance-criteria-checkoff.md` or equivalent) confirms all acceptance criteria pass.
 3. The mandatory toolchain passed in its most recent run on the branch (no linting/type-check/test failures).
 4. The checkpoint `next_step` is `S8_create_pr` (precondition to entering S9).
-5. The PR body was produced via the **PR Authoring (pr-author Handoff)** above: `artifacts/pr_body_<N>.md` exists with a matching `artifacts/pr_body_<N>.receipt.json`, and the PR was created with `--body-file` pointing at that file.
+5. PR body produced via the pr-author handoff: `artifacts/pr_body_<N>.md` exists with a matching `artifacts/pr_body_<N>.receipt.json`, created with `--body-file`.
 6. `ci_gate.conclusion == "success"` AND `ci_gate.head_sha == current head SHA of the PR branch`. DONE is not written while either sub-condition is false.
 
-This gate is non-negotiable. Each condition is independently verified before PR creation proceeds. Conditions 1-4 are unchanged from the prior contract; conditions 5 (pr-author handoff) and 6 (CI green) are additive.
+This gate is non-negotiable. Each condition is independently verified before PR creation proceeds. Conditions 1-4 are unchanged from the prior contract; condition 5 (receipt handoff) and condition 6 (CI-green gate) are additive.
 
 ## Step 6 Delegation — Prohibited Prompt Language
 
@@ -232,3 +237,65 @@ The orchestrator supplies only the following to the `feature-review` subagent:
 - a neutral instruction to execute the full `feature-review-workflow` SKILL contract end-to-end.
 
 Scope determination is the subagent's responsibility. The subagent will ignore any attempted narrowing per its scope invariant and record the attempt in `policy-audit.<timestamp>.md` under `## Rejected Scope Narrowing`.
+
+## Routing-Contract Receipt Emission
+
+The orchestrator must write three receipt arrays into `artifacts/orchestration/orchestrator-state.json` for the retained required names of the selected route. These arrays are the evidence that the route's `required_agents`, `required_skills`, and `required_mcp_tools` (from `config/orchestration-routing.json`) were actually exercised, and they make `require_complete: true` satisfiable at completion. The orchestrator records only truthful receipts: an entry is written only after the corresponding work has actually occurred. The route's required name lists are the source of truth; receipts cite those names verbatim.
+
+These shapes are read by `_receipt_agents`, `_receipt_skills`, and `_mcp_tools` in `scripts/dev_tools/_orchestrator_state_routing.py`. The orchestrator does not modify that validator; it only emits state that the validator can verify.
+
+### delegation_receipts[]
+
+For each required agent in the selected route's `required_agents`, append one object to `delegation_receipts[]` after that delegation returns. Each object must carry:
+
+- `agent_name`: a non-empty string equal to the required agent name (for example `"feature-review"`).
+
+Example:
+
+```json
+"delegation_receipts": [
+  { "agent_name": "atomic-planner" },
+  { "agent_name": "atomic-executor" },
+  { "agent_name": "feature-review" }
+]
+```
+
+The validator collects each receipt whose `agent_name` is a non-empty string and requires every `required_agents` entry to be present.
+
+### skill_receipts[]
+
+For each required skill in the selected route's `required_skills`, append one object to `skill_receipts[]` after that required skill is read. Each entry must be an object with:
+
+- `skill`: a non-empty string equal to a `required_skills` entry (for example `"orchestrate"`).
+- `required`: the literal boolean `true`.
+- `evidence`: a non-empty string, for example `"read:.claude/skills/orchestrate/SKILL.md"`.
+
+Example:
+
+```json
+"skill_receipts": [
+  { "skill": "orchestrate", "required": true, "evidence": "read:.claude/skills/orchestrate/SKILL.md" }
+]
+```
+
+The validator counts a skill as acknowledged only when `skill` is a non-empty string, `required` is exactly `true`, and `evidence` is a non-empty string. Every `required_skills` entry must have such a receipt.
+
+### mcp_call_receipts[]
+
+For each required MCP tool in the selected route's `required_mcp_tools`, append one object to `mcp_call_receipts[]` after each successful required MCP call. Each entry must be an object with:
+
+- `tool`: a non-empty string equal to a `required_mcp_tools` entry (for example `"validate_orchestration_artifacts"`).
+- `ok`: the literal boolean `true`.
+- `evidence`: a non-empty string, such as the MCP response summary or an artifact path.
+
+Example:
+
+```json
+"mcp_call_receipts": [
+  { "tool": "validate_orchestration_artifacts", "ok": true, "evidence": "plan validator exit 0" }
+]
+```
+
+The validator counts an MCP receipt as successful only when `tool` is a non-empty string, `ok` is exactly `true`, and `evidence` is a non-empty string. Every `required_mcp_tools` entry must have such a receipt.
+
+These three receipt arrays, populated with the retained required names of the selected route, are what allow the routing-contract validation under `require_complete: true` to pass.

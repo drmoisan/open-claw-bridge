@@ -153,8 +153,30 @@ function Get-PromotionMcpOnlyBlockDecision {
     }
 
     return [ordered]@{
-        decision = 'block'
-        reason   = $Reason
+        hookSpecificOutput = [ordered]@{
+            hookEventName            = 'PreToolUse'
+            permissionDecision       = 'deny'
+            permissionDecisionReason = $Reason
+        }
+    }
+}
+
+function Get-PromotionMcpOnlyAllowDecision {
+    <#
+    .SYNOPSIS
+        Construct the structured allow decision for a permitted Bash command.
+    .OUTPUTS
+        System.Collections.Specialized.OrderedDictionary
+    #>
+    [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
+    param()
+
+    return [ordered]@{
+        hookSpecificOutput = [ordered]@{
+            hookEventName      = 'PreToolUse'
+            permissionDecision = 'allow'
+        }
     }
 }
 
@@ -177,7 +199,7 @@ function Invoke-PromotionMcpOnlyDecision {
     )
 
     if (-not $ToolInputRaw) {
-        return [ordered]@{ decision = 'allow' }
+        return Get-PromotionMcpOnlyAllowDecision
     }
 
     try {
@@ -188,7 +210,7 @@ function Invoke-PromotionMcpOnlyDecision {
 
     $commandText = $toolInput.command
     if (-not $commandText) {
-        return [ordered]@{ decision = 'allow' }
+        return Get-PromotionMcpOnlyAllowDecision
     }
 
     $reason = Get-PromotionBypassReason -CommandText $commandText
@@ -196,7 +218,7 @@ function Invoke-PromotionMcpOnlyDecision {
         return Get-PromotionMcpOnlyBlockDecision -Reason $reason
     }
 
-    return [ordered]@{ decision = 'allow' }
+    return Get-PromotionMcpOnlyAllowDecision
 }
 
 # Allow dot-sourcing in tests without executing the entrypoint.
@@ -211,6 +233,6 @@ try {
     exit 1
 }
 
-$decision | ConvertTo-Json -Compress | Write-Output
+$decision | ConvertTo-Json -Compress -Depth 5 | Write-Output
 
 exit 0

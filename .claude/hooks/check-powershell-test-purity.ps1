@@ -20,9 +20,9 @@
       - subprocess execution (Start-Process with raw executables)
       - time-based flakiness (Start-Sleep)
 
-    If the content contains any forbidden pattern, the script writes a JSON response
-    to stdout with 'decision': 'block' and exits with code 0 to let Claude Code surface
-    the reason.
+    If the content contains any forbidden pattern, the script writes a PreToolUse JSON
+    response to stdout with hookSpecificOutput.permissionDecision = 'deny' and exits with
+    code 0 to let Claude Code surface the reason.
 
 .NOTES
     Compatible with PowerShell 7+.
@@ -32,80 +32,118 @@
 [CmdletBinding()]
 param()
 
-$toolInputRaw = $env:CLAUDE_TOOL_INPUT
-if (-not $toolInputRaw) {
-    exit 0
-}
+function Get-PowerShellTestPurityBlockDecision {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
+    param(
+        [Parameter(Mandatory)]
+        [string] $Reason
+    )
 
-try {
-    $toolInput = $toolInputRaw | ConvertFrom-Json -ErrorAction Stop
-}
-catch {
-    exit 0
-}
-
-$filePath = $toolInput.file_path
-if (-not $filePath) {
-    exit 0
-}
-
-$normalized = $filePath -replace '\\', '/'
-$isPowerShellTestFile = ($normalized -match '(^|/)tests/.*\.ps1$') -or ($normalized -match '\.Tests\.ps1$')
-if (-not $isPowerShellTestFile) {
-    exit 0
-}
-
-$content = $null
-if ($null -ne $toolInput.content) {
-    $content = [string]$toolInput.content
-}
-elseif ($null -ne $toolInput.new_string) {
-    $content = [string]$toolInput.new_string
-}
-
-if (-not $content) {
-    exit 0
-}
-
-$forbiddenPatterns = @(
-    @{ Pattern = '(?m)^\s*Mock\s+git\b'; Reason = 'direct Mock git forbidden in Pester tests; mock the Invoke-GitExe wrapper instead' },
-    @{ Pattern = '(?m)^\s*Mock\s+gh\b'; Reason = 'direct Mock gh forbidden in Pester tests; mock the Invoke-GhExe wrapper instead' },
-    @{ Pattern = '(?m)^\s*Mock\s+actionlint\b'; Reason = 'direct Mock actionlint forbidden in Pester tests; mock the Invoke-ActionlintExe wrapper instead' },
-    @{ Pattern = "(?m)^\s*Mock\s+['""]git['""]"; Reason = 'direct Mock ''git'' forbidden in Pester tests; mock the Invoke-GitExe wrapper instead' },
-    @{ Pattern = "(?m)^\s*Mock\s+['""]gh['""]"; Reason = 'direct Mock ''gh'' forbidden in Pester tests; mock the Invoke-GhExe wrapper instead' },
-    @{ Pattern = '\bNew-TemporaryFile\b'; Reason = 'New-TemporaryFile forbidden in Pester unit tests' },
-    @{ Pattern = '\[System\.IO\.Path\]::GetTempFileName'; Reason = 'temporary files forbidden in Pester unit tests' },
-    @{ Pattern = '\[System\.IO\.Path\]::GetTempPath'; Reason = 'temp path usage forbidden in Pester unit tests' },
-    @{ Pattern = '\$env:TEMP\b'; Reason = '$env:TEMP usage forbidden in Pester unit tests' },
-    @{ Pattern = '\$env:TMP\b'; Reason = '$env:TMP usage forbidden in Pester unit tests' },
-    @{ Pattern = '\bInvoke-WebRequest\b'; Reason = 'network access (Invoke-WebRequest) forbidden in Pester unit tests' },
-    @{ Pattern = '\bInvoke-RestMethod\b'; Reason = 'network access (Invoke-RestMethod) forbidden in Pester unit tests' },
-    @{ Pattern = '\[System\.Net\.Http\.'; Reason = 'System.Net.Http usage forbidden in Pester unit tests' },
-    @{ Pattern = '\[System\.Net\.WebRequest\]'; Reason = 'System.Net.WebRequest usage forbidden in Pester unit tests' },
-    @{ Pattern = '\[System\.Net\.Sockets\.'; Reason = 'raw socket access forbidden in Pester unit tests' },
-    @{ Pattern = '\bStart-Process\b'; Reason = 'Start-Process forbidden in Pester unit tests; mock the wrapper seam instead' },
-    @{ Pattern = '\bStart-Sleep\b'; Reason = 'Start-Sleep forbidden in Pester unit tests; avoid timing hacks' }
-)
-
-$violations = @()
-foreach ($entry in $forbiddenPatterns) {
-    if ($content -match $entry.Pattern) {
-        $violations += $entry.Reason
+    [ordered]@{
+        hookSpecificOutput = [ordered]@{
+            hookEventName            = 'PreToolUse'
+            permissionDecision       = 'deny'
+            permissionDecisionReason = $Reason
+        }
     }
 }
 
-if ($violations.Count -eq 0) {
-    exit 0
+function Test-PowerShellTestFilePath {
+    [CmdletBinding()]
+    [OutputType([bool])]
+    param(
+        [Parameter(Mandatory)]
+        [string] $FilePath
+    )
+
+    $normalized = $FilePath -replace '\\', '/'
+    return (($normalized -match '(^|/)tests/.*\.ps1$') -or ($normalized -match '\.Tests\.ps1$'))
 }
 
-$uniqueViolations = $violations | Select-Object -Unique
-$reason = "PowerShell unit test purity violations in '$filePath': " + ($uniqueViolations -join '; ') + ". Replace with wrapper-seam mocks, in-memory fakes, or pure code paths per .claude/rules/powershell.md."
+function Invoke-PowerShellTestPurityDecision {
+    [CmdletBinding()]
+    [OutputType([System.Collections.Specialized.OrderedDictionary])]
+    param(
+        [string] $ToolInputRaw
+    )
 
-$response = @{
-    decision = 'block'
-    reason   = $reason
-} | ConvertTo-Json -Compress
+    if (-not $ToolInputRaw) {
+        return $null
+    }
 
-Write-Output $response
+    try {
+        $toolInput = $ToolInputRaw | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        return $null
+    }
+
+    $filePath = $toolInput.file_path
+    if (-not $filePath) {
+        return $null
+    }
+
+    if (-not (Test-PowerShellTestFilePath -FilePath $filePath)) {
+        return $null
+    }
+
+    $content = $null
+    if ($null -ne $toolInput.content) {
+        $content = [string]$toolInput.content
+    }
+    elseif ($null -ne $toolInput.new_string) {
+        $content = [string]$toolInput.new_string
+    }
+
+    if (-not $content) {
+        return $null
+    }
+
+    $forbiddenPatterns = @(
+        @{ Pattern = '(?m)^\s*Mock\s+git\b'; Reason = 'direct Mock git forbidden in Pester tests; mock the Invoke-GitExe wrapper instead' },
+        @{ Pattern = '(?m)^\s*Mock\s+gh\b'; Reason = 'direct Mock gh forbidden in Pester tests; mock the Invoke-GhExe wrapper instead' },
+        @{ Pattern = '(?m)^\s*Mock\s+actionlint\b'; Reason = 'direct Mock actionlint forbidden in Pester tests; mock the Invoke-ActionlintExe wrapper instead' },
+        @{ Pattern = "(?m)^\s*Mock\s+['""]git['""]"; Reason = 'direct Mock ''git'' forbidden in Pester tests; mock the Invoke-GitExe wrapper instead' },
+        @{ Pattern = "(?m)^\s*Mock\s+['""]gh['""]"; Reason = 'direct Mock ''gh'' forbidden in Pester tests; mock the Invoke-GhExe wrapper instead' },
+        @{ Pattern = '\bNew-TemporaryFile\b'; Reason = 'New-TemporaryFile forbidden in Pester unit tests' },
+        @{ Pattern = '\[System\.IO\.Path\]::GetTempFileName'; Reason = 'temporary files forbidden in Pester unit tests' },
+        @{ Pattern = '\[System\.IO\.Path\]::GetTempPath'; Reason = 'temp path usage forbidden in Pester unit tests' },
+        @{ Pattern = '\$env:TEMP\b'; Reason = '$env:TEMP usage forbidden in Pester unit tests' },
+        @{ Pattern = '\$env:TMP\b'; Reason = '$env:TMP usage forbidden in Pester unit tests' },
+        @{ Pattern = '\bInvoke-WebRequest\b'; Reason = 'network access (Invoke-WebRequest) forbidden in Pester unit tests' },
+        @{ Pattern = '\bInvoke-RestMethod\b'; Reason = 'network access (Invoke-RestMethod) forbidden in Pester unit tests' },
+        @{ Pattern = '\[System\.Net\.Http\.'; Reason = 'System.Net.Http usage forbidden in Pester unit tests' },
+        @{ Pattern = '\[System\.Net\.WebRequest\]'; Reason = 'System.Net.WebRequest usage forbidden in Pester unit tests' },
+        @{ Pattern = '\[System\.Net\.Sockets\.'; Reason = 'raw socket access forbidden in Pester unit tests' },
+        @{ Pattern = '\bStart-Process\b'; Reason = 'Start-Process forbidden in Pester unit tests; mock the wrapper seam instead' },
+        @{ Pattern = '\bStart-Sleep\b'; Reason = 'Start-Sleep forbidden in Pester unit tests; avoid timing hacks' }
+    )
+
+    $violations = @()
+    foreach ($entry in $forbiddenPatterns) {
+        if ($content -match $entry.Pattern) {
+            $violations += $entry.Reason
+        }
+    }
+
+    if ($violations.Count -eq 0) {
+        return $null
+    }
+
+    $uniqueViolations = $violations | Select-Object -Unique
+    $reason = "PowerShell unit test purity violations in '$filePath': " + ($uniqueViolations -join '; ') + ". Replace with wrapper-seam mocks, in-memory fakes, or pure code paths per .claude/rules/powershell.md."
+
+    return Get-PowerShellTestPurityBlockDecision -Reason $reason
+}
+
+if ($MyInvocation.InvocationName -eq '.') {
+    return
+}
+
+$decision = Invoke-PowerShellTestPurityDecision -ToolInputRaw $env:CLAUDE_TOOL_INPUT
+if ($null -ne $decision -and $decision.hookSpecificOutput.permissionDecision -eq 'deny') {
+    $decision | ConvertTo-Json -Compress -Depth 5 | Write-Output
+}
+
 exit 0
-

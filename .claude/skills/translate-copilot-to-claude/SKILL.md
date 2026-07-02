@@ -154,10 +154,10 @@ The following content is **not** translated:
 
 For each classified section, compute a concrete target path:
 
-1. **Hook**: `.claude/hooks/<verb-noun>.ps1` where the verb is `check|enforce|validate` and the noun is the concern (for example, `check-powershell-test-purity.ps1`, `enforce-powershell-batch-budget.ps1`).
-2. **Rule**: `.claude/rules/<topic>.md` where topic is the language (`csharp.md`, `powershell.md`) or cross-cutting concern (`tonality.md`, `general-code-change.md`, `general-unit-test.md`).
-3. **Skill**: `.claude/skills/<kebab-case-name>/SKILL.md`. Prefer verb-first names for action skills (`review-feature`, `invoke-powershell-engineer`) and topic names for contract skills (`powershell-qa-gate`, `atomic-plan-contract`).
-4. **Agent**: `.claude/agents/<kebab-case-name>.md`. Normalize underscores to hyphens (`powershell_typed_engineer` -> `powershell-typed-engineer`).
+1. **Hook**: `.claude/hooks/<verb-noun>.ps1` where the verb is `check|enforce|validate` and the noun is the concern (for example, `check-python-test-purity.ps1`, `enforce-python-batch-budget.ps1`).
+2. **Rule**: `.claude/rules/<topic>.md` where topic is the language (`python.md`, `csharp.md`, `powershell.md`, `typescript.md`) or cross-cutting concern (`tonality.md`, `general-code-change.md`, `general-unit-test.md`).
+3. **Skill**: `.claude/skills/<kebab-case-name>/SKILL.md`. Prefer verb-first names for action skills (`review-feature`, `implement-python`, `invoke-python-engineer`) and topic names for contract skills (`python-qa-gate`, `atomic-plan-contract`).
+4. **Agent**: `.claude/agents/<kebab-case-name>.md`. Normalize underscores to hyphens (`python_typed_engineer` -> `python-typed-engineer`).
 5. **CLAUDE.md**: single repo-wide file at the workspace root.
 6. **settings.json**: `.claude/settings.json` sections `hooks` and `permissions`.
 
@@ -198,10 +198,10 @@ Mode: <plan-only | apply>
 ## Mapping Table
 | Source Section | Classification | Target Path | Action |
 |---|---|---|---|
-| <source#section-anchor> | rule | .claude/rules/powershell.md#pester-rules | merge |
-| <source#section-anchor> | hook | .claude/hooks/check-powershell-test-purity.ps1 | add |
-| <source#section-anchor> | skill | .claude/skills/powershell-qa-gate/SKILL.md | add |
-| <source#section-anchor> | agent | .claude/agents/powershell-typed-engineer.md | merge |
+| <source#section-anchor> | rule | .claude/rules/python.md#pytest-rules | merge |
+| <source#section-anchor> | hook | .claude/hooks/check-python-test-purity.ps1 | add |
+| <source#section-anchor> | skill | .claude/skills/python-qa-gate/SKILL.md | add |
+| <source#section-anchor> | agent | .claude/agents/python-typed-engineer.md | merge |
 | <source#section-anchor> | settings | .claude/settings.json | add |
 
 ## Conflicts (require user decision)
@@ -279,7 +279,7 @@ Every completion response must include:
 | `.github/agents/*.agent.md` identity frontmatter | `.claude/agents/<name>.md` frontmatter | Convert `tools:` to Claude tool names. |
 | `.github/agents/*.agent.md` "Absolute guardrails / hard gate" | `.claude/hooks/*.ps1` + `settings.json` | Hooks enforce; rules merely document. |
 | `.github/agents/*.agent.md` "Workflow / Phase X" | `.claude/skills/<workflow>/SKILL.md` | Split per phase when phases are independent. |
-| `.github/agents/*.agent.md` "Design rules / Testing rules" | `.claude/rules/<language>.md` | Merge under Design Rules / Testing Rules subheadings. |
+| `.github/agents/*.agent.md` "Design rules / Testing rules" | `.claude/rules/<language>.md` | Merge under Design Rules / Pytest Rules subheadings. |
 | `.github/agents/*.agent.md` "Handoffs" | Reference existing routing skills | Do not duplicate. |
 | `.github/agents/*.agent.md` "Reporting requirements" | `.claude/skills/<name>-qa-gate/SKILL.md` or the QA gate skill | Procedure, not identity. |
 | `.github/prompts/*.prompt.md` | `.claude/skills/<action-name>/SKILL.md` | One skill per prompt. |
@@ -288,8 +288,8 @@ Every completion response must include:
 ## Invocation Examples
 
 - Translate a single agent persona, plan only:
-  `translate-copilot-to-claude .github/agents/powershell-typed-engineer.agent.md`
+  `translate-copilot-to-claude .github/agents/python-typed-engineer.agent.md`
 - Translate a set of instruction files and apply:
-  `translate-copilot-to-claude .github/instructions/powershell-code-change.instructions.md .github/instructions/powershell-unit-test.instructions.md mode=apply`
+  `translate-copilot-to-claude .github/instructions/python-code-change.instructions.md .github/instructions/python-unit-test.instructions.md mode=apply`
 - Translate an entire agent bundle (persona + its referenced instructions):
   `translate-copilot-to-claude .github/agents/csharp-typed-engineer.agent.md .github/instructions/csharp-code-change.instructions.md .github/instructions/csharp-unit-test.instructions.md target-scope=all`

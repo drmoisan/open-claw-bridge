@@ -8,11 +8,6 @@ tools:
   - "Bash(git diff *)"
   - "Bash(git log *)"
   - "Write(/docs/features/active/**)"
-  - mcp__drm-copilot__resolve_policy_audit_template_asset
-  - mcp__drm-copilot__run_poshqc_format
-  - mcp__drm-copilot__run_poshqc_analyze
-  - mcp__drm-copilot__run_poshqc_test
-  - mcp__drm-copilot__validate_orchestration_artifacts
 skills:
   - policy-compliance-order
   - acceptance-criteria-tracking

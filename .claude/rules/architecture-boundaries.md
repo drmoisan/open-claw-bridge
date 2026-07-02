@@ -1,53 +1,46 @@
 ---
 paths:
+  - "**/*.ts"
   - "**/*.cs"
-  - "**/*.csproj"
-description: Architecture boundary enforcement rules for the COM-based MailBridge solution.
+description: Architecture boundary enforcement rules for the No-COM architecture.
 ---
 
 # Architecture Boundaries
 
 Architecture boundary enforcement is a uniform gate across all tiers (T1–T4). Violations block PRs.
 
-This solution is a Windows-first .NET 10 system that reads Outlook through COM and exposes that data to a local agent over a named pipe and loopback HTTP. The boundaries below keep Outlook COM interop isolated to the bridge host and keep the dependency graph acyclic and layered.
-
 ## Enforcement Tools
 
-- **Compile-time project graph (primary):** the `ProjectReference` edges in the `*.csproj` files are the enforced boundary. A reference that violates the rules below fails the build or is rejected in review.
-- **`NetArchTest.Rules` (optional, when added):** automated assertions may be added in a `*.ArchitectureTests` test project to assert namespace/assembly dependency rules. There is no architecture-test project today; until one exists, reviewers verify the rules against the project graph.
+- **TypeScript:** `dependency-cruiser`. Configuration file pattern: `.dependency-cruiser.cjs`.
+- **.NET (when the backend exists):** `NetArchTest.Rules`. Test project naming pattern: `*.ArchitectureTests`.
 
-There is no TypeScript frontend, Office.js layer, or `dependency-cruiser` configuration in this repository.
+## No-COM Architecture Rules (enforceable assertions)
 
-## Project Dependency Rules (enforceable assertions)
+Production code in this repository must satisfy each of the following assertions. Each assertion is enforced by `dependency-cruiser` (TypeScript) or `NetArchTest.Rules` (.NET) where applicable; legacy import utilities, when added, must satisfy the same assertions.
 
-The solution projects and their allowed dependencies:
+1. New runtime code must not reference VSTO APIs (`Microsoft.Office.Tools.*`).
+2. New runtime code must not reference Outlook desktop automation APIs (`Microsoft.Office.Interop.Outlook`).
+3. New runtime code must not expose COM-visible interfaces (`[ComVisible(true)]` attribute is banned in production code).
+4. New runtime code must not use Ribbon extensibility callbacks tied to the desktop object model.
+5. New runtime code must not depend on local Outlook event streams.
+6. New runtime code must not depend on Outlook user-defined fields as the primary state store.
+7. Mailbox data must be accessed only through Office.js or Microsoft Graph.
+8. Business behavior must be implemented in the backend or in host-neutral domain or application modules.
+9. Client UI must be implemented as web UI.
+10. Legacy integration, when required, must be limited to offline data import from files or exported data.
 
-1. `OpenClaw.MailBridge.Contracts` is the shared contract core. It must depend on **no other solution project**.
-2. `OpenClaw.MailBridge` (the COM bridge host) may depend only on `OpenClaw.MailBridge.Contracts`.
-3. `OpenClaw.MailBridge.Client` may depend only on `OpenClaw.MailBridge.Contracts`. It communicates with the bridge host at runtime over the **named pipe**, not through a project reference.
-4. `OpenClaw.HostAdapter.Contracts` may depend only on `OpenClaw.MailBridge.Contracts`.
-5. `OpenClaw.HostAdapter` may depend only on `OpenClaw.HostAdapter.Contracts` and `OpenClaw.MailBridge.Contracts`. It invokes the client **executable** as a process and must **not** reference `OpenClaw.MailBridge` (the COM host) or perform Outlook COM itself.
-6. `OpenClaw.Core` may depend only on `OpenClaw.HostAdapter.Contracts`. It reaches mail and calendar data at runtime over **loopback HTTP** to the HostAdapter and must not reference the bridge host, the client, or the COM layer.
-7. No circular project references are permitted.
+## Layer Boundary Assertions (TypeScript)
 
-## COM Confinement Rules (enforceable assertions)
+- `src/taskpane/` and `src/commands/` must not import from backend internals.
+- Domain modules must not import from Office.js, Microsoft Graph SDK, or any infrastructure adapter.
+- Adapters may import from domain; domain must not import from adapters.
 
-1. Outlook COM interop (late-bound Outlook automation, `Microsoft.Office.Interop.Outlook`, `Marshal` COM helpers, active-object resolution) must exist **only in `OpenClaw.MailBridge`**.
-2. All Outlook COM calls run on a single dedicated STA thread within `OpenClaw.MailBridge`.
-3. The web projects (`OpenClaw.HostAdapter`, `OpenClaw.Core`) must not pull Outlook COM into their dependency closure. This is preserved by routing through the client process and HTTP rather than linking the bridge host.
-4. COM objects must be released deterministically; runtime callable wrappers must not accumulate.
+## Layer Boundary Assertions (.NET, applies once the backend exists)
 
-## Data-Flow Direction
-
-Mailbox data flows in one direction and must not be short-circuited:
-
-```
-Outlook  --COM-->  OpenClaw.MailBridge  --named pipe-->  OpenClaw.MailBridge.Client
-       --process invocation-->  OpenClaw.HostAdapter  --loopback HTTP-->  OpenClaw.Core / OpenClaw agent
-```
-
-Downstream layers (Client, HostAdapter, Core, agent) consume cached, contract-shaped data; they do not call Outlook directly.
+- `TaskMaster.Domain` must have zero references to Outlook PIA, VSTO, or Office.js types.
+- `TaskMaster.Application` may depend on `TaskMaster.Domain` only.
+- Adapter projects may depend on `TaskMaster.Domain` and `TaskMaster.Application`; domain may not depend on adapters.
 
 ## Enforcement Outcome
 
-Violations of any rule above are PR-blocking findings. The dependency rules are enforced by the build (a disallowed `ProjectReference` is a defect) and by review of the project graph; COM-confinement and data-flow rules are enforced by review, and by `NetArchTest.Rules` assertions if and when a `*.ArchitectureTests` project is added.
+Violations of any rule above are PR-blocking findings. CI runs the architecture-boundary stage on every PR; a non-zero violation count fails the stage and prevents merge.

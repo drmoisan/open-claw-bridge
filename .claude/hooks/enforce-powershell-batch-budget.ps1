@@ -26,10 +26,10 @@
     before the session starts, or by writing {"prodCap": N, "testCap": M} into the
     state file.
 
-    When the cap would be exceeded by a new file, the script emits a JSON response with
-    'decision': 'block' and exits 0. The session must explicitly reset the counter by
-    deleting the state file before starting a new batch. Files already counted are
-    always allowed through.
+    When the cap would be exceeded by a new file, the script emits a PreToolUse JSON
+    response with hookSpecificOutput.permissionDecision = 'deny' and exits 0. The session
+    must explicitly reset the counter by deleting the state file before starting a new
+    batch. Files already counted are always allowed through.
 
 .NOTES
     Compatible with PowerShell 7+.
@@ -90,8 +90,11 @@ function Get-PowerShellBatchBudgetBlockDecision {
     )
 
     $decision = [ordered]@{
-        decision = 'block'
-        reason   = $Reason
+        hookSpecificOutput = [ordered]@{
+            hookEventName            = 'PreToolUse'
+            permissionDecision       = 'deny'
+            permissionDecisionReason = $Reason
+        }
     }
     if ($State) {
         $decision.state = $State
@@ -116,7 +119,7 @@ function Invoke-PowerShellBatchBudgetDecision {
 
     $normalized = $FilePath -replace '\\', '/'
     if ($normalized -notmatch '\.(ps1|psm1|psd1)$') {
-        return [ordered]@{ decision = 'allow'; state = $State; shouldWriteState = $false }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' }; state = $State; shouldWriteState = $false }
     }
 
     $isTestFile = ($normalized -match '(^|/)tests/.*\.ps1$') -or ($normalized -match '\.Tests\.ps1$')
@@ -125,7 +128,7 @@ function Invoke-PowerShellBatchBudgetDecision {
     $kind = if ($isTestFile) { 'test' } else { 'production' }
 
     if ($targetList -contains $normalized) {
-        return [ordered]@{ decision = 'allow'; state = $State; shouldWriteState = $false }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' }; state = $State; shouldWriteState = $false }
     }
 
     if ($targetList.Count -ge $cap) {
@@ -141,7 +144,7 @@ function Invoke-PowerShellBatchBudgetDecision {
         $State.prodFiles = @($State.prodFiles) + @($normalized)
     }
 
-    return [ordered]@{ decision = 'allow'; state = $State; shouldWriteState = $true }
+    return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' }; state = $State; shouldWriteState = $true }
 }
 
 function Invoke-PowerShellBatchBudgetHook {
@@ -163,7 +166,7 @@ function Invoke-PowerShellBatchBudgetHook {
     )
 
     if (-not $ToolInputRaw) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     try {
@@ -174,12 +177,12 @@ function Invoke-PowerShellBatchBudgetHook {
 
     $filePath = $toolInput.file_path
     if (-not $filePath) {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $normalized = $filePath -replace '\\', '/'
     if ($normalized -notmatch '\.(ps1|psm1|psd1)$') {
-        return [ordered]@{ decision = 'allow' }
+        return [ordered]@{ hookSpecificOutput = [ordered]@{ hookEventName = 'PreToolUse'; permissionDecision = 'allow' } }
     }
 
     $stateDir = Join-Path -Path $Root -ChildPath '.claude/state'
@@ -230,9 +233,9 @@ if ($env:CLAUDE_POWERSHELL_BUDGET_TEST -match '^\d+$') {
 }
 
 $decision = Invoke-PowerShellBatchBudgetHook -ToolInputRaw $env:CLAUDE_TOOL_INPUT -SessionId $sessionId -ProdCap $prodCap -TestCap $testCap
-if ($decision.decision -eq 'block') {
+if ($decision.hookSpecificOutput.permissionDecision -eq 'deny') {
     $decision.Remove('state')
-    $decision | ConvertTo-Json -Compress | Write-Output
+    $decision | ConvertTo-Json -Compress -Depth 5 | Write-Output
 }
 
 exit 0

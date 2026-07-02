@@ -22,7 +22,9 @@ Claude Code auto-loads rules via path-scoped frontmatter in `.claude/rules/`. Th
 2) `.claude/rules/general-code-change.md` (cross-language code change policy)
 3) `.claude/rules/general-unit-test.md` (cross-language unit test policy)
 4) Language- or domain-specific rules based on files in scope:
+   - Python: `.claude/rules/python.md`, `.claude/rules/python-suppressions.md`
    - PowerShell: `.claude/rules/powershell.md`
+   - TypeScript: `.claude/rules/typescript.md`, `.claude/rules/typescript-suppressions.md`
    - C#: `.claude/rules/csharp.md`
 
 ## Hard Constraints (Baseline)
