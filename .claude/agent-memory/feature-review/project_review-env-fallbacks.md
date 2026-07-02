@@ -28,9 +28,11 @@ Two environment gaps recur when running feature review in this repo's worktrees:
 Also: no `validate_evidence_locations.py` exists in this repo — do the evidence-location scan with
 `git diff --name-only <base>..HEAD | grep -E '^artifacts/(baselines|baseline|qa|qa-gates|evidence|coverage|regression-testing|post-change)/'`.
 
-Third recurring quirk — **PR-context summary misclassifies C# branches as docs-only.** On both the
-#99 and #101 reviews (2026-07-02) `artifacts/pr_context.summary.txt` "Changed files overview"
-reported "Core logic changes: 0 files" while the authoritative git diff contained 7+ production
-and 4-5 test `.cs` files. Never scope from the summary's file categorization; always use
+Third recurring quirk — **PR-context summary misclassifies C# branches as docs-only.** On the
+#99, #101, and #103 reviews (2026-07-02) `artifacts/pr_context.summary.txt` "Changed files overview"
+reported "Core logic changes: 0 files" while the authoritative git diff contained 4-7+ production
+and 4-6 test `.cs` files. Never scope from the summary's file categorization; always use
 `git diff --stat <merge-base>..HEAD` and record the mismatch as an observation under Rejected
-Scope Narrowing (accepted pattern on both reviews).
+Scope Narrowing (accepted pattern on all three reviews). Newest accepted artifact-set templates
+after #99: #101 `2026-07-02-send-idempotency-dedupe-101/*.2026-07-02T12-27.md` and #103
+`2026-07-02-ordinary-mail-candidates-103/*.2026-07-02T13-36.md`.

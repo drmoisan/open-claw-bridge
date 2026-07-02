@@ -43,6 +43,14 @@ converts async methods, per-line cobertura cannot attest the changed lines — v
 explicitly in the audit (accepted disposition on the #99 review; pre-existing setting, not a
 finding against the branch, but recommend the runsettings follow-up as Info).
 
+Async masking recurred on #103 (2026-07-02): SchedulingWorker.Pipeline.cs showed identical
+instrumented figures (20/20 line, 2/4 branch) before and after a +63-line async fallback was
+added — the entire new body was invisible to cobertura. Same accepted disposition as #99:
+behavioral verification (fail-before EXIT-1 evidence + branch-both-ways tests incl. opt-out
+DataRows) with the exclusion stated explicitly in the audit. Useful technique: map the
+partial-condition line numbers to source at BOTH baseline and head to prove the residual
+branch misses are the same pre-existing members merely shifted by the added lines.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
