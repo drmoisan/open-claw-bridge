@@ -102,7 +102,8 @@ CREATE TABLE IF NOT EXISTS ingest_runs(
     finished_at_utc TEXT NOT NULL,
     error_message TEXT NULL
 );
-CREATE TABLE IF NOT EXISTS sent_actions(dedupe_key TEXT PRIMARY KEY, mailbox TEXT NOT NULL, message_id TEXT NOT NULL, action_type TEXT NOT NULL, recorded_at_utc TEXT NOT NULL);";
+CREATE TABLE IF NOT EXISTS sent_actions(dedupe_key TEXT PRIMARY KEY, mailbox TEXT NOT NULL, message_id TEXT NOT NULL, action_type TEXT NOT NULL, recorded_at_utc TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS series_moves(series_key TEXT NOT NULL, occurrence_start_utc TEXT NOT NULL, moved_at_utc TEXT NOT NULL, PRIMARY KEY(series_key, occurrence_start_utc));";
 
     /// <summary>
     /// The issue-#72 columns added to the Core <c>events</c> table on existing databases via
