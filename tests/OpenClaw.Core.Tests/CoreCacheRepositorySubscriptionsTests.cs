@@ -194,4 +194,44 @@ public sealed class CoreCacheRepositorySubscriptionsTests
         // Assert
         stored.Should().Be(record, "subscription state survives a repository restart");
     }
+
+    /// <summary>
+    /// An unparseable stored <c>expiration_utc</c> is data corruption (the column is
+    /// NOT NULL and always written via RenderUtc): reading the row must fail fast with
+    /// an <see cref="InvalidOperationException"/> naming the subscription id and the
+    /// column (remediation B-117-01 / CR-117-04, fix item 3(a)).
+    /// </summary>
+    [TestMethod]
+    public async Task GetSubscriptionAsync_with_unparseable_expiration_throws_naming_the_id_and_column()
+    {
+        // Arrange: upsert a valid record, then corrupt its expiration through a
+        // second connection on the same shared-cache database.
+        var connectionString = NewConnectionString("corrupt");
+        using var repo = new OpenClaw.Core.CoreCacheRepository(connectionString);
+        await repo.UpsertSubscriptionAsync(Record(), Now, CancellationToken.None);
+
+        await using (var corruptor = new SqliteConnection(connectionString))
+        {
+            await corruptor.OpenAsync();
+            var corrupt = corruptor.CreateCommand();
+            corrupt.CommandText =
+                "UPDATE graph_subscriptions SET expiration_utc = 'not-a-timestamp' "
+                + "WHERE subscription_id = 'sub-1';";
+            await corrupt.ExecuteNonQueryAsync();
+        }
+
+        // Act
+        var act = async () => await repo.GetSubscriptionAsync("sub-1", CancellationToken.None);
+
+        // Assert
+        (
+            await act.Should()
+                .ThrowAsync<InvalidOperationException>(
+                    "an unparseable stored expiration is corruption and must fail fast"
+                )
+        ).WithMessage(
+            "*sub-1*expiration_utc*",
+            "the error names the subscription id and the corrupt column"
+        );
+    }
 }

@@ -178,4 +178,42 @@ public sealed class GraphDeltaReconcilerTests
             .Which.Should()
             .Be(FinalDeltaLink, "the stored delta link is replayed verbatim");
     }
+
+    /// <summary>
+    /// A page body with no <c>value</c> property exercises the false arm of the
+    /// value-present-and-array gate in <c>ParseDeltaPage</c> (CR-117-02): nothing is
+    /// upserted and the walk still follows the nextLink to the terminal deltaLink page.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_page_without_a_value_property_upserts_nothing_and_completes_the_walk()
+    {
+        // Arrange: the first page carries only a nextLink (no "value" property).
+        const string noValuePage = """
+            {
+              "@odata.nextLink": "https://graph.example.test/v1.0/users/paula%40contoso.com/mailFolders/Inbox/messages/delta?$skiptoken=page2"
+            }
+            """;
+        var requestUris = new List<string>();
+        var handler = PagedHandler(requestUris, noValuePage, TerminalPage);
+        using var repository = new OpenClaw.Core.CoreCacheRepository(
+            NewConnectionString("novalue")
+        );
+        await repository.InitializeAsync();
+        var linkStore = new FakeDeltaLinkStore();
+        var reconciler = Reconciler(handler, repository, linkStore, new FakeTimeProvider(Now));
+
+        // Act
+        await reconciler.ReconcileAsync(Mailbox, CancellationToken.None);
+
+        // Assert
+        requestUris.Should().HaveCount(2, "the no-value page still walks to the terminal page");
+        (await repository.GetCountsAsync())
+            .Messages.Should()
+            .Be(0, "a page without a value property upserts nothing");
+        linkStore
+            .Links.Should()
+            .ContainSingle("the walk succeeds and persists the terminal deltaLink")
+            .Which.Should()
+            .Be(new KeyValuePair<string, string>(Mailbox, FinalDeltaLink));
+    }
 }

@@ -225,4 +225,57 @@ public sealed class NotificationDispatchWorkerTests
         );
         graphRequests.Should().BeEmpty("missed routing issues no Graph call from the manager");
     }
+
+    /// <summary>
+    /// A <see cref="TaskCanceledException"/> from the inner dispatch call (for example
+    /// an <c>HttpClient.Timeout</c>) while the stop token is NOT cancelled must not
+    /// terminate the hosted service: the broadened catch filter
+    /// (<c>when (!stoppingToken.IsCancellationRequested)</c>) logs Warning and the loop
+    /// continues to the next item (CR-117-03, fix item 5).
+    /// </summary>
+    [TestMethod]
+    public async Task Loop_continues_with_warning_when_the_inner_call_throws_TaskCanceledException_without_stop_requested()
+    {
+        // Arrange: the first item's fetch throws TaskCanceledException; the second succeeds.
+        var client = new Mock<IHostAdapterClient>(MockBehavior.Strict);
+        client
+            .Setup(c => c.GetMessageAsync("msg-cancel", null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new TaskCanceledException("Simulated HttpClient timeout."));
+        client
+            .Setup(c => c.GetMessageAsync("msg-after", null, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(SuccessEnvelope("msg-after", "req-fetch-3"));
+        var (worker, repository, _, queue, logger, _, _) = await BuildAsync(client, "taskcancel");
+        using var _repo = repository;
+        queue.TryEnqueue(new NotificationWorkItem("paula@contoso.com", "msg-cancel", "created"));
+        queue.TryEnqueue(new NotificationWorkItem("paula@contoso.com", "msg-after", "created"));
+
+        // Act: run the loop until the item after the failure lands, then stop cleanly.
+        await worker.StartAsync(CancellationToken.None);
+        var safety = 0;
+        while (await repository.GetMessageAsync("msg-after") is null)
+        {
+            if (++safety > 100_000)
+            {
+                throw new AssertFailedException(
+                    "The worker did not continue past the TaskCanceledException."
+                );
+            }
+
+            await Task.Yield();
+        }
+
+        await worker.StopAsync(CancellationToken.None);
+
+        // Assert
+        logger
+            .Entries.Should()
+            .ContainSingle("the non-stop-token cancellation is caught and logged")
+            .Which.Should()
+            .Match<(LogLevel Level, string Message)>(e =>
+                e.Level == LogLevel.Warning && e.Message.Contains("NotificationWorkItem")
+            );
+        (await repository.GetMessageAsync("msg-after"))
+            .Should()
+            .NotBeNull("the loop survives a TaskCanceledException and processes the next item");
+    }
 }

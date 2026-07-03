@@ -308,4 +308,100 @@ public sealed class GraphDeltaReconcilerRecoveryTests
         linkStore.Sets.Should().BeEmpty("no link is persisted on a failed walk");
         logger.Levels.Should().Contain(LogLevel.Warning);
     }
+
+    /// <summary>
+    /// An <c>@removed</c> entry without an <c>id</c> (absent or JSON null) is skipped
+    /// through the Debug path using the <c>"(unknown)"</c> placeholder and upserts
+    /// nothing (CR-117-02, `ParseDeltaPage` id-fallback arms).
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_removed_entry_without_an_id_is_skipped_with_debug_log_and_no_upsert()
+    {
+        // Arrange: one @removed entry with no id property and one with a null id.
+        const string removedWithoutIdPage = """
+            {
+              "value": [
+                { "@removed": { "reason": "deleted" } },
+                { "id": null, "@removed": { "reason": "deleted" } }
+              ],
+              "@odata.deltaLink": "https://graph.example.test/v1.0/users/paula%40contoso.com/mailFolders/Inbox/messages/delta?$deltatoken=after-unknown-removed"
+            }
+            """;
+        var requestUris = new List<string>();
+        var handler = GraphDeltaReconcilerTests.PagedHandler(requestUris, removedWithoutIdPage);
+        var (repository, _) = await NewRepositoryAsync("removednoid");
+        using var _repo = repository;
+        var linkStore = new FakeDeltaLinkStore();
+        var logger = new CapturingLogger<GraphDeltaReconciler>();
+        var reconciler = GraphDeltaReconcilerTests.Reconciler(
+            handler,
+            repository,
+            linkStore,
+            new FakeTimeProvider(GraphDeltaReconcilerTests.Now),
+            logger: logger
+        );
+
+        // Act
+        await reconciler.ReconcileAsync(Mailbox, CancellationToken.None);
+
+        // Assert
+        logger
+            .Entries.Where(e => e.Level == LogLevel.Debug && e.Message.Contains("(unknown)"))
+            .Should()
+            .HaveCount(2, "both id-less @removed entries are skipped using the placeholder");
+        (await repository.GetCountsAsync())
+            .Messages.Should()
+            .Be(0, "id-less @removed entries are skipped, not upserted");
+        linkStore
+            .Links.Should()
+            .ContainSingle("the walk still completes and persists the deltaLink");
+    }
+
+    /// <summary>
+    /// An unparseable entry inside <c>value</c> throws <see cref="System.Text.Json.JsonException"/>
+    /// in <c>ParseDeltaPage</c>: the executor maps it to a <c>TRANSPORT_FAILURE</c>
+    /// envelope and the walk records a failed <c>delta_reconcile</c> ingest run
+    /// (CR-117-02). A literal JSON <c>null</c> entry cannot reach the reconciler's
+    /// <c>?? throw new JsonException</c> arm because the preceding <c>@removed</c>
+    /// probe (<c>TryGetProperty</c>) requires an Object-kind element and throws
+    /// <c>InvalidOperationException</c> first, so this test pins the reachable
+    /// JsonException path: an entry whose <c>id</c> is a number, not a string.
+    /// </summary>
+    [TestMethod]
+    public async Task Reconcile_unparseable_entry_inside_value_fails_with_transport_failure_and_a_failed_ingest_run()
+    {
+        // Arrange
+        const string badEntryPage = """
+            {
+              "value": [ { "id": 123 } ],
+              "@odata.deltaLink": "https://graph.example.test/v1.0/users/paula%40contoso.com/mailFolders/Inbox/messages/delta?$deltatoken=never-reached"
+            }
+            """;
+        var handler = GraphDeltaReconcilerTests.PagedHandler(new List<string>(), badEntryPage);
+        var (repository, connectionString) = await NewRepositoryAsync("nullentry");
+        using var _repo = repository;
+        var linkStore = new FakeDeltaLinkStore();
+        var logger = new CapturingLogger<GraphDeltaReconciler>();
+        var reconciler = GraphDeltaReconcilerTests.Reconciler(
+            handler,
+            repository,
+            linkStore,
+            new FakeTimeProvider(GraphDeltaReconcilerTests.Now),
+            logger: logger
+        );
+
+        // Act
+        await reconciler.ReconcileAsync(Mailbox, CancellationToken.None);
+
+        // Assert
+        logger
+            .Entries.Should()
+            .Contain(
+                e => e.Level == LogLevel.Warning && e.Message.Contains("TRANSPORT_FAILURE"),
+                "the JsonException from the unparseable entry maps to a TRANSPORT_FAILURE envelope"
+            );
+        var runs = await ReadIngestRunsAsync(connectionString);
+        runs.Should().ContainSingle().Which.Outcome.Should().Be("failed");
+        linkStore.Sets.Should().BeEmpty("no link is persisted on a failed walk");
+    }
 }

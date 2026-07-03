@@ -1,5 +1,6 @@
 using System.Net;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
@@ -211,6 +212,75 @@ public sealed class SubscriptionRenewalWorkerTests
     }
 
     /// <summary>
+    /// A <see cref="TaskCanceledException"/> from the sweep (for example an
+    /// <c>HttpClient.Timeout</c>) while the stop token is NOT cancelled must not
+    /// terminate the hosted service: the broadened catch filter
+    /// (<c>when (!stoppingToken.IsCancellationRequested)</c>) logs Warning and the
+    /// next scheduled sweep still runs (CR-117-03, fix item 5).
+    /// </summary>
+    [TestMethod]
+    public async Task Loop_continues_with_warning_when_the_sweep_throws_TaskCanceledException_without_stop_requested()
+    {
+        // Arrange: the first sweep's store list throws TaskCanceledException; later
+        // sweeps see a far-future (never-due) subscription, so loop survival is proven
+        // by the second sweep's store read without any scheduling-sensitive Graph
+        // call. (Moq cannot proxy the internal ISubscriptionStore, so a hand-rolled
+        // throw-once decorator is used.)
+        var timeProvider = new FakeTimeProvider(Now);
+        var innerStore = new FakeSubscriptionStore();
+        innerStore.Records["sub-1"] = Record(Now.AddYears(1));
+        var throwingStore = new ThrowOnFirstListStore(innerStore);
+
+        var requests = new List<HttpRequestMessage>();
+        var handler = new FakeHttpHandler(request =>
+        {
+            requests.Add(request);
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(SubscriptionResponse),
+                }
+            );
+        });
+        var manager = GraphSubscriptionManagerTests.Manager(
+            handler,
+            new FakeSubscriptionStore(),
+            timeProvider
+        );
+        var logger = new CapturingLogger<SubscriptionRenewalWorker>();
+        var worker = new SubscriptionRenewalWorker(
+            manager,
+            throwingStore,
+            Options.Create(WorkerOptions),
+            timeProvider,
+            logger
+        );
+
+        // Act: the startup sweep throws; advance fake time so the next sweep runs.
+        // (Logger assertions happen only after StopAsync — the capturing logger's
+        // list is not synchronized for concurrent polling; the store's call counter
+        // is an atomic int read.)
+        await worker.StartAsync(CancellationToken.None);
+        await WaitForAsync(
+            () => throwingStore.ListCalls >= 2,
+            () => timeProvider.Advance(TimeSpan.FromMinutes(1))
+        );
+        await worker.StopAsync(CancellationToken.None);
+
+        // Assert
+        logger
+            .Levels.Should()
+            .Contain(LogLevel.Warning, "the non-stop-token cancellation is caught and logged");
+        throwingStore
+            .ListCalls.Should()
+            .BeGreaterThanOrEqualTo(
+                2,
+                "the loop survives the TaskCanceledException and runs the next sweep"
+            );
+        requests.Should().BeEmpty("the never-due subscription requires no Graph call");
+    }
+
+    /// <summary>
     /// Cooperatively yields until <paramref name="condition"/> holds (bounded, no
     /// wall-clock waits) so async worker continuations scheduled by fake-time
     /// advancement can run.
@@ -232,5 +302,53 @@ public sealed class SubscriptionRenewalWorkerTests
             advance?.Invoke();
             await Task.Yield();
         }
+    }
+
+    /// <summary>
+    /// Decorator over <see cref="FakeSubscriptionStore"/> whose FIRST
+    /// <see cref="ListSubscriptionsAsync"/> call throws
+    /// <see cref="TaskCanceledException"/> (simulating an <c>HttpClient.Timeout</c>
+    /// surfacing from a sweep); every other member delegates. Hand-rolled because Moq
+    /// cannot proxy the internal <see cref="ISubscriptionStore"/>.
+    /// </summary>
+    private sealed class ThrowOnFirstListStore(FakeSubscriptionStore inner) : ISubscriptionStore
+    {
+        private int listCalls;
+
+        /// <summary>How many times <see cref="ListSubscriptionsAsync"/> was invoked.</summary>
+        public int ListCalls => Volatile.Read(ref listCalls);
+
+        public Task<GraphSubscriptionRecord?> GetSubscriptionAsync(
+            string subscriptionId,
+            CancellationToken ct
+        ) => inner.GetSubscriptionAsync(subscriptionId, ct);
+
+        public Task<IReadOnlyList<GraphSubscriptionRecord>> ListSubscriptionsAsync(
+            CancellationToken ct
+        )
+        {
+            if (Interlocked.Increment(ref listCalls) == 1)
+            {
+                throw new TaskCanceledException("Simulated HttpClient timeout.");
+            }
+
+            return inner.ListSubscriptionsAsync(ct);
+        }
+
+        public Task UpsertSubscriptionAsync(
+            GraphSubscriptionRecord record,
+            DateTimeOffset nowUtc,
+            CancellationToken ct
+        ) => inner.UpsertSubscriptionAsync(record, nowUtc, ct);
+
+        public Task UpdateSubscriptionStatusAsync(
+            string subscriptionId,
+            string status,
+            DateTimeOffset updatedAtUtc,
+            CancellationToken ct
+        ) => inner.UpdateSubscriptionStatusAsync(subscriptionId, status, updatedAtUtc, ct);
+
+        public Task DeleteSubscriptionAsync(string subscriptionId, CancellationToken ct) =>
+            inner.DeleteSubscriptionAsync(subscriptionId, ct);
     }
 }

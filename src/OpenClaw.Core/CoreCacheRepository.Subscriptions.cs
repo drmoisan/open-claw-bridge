@@ -148,15 +148,24 @@ WHERE subscription_id = $subscription_id;";
     private static string RenderUtc(DateTimeOffset value) =>
         value.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 
-    private static GraphSubscriptionRecord ReadSubscription(SqliteDataReader reader) =>
-        new(
-            ReadString(reader, "subscription_id")!,
+    private static GraphSubscriptionRecord ReadSubscription(SqliteDataReader reader)
+    {
+        var subscriptionId = ReadString(reader, "subscription_id")!;
+        var expirationUtc =
+            ReadDateTimeOffset(reader, "expiration_utc")
+            ?? throw new InvalidOperationException(
+                $"Graph subscription '{subscriptionId}' has an unparseable 'expiration_utc' value; "
+                    + "the column is NOT NULL and always written via RenderUtc, so the stored row is corrupt."
+            );
+        return new(
+            subscriptionId,
             ReadString(reader, "resource")!,
             ReadString(reader, "mailbox")!,
             ReadString(reader, "client_state")!,
-            ReadDateTimeOffset(reader, "expiration_utc") ?? DateTimeOffset.MinValue,
+            expirationUtc,
             ReadString(reader, "status")!
         );
+    }
 
     /// <summary>
     /// Lazily ensures the <c>graph_subscriptions</c> table exists, once per repository

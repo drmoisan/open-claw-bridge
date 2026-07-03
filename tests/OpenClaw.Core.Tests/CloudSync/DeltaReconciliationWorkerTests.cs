@@ -37,7 +37,11 @@ public sealed class DeltaReconciliationWorkerTests
         OpenClaw.Core.CoreCacheRepository Repository,
         List<string> RequestUris,
         CapturingLogger<GraphDeltaReconciler> ReconcilerLogger
-    )> BuildAsync(FakeTimeProvider timeProvider, Func<int, HttpResponseMessage> responseForCall)
+    )> BuildAsync(
+        FakeTimeProvider timeProvider,
+        Func<int, HttpResponseMessage> responseForCall,
+        ILogger<DeltaReconciliationWorker>? workerLogger = null
+    )
     {
         var requestUris = new List<string>();
         var handler = new FakeHttpHandler(request =>
@@ -69,7 +73,7 @@ public sealed class DeltaReconciliationWorkerTests
             ),
             Options.Create(WorkerOptions),
             timeProvider,
-            NullLogger<DeltaReconciliationWorker>.Instance
+            workerLogger ?? NullLogger<DeltaReconciliationWorker>.Instance
         );
         return (worker, repository, requestUris, reconcilerLogger);
     }
@@ -171,6 +175,48 @@ public sealed class DeltaReconciliationWorkerTests
         reconcilerLogger
             .Levels.Should()
             .Contain(LogLevel.Warning, "the failed reconcile is logged");
+    }
+
+    /// <summary>
+    /// A <see cref="TaskCanceledException"/> from the reconcile call (for example an
+    /// <c>HttpClient.Timeout</c>, unmapped by the executor) while the stop token is NOT
+    /// cancelled must not terminate the hosted service: the broadened catch filter
+    /// (<c>when (!stoppingToken.IsCancellationRequested)</c>) logs Warning and the next
+    /// scheduled tick still runs (CR-117-03, fix item 5).
+    /// </summary>
+    [TestMethod]
+    public async Task Loop_continues_with_warning_when_the_reconcile_throws_TaskCanceledException_without_stop_requested()
+    {
+        // Arrange: the first reconcile's HTTP call throws TaskCanceledException; the
+        // second succeeds.
+        var timeProvider = new FakeTimeProvider(GraphDeltaReconcilerTests.Now);
+        var workerLogger = new CapturingLogger<DeltaReconciliationWorker>();
+        var (worker, repository, requestUris, _) = await BuildAsync(
+            timeProvider,
+            call =>
+                call == 1
+                    ? throw new TaskCanceledException("Simulated HttpClient timeout.")
+                    : TerminalPage(),
+            workerLogger
+        );
+        using var _repo = repository;
+
+        // Act
+        await worker.StartAsync(CancellationToken.None);
+        await WaitForAsync(() => requestUris.Count >= 1, () => timeProvider.Advance(Step));
+        await WaitForAsync(() => requestUris.Count >= 2, () => timeProvider.Advance(Step));
+        await worker.StopAsync(CancellationToken.None);
+
+        // Assert
+        workerLogger
+            .Levels.Should()
+            .Contain(LogLevel.Warning, "the non-stop-token cancellation is caught and logged");
+        requestUris
+            .Count.Should()
+            .BeGreaterThanOrEqualTo(
+                2,
+                "the loop survives a TaskCanceledException and the next tick reconciles"
+            );
     }
 
     /// <summary>

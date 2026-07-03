@@ -244,4 +244,52 @@ public sealed class GraphSubscriptionManagerTests
         stored.Status.Should().Be(SubscriptionStatus.Active, "a successful renew reactivates");
         stored.ClientState.Should().Be(ClientState, "renewal does not rotate the clientState");
     }
+
+    /// <summary>
+    /// A 2xx subscription body missing the required <c>id</c> field trips the
+    /// <c>ParseSubscription</c> fail-fast arm (GraphMappingException -&gt; INTERNAL_ERROR)
+    /// and persists nothing (remediation B-117-01, fix item 1).
+    /// </summary>
+    [TestMethod]
+    public async Task CreateAsync_missing_id_in_the_response_fails_fast_and_persists_nothing()
+    {
+        // Arrange
+        var handler = new FakeHttpHandler(_ => Task.FromResult(Json("{}")));
+        var store = new FakeSubscriptionStore();
+        var manager = Manager(handler, store, new FakeTimeProvider(Now));
+
+        // Act
+        var result = await manager.CreateAsync("req-missing-id", CancellationToken.None);
+
+        // Assert
+        result.Ok.Should().BeFalse("a subscription body without 'id' must fail fast");
+        result
+            .Error!.Code.Should()
+            .Be("INTERNAL_ERROR", "the executor maps GraphMappingException to INTERNAL_ERROR");
+        store.Records.Should().BeEmpty("nothing is persisted when parsing fails");
+    }
+
+    /// <summary>
+    /// A 2xx body that deserializes to JSON <c>null</c> trips the <c>?? throw</c>
+    /// fail-fast arm (JsonException -&gt; TRANSPORT_FAILURE) and persists nothing
+    /// (remediation B-117-01, fix item 2).
+    /// </summary>
+    [TestMethod]
+    public async Task CreateAsync_body_deserializing_to_json_null_fails_fast_and_persists_nothing()
+    {
+        // Arrange
+        var handler = new FakeHttpHandler(_ => Task.FromResult(Json("null")));
+        var store = new FakeSubscriptionStore();
+        var manager = Manager(handler, store, new FakeTimeProvider(Now));
+
+        // Act
+        var result = await manager.CreateAsync("req-null-body", CancellationToken.None);
+
+        // Assert
+        result.Ok.Should().BeFalse("a body deserializing to JSON null must fail fast");
+        result
+            .Error!.Code.Should()
+            .Be("TRANSPORT_FAILURE", "the executor maps JsonException to TRANSPORT_FAILURE");
+        store.Records.Should().BeEmpty("nothing is persisted when parsing fails");
+    }
 }

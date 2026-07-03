@@ -56,7 +56,7 @@ internal sealed class NotificationDispatchWorker(
             {
                 break;
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
                 logger.LogWarning(
                     ex,
