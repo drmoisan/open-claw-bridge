@@ -3,6 +3,7 @@ using OpenClaw.Core;
 using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.Core.CloudGraph;
+using OpenClaw.Core.CloudSync;
 using OpenClaw.HostAdapter.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +64,13 @@ else
         }
     );
 }
+
+// CloudSync opt-in (issue #117, D-6): OpenClaw:CloudSync:Enabled=true registers the
+// webhook processor, stores, and workers; the default path registers nothing new.
+if (builder.Configuration.GetValue<bool>("OpenClaw:CloudSync:Enabled"))
+{
+    builder.Services.AddCloudSync(builder.Configuration);
+}
 builder.Services.AddHostedService<MessagePollingWorker>();
 builder.Services.AddHostedService<CalendarPollingWorker>();
 
@@ -84,6 +92,12 @@ builder.Services.AddHostedService<SchedulingWorker>();
 var app = builder.Build();
 app.UseStaticFiles();
 app.UseRouting();
+
+// CloudSync opt-in (issue #117, D-6): the webhook route exists only when enabled.
+if (app.Configuration.GetValue<bool>("OpenClaw:CloudSync:Enabled"))
+{
+    app.MapGraphNotificationsEndpoint();
+}
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet(
