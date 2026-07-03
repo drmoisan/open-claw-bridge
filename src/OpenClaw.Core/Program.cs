@@ -2,6 +2,7 @@ using Microsoft.Extensions.Options;
 using OpenClaw.Core;
 using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
+using OpenClaw.Core.CloudGraph;
 using OpenClaw.HostAdapter.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,13 +46,23 @@ builder
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<OpenClawOptions>>().Value);
 builder.Services.AddSingleton<CoreHealthState>();
 builder.Services.AddSingleton<CoreCacheRepository>();
-builder.Services.AddHttpClient<IHostAdapterClient, HostAdapterHttpClient>(
-    (serviceProvider, client) =>
-    {
-        var options = serviceProvider.GetRequiredService<IOptions<OpenClawOptions>>().Value;
-        client.BaseAddress = new Uri(EnsureTrailingSlash(options.HostAdapter.BaseUrl));
-    }
-);
+
+// Backend selection (issue #115, D8): OpenClaw:GraphAdapter:Enabled=true opts into
+// the Graph-backed adapter; the default path registers the local client unchanged.
+if (builder.Configuration.GetValue<bool>("OpenClaw:GraphAdapter:Enabled"))
+{
+    builder.Services.AddGraphHostAdapterClient(builder.Configuration);
+}
+else
+{
+    builder.Services.AddHttpClient<IHostAdapterClient, HostAdapterHttpClient>(
+        (serviceProvider, client) =>
+        {
+            var options = serviceProvider.GetRequiredService<IOptions<OpenClawOptions>>().Value;
+            client.BaseAddress = new Uri(EnsureTrailingSlash(options.HostAdapter.BaseUrl));
+        }
+    );
+}
 builder.Services.AddHostedService<MessagePollingWorker>();
 builder.Services.AddHostedService<CalendarPollingWorker>();
 

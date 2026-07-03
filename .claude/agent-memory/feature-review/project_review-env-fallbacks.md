@@ -47,9 +47,12 @@ passed; validator tool unavailable). The C#-branch misclassification did NOT occ
 PowerShell-only #111 branch — the summary categorized it correctly.
 
 #113 (2026-07-02, C# CloudAuth module): misclassification recurred (7th C# branch); autoclose
-noise recurred (`#109`/`#74` design-precedent citations + `#AC-*`/`#ISO-8601` tokens). Newest
-validator-shaped C# artifact-set template: #113
-`2026-07-02-app-only-auth-module-113/*.2026-07-02T19-27.md` (structural self-check passed).
+noise recurred (`#109`/`#74` design-precedent citations + `#AC-*`/`#ISO-8601` tokens). #115
+(2026-07-02, CloudGraph adapter, 12 prod + 19 test .cs): 8th recurrence of both quirks
+(`#113`/`#74` precedent citations + `#AC-*`/`#ISO-8601`/`#OR-5` tokens). Newest
+validator-shaped C# artifact-set template: #115
+`2026-07-02-graph-backed-adapter-115/*.2026-07-02T21-08.md` (structural self-check passed;
+prior: #113 `2026-07-02-app-only-auth-module-113/*.2026-07-02T19-27.md`).
 
 Fourth recurring quirk — **`run_poshqc_test` MCP tool fails in this repo** (pre-existing
 workspace defect, first hit on #111 execution, accepted on the #111 review): the bundled
