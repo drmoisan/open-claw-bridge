@@ -94,6 +94,17 @@ for the file from cobertura and diff against the source's executable ranges — 
 matching an async method body is the tell. Same accepted disposition (behavioral verification per
 arm + exclusion stated explicitly in the audit, Info grade).
 
+Recurred on #115 (2026-07-02): BOTH core async control-flow bodies of the new Graph adapter —
+`GraphRequestExecutor.ExecuteAsync` (retry loop, lines 55-157) and
+`GraphHostAdapterClient.ListPagedAsync` (paging loop, lines 131-191) — uninstrumented while the
+files reported 97.40%/100% line; executor's coverage-comparison again claimed the 99.71% new-code
+figure WITHOUT stating the exclusion (non-disclosure pattern from #113 repeated). Same accepted
+disposition (behavioral verification: 22 pipeline tests + 8 paging tests, every arm named in the
+audit). Also on #115: a new file (GraphHostAdapterClient.cs) landed at EXACTLY 75.00% branch
+(9/12) — meets the >= 75% gate with zero margin; the 3 partial arms were defensive null-body
+throws, graded Minor with one-case test recommendations. Exact-gate files deserve a named margin
+warning in the review.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
