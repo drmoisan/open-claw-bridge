@@ -1,0 +1,2 @@
+- [Worktree write path](feedback_worktree_write_path.md) — Write must target the worktree-prefixed path, not the shared-checkout path.
+- [Sourcing and citations](reference_sourcing_and_citations.md) — no MCP doc tool exists; WebFetch against learn.microsoft.com is the working citation path, useful page set for Entra/Graph/Purview runbooks.
