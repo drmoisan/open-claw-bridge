@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
+using OpenClaw.Core;
 using OpenClaw.Core.CloudAuth;
 using OpenClaw.Core.CloudGraph;
 using OpenClaw.Core.CloudSync;
@@ -72,7 +73,7 @@ public sealed class GraphDeltaReconcilerTests
         FakeTimeProvider timeProvider,
         GraphAdapterOptions? options = null,
         ILogger<GraphDeltaReconciler>? logger = null,
-        OpenClaw.Core.Agent.IActionAuditLog? actionAuditLog = null
+        ICloudSyncActivityAuditor? activityAuditor = null
     )
     {
         var tokenProvider = new Mock<IAppTokenProvider>(MockBehavior.Strict);
@@ -96,7 +97,7 @@ public sealed class GraphDeltaReconcilerTests
             repository,
             timeProvider,
             logger ?? NullLogger<GraphDeltaReconciler>.Instance,
-            actionAuditLog ?? new FakeActionAuditLog()
+            activityAuditor ?? new NoOpCloudSyncActivityAuditor()
         );
     }
 

@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudAuth;
 using OpenClaw.Core.CloudGraph;
 using OpenClaw.MailBridge.Contracts.Models;
@@ -40,7 +39,7 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
     private readonly CoreCacheRepository repository;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<GraphDeltaReconciler> logger;
-    private readonly IActionAuditLog actionAuditLog;
+    private readonly ICloudSyncActivityAuditor activityAuditor;
 
     /// <summary>Creates the reconciler; all seams are injected (D-8 executor reuse).</summary>
     public GraphDeltaReconciler(
@@ -51,7 +50,7 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
         CoreCacheRepository repository,
         TimeProvider timeProvider,
         ILogger<GraphDeltaReconciler> logger,
-        IActionAuditLog actionAuditLog
+        ICloudSyncActivityAuditor activityAuditor
     )
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -61,14 +60,14 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
-        ArgumentNullException.ThrowIfNull(actionAuditLog);
+        ArgumentNullException.ThrowIfNull(activityAuditor);
 
         graphOptions = graphOptionsAccessor.Value;
         this.deltaLinkStore = deltaLinkStore;
         this.repository = repository;
         this.timeProvider = timeProvider;
         this.logger = logger;
-        this.actionAuditLog = actionAuditLog;
+        this.activityAuditor = activityAuditor;
         executor = new GraphRequestExecutor(
             httpClient,
             tokenProvider,
@@ -219,27 +218,11 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
             timeProvider.GetUtcNow(),
             errorMessage
         );
-        await actionAuditLog.RecordAsync(
-            new ActionAuditRecord(
-                Mailbox: mailbox,
-                MessageId: requestId,
-                EventId: null,
-                ActionType: CloudSyncActivityType.DeltaReconciliationRun,
-                ActingFlags: CloudSyncActingFlags.NotApplicable,
-                CorrelationId: requestId,
-                ResultCode: outcome switch
-                {
-                    "success" => CloudSyncActivityResultCode.Success,
-                    "failed" => CloudSyncActivityResultCode.Failure,
-                    _ => CloudSyncActivityResultCode.Failure,
-                },
-                ErrorDetail: errorMessage,
-                OriginalStartUtc: null,
-                OriginalEndUtc: null,
-                NewStartUtc: null,
-                NewEndUtc: null,
-                RecordedAtUtc: timeProvider.GetUtcNow()
-            ),
+        await activityAuditor.RecordDeltaReconciliationRunAsync(
+            mailbox,
+            requestId,
+            success: outcome == "success",
+            errorMessage,
             CancellationToken.None
         );
     }

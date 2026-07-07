@@ -1,19 +1,19 @@
 using System.Net;
-using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using OpenClaw.Core.Agent;
+using Moq;
+using OpenClaw.Core;
 using OpenClaw.Core.CloudSync;
 
 namespace OpenClaw.Core.Tests.CloudSync;
 
 /// <summary>
-/// Audit-emission tests for <see cref="GraphDeltaReconciler"/> (issue #124, AC2/AC4): a
-/// successful <c>RunAsync</c> emits exactly one <c>DeltaReconciliationRun</c> audit record with
-/// <see cref="CloudSyncActivityResultCode.Success"/> and <c>CorrelationId == MessageId ==
-/// requestId</c>, and a failed <c>RunAsync</c> (Graph error on page 1) emits exactly one such
-/// record with <see cref="CloudSyncActivityResultCode.Failure"/> and a populated
-/// <c>ErrorDetail</c>.
+/// Audit-emission tests for <see cref="GraphDeltaReconciler"/> (issue #124, AC2/AC4; revised
+/// in the Phase 9 architecture-boundary seam): a successful <c>RunAsync</c> calls
+/// <see cref="ICloudSyncActivityAuditor.RecordDeltaReconciliationRunAsync"/> exactly once with
+/// <c>success: true</c> and a non-empty <c>requestId</c> (used as both message id and
+/// correlation id at the adapter), and a failed <c>RunAsync</c> (Graph error on page 1) calls
+/// it exactly once with <c>success: false</c> and a populated error detail.
 /// </summary>
 [TestClass]
 public sealed class GraphDeltaReconcilerAuditTests
@@ -34,24 +34,30 @@ public sealed class GraphDeltaReconcilerAuditTests
         );
         await repository.InitializeAsync();
         var linkStore = new FakeDeltaLinkStore();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var reconciler = GraphDeltaReconcilerTests.Reconciler(
             handler,
             repository,
             linkStore,
             new FakeTimeProvider(GraphDeltaReconcilerTests.Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
         await reconciler.ReconcileAsync(Mailbox, CancellationToken.None);
 
         // Assert
-        var record = auditLog.Recorded.Should().ContainSingle().Which;
-        record.ActionType.Should().Be(CloudSyncActivityType.DeltaReconciliationRun);
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Success);
-        record.CorrelationId.Should().Be(record.MessageId);
-        record.ErrorDetail.Should().BeNull();
+        auditor.Verify(
+            a =>
+                a.RecordDeltaReconciliationRunAsync(
+                    Mailbox,
+                    It.Is<string>(id => !string.IsNullOrWhiteSpace(id)),
+                    true,
+                    null,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 
     [TestMethod]
@@ -73,23 +79,29 @@ public sealed class GraphDeltaReconcilerAuditTests
         );
         await repository.InitializeAsync();
         var linkStore = new FakeDeltaLinkStore();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var reconciler = GraphDeltaReconcilerTests.Reconciler(
             handler,
             repository,
             linkStore,
             new FakeTimeProvider(GraphDeltaReconcilerTests.Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
         await reconciler.ReconcileAsync(Mailbox, CancellationToken.None);
 
         // Assert
-        var record = auditLog.Recorded.Should().ContainSingle().Which;
-        record.ActionType.Should().Be(CloudSyncActivityType.DeltaReconciliationRun);
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Failure);
-        record.ErrorDetail.Should().NotBeNullOrWhiteSpace();
-        record.CorrelationId.Should().Be(record.MessageId);
+        auditor.Verify(
+            a =>
+                a.RecordDeltaReconciliationRunAsync(
+                    Mailbox,
+                    It.Is<string>(id => !string.IsNullOrWhiteSpace(id)),
+                    false,
+                    It.Is<string?>(detail => !string.IsNullOrWhiteSpace(detail)),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 }
