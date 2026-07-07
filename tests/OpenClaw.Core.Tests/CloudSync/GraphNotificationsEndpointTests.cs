@@ -5,7 +5,9 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudSync;
 
 namespace OpenClaw.Core.Tests.CloudSync;
@@ -60,6 +62,10 @@ public sealed class GraphNotificationsEndpointTests
         builder.Logging.ClearProviders();
         builder.Services.AddSingleton<ISubscriptionStore>(store);
         builder.Services.AddSingleton<INotificationQueue>(queue);
+        builder.Services.AddSingleton<IActionAuditLog>(new FakeActionAuditLog());
+        builder.Services.AddSingleton<TimeProvider>(
+            new FakeTimeProvider(new DateTimeOffset(2026, 7, 7, 1, 0, 0, TimeSpan.Zero))
+        );
         builder.Services.AddSingleton<NotificationRequestProcessor>();
 
         var app = builder.Build();

@@ -187,13 +187,13 @@ subject-resource identifier) and decision 3's three named rejection reasons:
 
 ### Phase 6 — Shared Test Double and Regression Verification
 
-- [ ] [P6-T1] Add an internal `FakeActionAuditLog` class implementing `IActionAuditLog` to `tests/OpenClaw.Core.Tests/CloudSync/CloudSyncTestDoubles.cs`, recording every `RecordAsync` call in a `List<ActionAuditRecord> Recorded` property for assertions, and returning an empty list from `GetByMessageIdAsync`.
+- [x] [P6-T1] Add an internal `FakeActionAuditLog` class implementing `IActionAuditLog` to `tests/OpenClaw.Core.Tests/CloudSync/CloudSyncTestDoubles.cs`, recording every `RecordAsync` call in a `List<ActionAuditRecord> Recorded` property for assertions, and returning an empty list from `GetByMessageIdAsync`.
   - Acceptance: the class exists in `CloudSyncTestDoubles.cs`, implements both `IActionAuditLog` methods, and is used by the Phase 3–5 factory defaults and `*AuditTests.cs` files.
 - [ ] [P6-T2] Run `dotnet test --filter "FullyQualifiedName~OpenClaw.Core.Tests.CloudSync"` and write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/regression-testing/cloudsync-suite-regression.md` with `Timestamp:`, `Command:`, `EXIT_CODE:`, and `Output Summary:` confirming every CloudSync test (the 16 pre-existing files plus the three new `*AuditTests.cs` files) passes with zero failures.
   - Acceptance: evidence file exists with all four fields and `EXIT_CODE: 0`.
-- [ ] [P6-T3] Run `dotnet test --filter "FullyQualifiedName~SchedulingWorkerAuditTests"` and write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/regression-testing/f9-audit-suite-regression.md` with `Timestamp:`, `Command:`, `EXIT_CODE:`, and `Output Summary:` confirming the existing F9 `SchedulingWorkerAuditTests.cs` suite passes unchanged.
+- [x] [P6-T3] Run `dotnet test --filter "FullyQualifiedName~SchedulingWorkerAuditTests"` and write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/regression-testing/f9-audit-suite-regression.md` with `Timestamp:`, `Command:`, `EXIT_CODE:`, and `Output Summary:` confirming the existing F9 `SchedulingWorkerAuditTests.cs` suite passes unchanged.
   - Acceptance: evidence file exists with all four fields and `EXIT_CODE: 0`.
-- [ ] [P6-T4] Run `dotnet test --filter "FullyQualifiedName~CoreCacheRepositoryAuditLogTests|FullyQualifiedName~CoreCacheRepositoryAuditLogPropertyTests"` and write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/regression-testing/f9-store-suite-regression.md` with `Timestamp:`, `Command:`, `EXIT_CODE:`, and `Output Summary:` confirming both F9 store test suites pass, including the new CloudSync round-trip test added in Phase 1.
+- [x] [P6-T4] Run `dotnet test --filter "FullyQualifiedName~CoreCacheRepositoryAuditLogTests|FullyQualifiedName~CoreCacheRepositoryAuditLogPropertyTests"` and write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/regression-testing/f9-store-suite-regression.md` with `Timestamp:`, `Command:`, `EXIT_CODE:`, and `Output Summary:` confirming both F9 store test suites pass, including the new CloudSync round-trip test added in Phase 1.
   - Acceptance: evidence file exists with all four fields and `EXIT_CODE: 0`.
 
 ### Phase 7 — Human-Interaction Exception Checkpoint
