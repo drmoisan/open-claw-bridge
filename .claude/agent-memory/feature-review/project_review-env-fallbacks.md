@@ -57,6 +57,19 @@ self-check passed; prior: #113 `2026-07-02-app-only-auth-module-113/*.2026-07-02
 The #117 set `2026-07-03-graph-subscriptions-delta-117/*.2026-07-03T02-34.md` is the first
 FAIL-verdict (Blocking + remediation-inputs) artifact set shaped on that template.
 
+#117 re-audit R4 (2026-07-06, epic-branch era): `mcp__drm-copilot__collect_pr_context` was ALSO
+absent from the toolset and the on-disk pr_context pair was stale (pre-rebase head vs origin/main).
+Accepted fallback: regenerate both files manually from git at the canonical `artifacts/pr_context.*`
+paths (base/head/merge-base, commits, name-status categorized by src/tests/docs), state the
+accommodation in policy-audit Section 8 Approved Exceptions. Features now merge into EPIC
+integration branches (e.g. `epic/openclaw-vision-integration`), not main — resolve merge-base
+against the supplied epic base. Rebase-equivalence technique: `git diff <pre-rebase-head>
+<rebased-commit>` returning exactly the base delta proves feature content is byte-identical and
+the old baseline coverage stays valid (base delta had zero .cs). Parser gotcha: XPlat cobertura
+writes `branch="True"` (capital T) — compare case-insensitively or branch totals silently read 0.
+The #117 R4 set `2026-07-03-graph-subscriptions-delta-117/*.2026-07-06T22-26.md` passed the
+structural self-check.
+
 #120 (2026-07-06): PR-context artifacts were entirely ABSENT (not just stale) and no repo-local
 collector script exists — accepted fallback: generate `artifacts/pr_context.summary.txt`
 (branch/head/base/merge-base+timestamp, commit list, name-status, diff stat) and

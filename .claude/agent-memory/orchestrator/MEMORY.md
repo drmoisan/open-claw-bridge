@@ -5,7 +5,10 @@
 - [Surface consequential decisions](feedback_surface-consequential-decisions.md) — confirm only NOVEL irreversible forks; policy-defined steps (PR open, commits, CI monitoring) run autonomously.
 - [Harness governance](project_harness-governance.md) — harness is now version-controlled (Issue #66/PR #68); `.claude/rules/*` is canonical; AGENTS.md + .github/instructions match it.
 - [Core agent = namespace not project](project_core-agent-namespace-not-project.md) — new logic for OpenClaw.Core folds into a namespace, not a new project (arch rule 6); enforce with namespace NetArchTest.
-- [Checkpoint validator contract](project_checkpoint-validator-contract.md) — orchestrator-state validator requires hyphen keys, stepN enum (verified not complete), and delegation_receipts as a LIST; differs from prompt.
+- [Checkpoint validator contract](project_checkpoint-validator-contract.md) — orchestrator-state validator: hyphen keys, stepN enum (`completed` valid, `complete` not), delegation_receipts rich LIST, route arrays + empty override lists at require_complete.
+- [Child-session agent availability + PR fallback](feedback_child-session-agent-availability-and-pr-fallback.md) — pr-author/orchestrator agent types absent in child sessions; PR hook gates on receipt+preflight, so run pr-author skill inline + gh pr create.
+- [Epic child CI and merge](project_epic-child-ci-and-merge.md) — child PR targets integration branch; dispatch ci.yml via workflow_dispatch; gh pr merge --merge; issue stays open (Refs not Closes); write back epic checkpoint.
+- [Plan artifact CRLF fails validator](project_plan-artifact-crlf-fails-validator.md) — plan validator rejects CRLF line endings on every phase/task line; normalize plan/artifact files to LF before validating.
 - [csharpier local tool manifest broken](project_csharpier-local-tool-manifest-broken.md) — local dotnet-tools csharpier entry misconfigured; use global csharpier with format/check subcommands.
 - [HostAdapter scheduling = Design A](project_hostadapter-scheduling-design-a.md) — track #76->#74->#75 uses Graph-shaped HostAdapter endpoints (not Core-cache compute); #75 should follow the same pattern.
 - [Unify COM vs Modern behind adapter](feedback_unify-com-vs-modern-behind-adapter.md) — model-specific field resolution goes behind a unifying interface + data-type adapter so only the adapter swaps (COM->Modern).
@@ -14,3 +17,8 @@
 - [Autonomous finish sequence](feedback_autonomous-finish-sequence.md) — after a passing exit gate, commit+push all, open PR, remediate CI, commit memories, ensure green CI — without asking. Overrides "commit only when asked".
 - [.env files denied to tools](project_env-files-permission-denied-to-tools.md) — `.env`/`.env.example` blocked from Read/Write/Edit/Bash cat; inspect via git diff/show, have operator edit.
 - [Merge-commit policy](feedback_merge-commit-policy.md) — every PR merges to main with a MERGE COMMIT (`gh pr merge --merge`); never squash/rebase; never commit directly to main.
+- [CI PowerShell QC flake](project_ci-powershell-qc-flake.md) — unpinned PSScriptAnalyzer in ci.yml intermittently errors "parameter 'Function' not found"; re-dispatch same head to clear when scripts/** unchanged.
+- [Orchestrator not spawnable from own session](project_orchestrator-not-spawnable-from-own-session.md) — Agent(orchestrator) unregistered when main thread IS orchestrator; blocks epic child spawns; run epics from a non-orchestrator session.
+- [PoshQC coverage-path defect](project_poshqc-coverage-path-defect.md) — bundled run_poshqc_test coverage mode always fails here (foreign hardcoded CodeCoverage.Path); use F11 corrected-runsettings Invoke-PoshQCTest workaround for real numeric coverage.
+- [.gitignore blocks new workflows](project_gitignore-blocks-new-workflows.md) — `.github/workflows/*` is ignored except `!`-re-included files; a new `_<name>.yml` reusable workflow needs its own `!` line or it is silently not committed.
+- [Fable spend-limit forces opus fallback](feedback_fable-spend-limit-forces-opus-fallback.md) - fable delegate can die on a monthly spend limit; re-run same agent on opus, keep routing receipt at policy-resolved fable.

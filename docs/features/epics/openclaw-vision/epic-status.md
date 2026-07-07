@@ -7,8 +7,12 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 - Epic: `openclaw-vision`
 - Integration branch: `epic/openclaw-vision-integration` (base: `main` @ `e085712`)
 - Manifest: [epic-plan.md](epic-plan.md)
-- Current wave: **2**
-- Last projected: 2026-07-06
+- Current wave: **5 (all waves complete)**
+- Last projected: 2026-07-07T11:33Z
+- Status: **FEATURE-COMPLETE — integration PR in progress.** All 20 features (waves 0–5) are
+  merged into `epic/openclaw-vision-integration`; every worktree is removed. Integration tip:
+  `a04d95b`. The final step is the integration-to-`main` PR (merge commit on CI green), which
+  closes issues #117/#119/#120/#124/#125/#128/#130.
 
 ## Feature status
 
@@ -27,30 +31,113 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 | F11 | 2026-07-02-exchange-rbac-scripts-111 | #111 | 0 | merged | [#112](https://github.com/drmoisan/open-claw-bridge/pull/112) | `970034f` |
 | F12 | 2026-07-02-app-only-auth-module-113 | #113 | 0 | merged | [#114](https://github.com/drmoisan/open-claw-bridge/pull/114) | `ffbb1a0` |
 | F13 | 2026-07-02-graph-backed-adapter-115 | #115 | 1 | merged | [#116](https://github.com/drmoisan/open-claw-bridge/pull/116) | `402703c` |
-| F14 | 2026-07-03-graph-subscriptions-delta-117 | #117 | 2 | worktree_created | — (mid-remediation) | — |
-| F15 | send-on-behalf-allowlist | — | 2 | not_started | — | — |
-| F16 | azure-bicep-iac | — | 3 | not_started | — | — |
-| F17 | negative-scope-smoke-test | — | 2 | not_started | — | — |
-| F18 | organizer-reschedule | — | 4 | not_started | — | — |
-| F19 | attendee-propose-new-time | — | 5 | not_started | — | — |
-| F20 | graph-activity-log-purview | — | 3 | not_started | — | — |
+| F14 | 2026-07-03-graph-subscriptions-delta-117 | #117 | 2 | worktree_removed | [#121](https://github.com/drmoisan/open-claw-bridge/pull/121) | `d67dea0` |
+| F15 | send-on-behalf-allowlist | #119 | 2 | worktree_removed | [#122](https://github.com/drmoisan/open-claw-bridge/pull/122) | `6f7384c` |
+| F16 | azure-bicep-iac | #125 | 3 | worktree_removed | [#126](https://github.com/drmoisan/open-claw-bridge/pull/126) | `c59a8c2` |
+| F17 | negative-scope-smoke-test | #120 | 2 | worktree_removed | [#123](https://github.com/drmoisan/open-claw-bridge/pull/123) | `7a29286` |
+| F18 | organizer-reschedule | #128 | 4 | worktree_removed | [#129](https://github.com/drmoisan/open-claw-bridge/pull/129) | `273c7df` |
+| F19 | attendee-propose-new-time | #130 | 5 | worktree_removed | [#131](https://github.com/drmoisan/open-claw-bridge/pull/131) | `a04d95b` |
+| F20 | graph-activity-log-purview | #124 | 3 | worktree_removed | [#127](https://github.com/drmoisan/open-claw-bridge/pull/127) | `68a516f` |
 
-## In-flight detail — F14 (#117)
+## Completed detail — F14 (#117)
 
-- Worktree: `C:/Users/DanMoisan/repos/open-claw-bridge-wt-2026-07-01-22-00`
-- Branch: `feature/graph-subscriptions-delta-117` (2 commits ahead of `e085712`, 0 behind)
-- Child checkpoint: `<worktree>/artifacts/orchestration/orchestrator-state.json`
-  (`epic_mode: true`, `next_step: S9_remediation_loop`, remediation cycle 1 open)
-- Open finding: B-117-01 (per-file branch-coverage gate on `GraphSubscriptionManager.cs` and
-  `CoreCacheRepository.Subscriptions.cs`; worker cancellation-filter hardening). The last recorded
-  child action was "R3 complete (B-117-01 closed); pre-R4 commit, then re-audit."
+- Merged into `epic/openclaw-vision-integration` at `d67dea0` (PR #121, merge commit,
+  merged 2026-07-07T02:49Z). Remediation cycle 1 closed with zero blocking findings
+  (re-audit 2026-07-06T22-26).
+- CI observed green via `workflow_dispatch` of `ci.yml` at branch head `473d4e6`
+  (run 28837840599) because `ci.yml` only triggers on PRs targeting main/development.
+- Issue #117 remains OPEN by design: GitHub does not autoclose issues from PRs into
+  non-default branches; it closes at epic integration.
+- Worktree deregistered 2026-07-07T02:57Z (empty root dir remains locked by a stale OS
+  handle; harmless).
 - Latent gap queued for F17 or a dedicated bug (not F14 scope): `PersistPollResultAsync` requires
   `envelope.Meta.Bridge` non-null, which the Graph backend never sets.
 
+## Completed detail — F15 (#119)
+
+- Merged into `epic/openclaw-vision-integration` at `6f7384c` (PR #122, merge commit,
+  merged 2026-07-07T04:04Z). Feature review: 0 blocking findings; 17/17 acceptance criteria;
+  CI green via `workflow_dispatch` run 28840568882 at head `75a31da`.
+- Shipped: fail-closed `SendOnBehalfAuthorizer` + `AllowedPrincipalMailboxUpns` option gating
+  the Send-on-behalf `from`-rewrite in `OpenClaw.Core.CloudGraph`; tenant-side Exchange
+  configuration recorded as a `human_interaction` exception with a runbook.
+- Issue #119 remains OPEN by design (no autoclose from PRs into non-default branches).
+- Worktree removed 2026-07-07T04:11Z after salvaging its agent-memory updates into the primary
+  checkout. Child-session note: the `pr-author` agent type was unavailable in the child session;
+  PR authoring ran the pr-author skill inline with the enforcement hook validating receipts.
+
+## Completed detail — F17 (#120)
+
+- Merged into `epic/openclaw-vision-integration` at `7a29286` (PR #123, merge commit,
+  merged 2026-07-07T04:45Z, final gate CI run 28842106274 green at head `d4269c7`).
+- Shipped: Exchange RBAC negative-scope startup validation in `OpenClaw.Core` — pure
+  `ScopeBoundaryEvaluator`, `GraphMailboxScopeProbe` (reusing F13's `GraphRequestExecutor`),
+  fail-fast `ScopeBoundaryStartupValidator` hosted service, `OpenClaw:ScopeValidation` config.
+  Feature review: 0 blocking; 9/9 acceptance criteria; live-tenant verification recorded as a
+  `human_interaction` exception with a runbook.
+- One CI remediation cycle (resolved): transient unpinned-PSScriptAnalyzer fault in the
+  PowerShell QC job; cleared by a same-head re-dispatch probe (documented in
+  `remediation-inputs.2026-07-07T04-35.md`).
+- Issue #120 remains OPEN for epic integration. Worktree removed 2026-07-07T04:54Z after
+  salvaging agent-memory updates.
+
+## Completed detail — F16 (#125)
+
+- Merged into `epic/openclaw-vision-integration` at `c59a8c2` (PR #126, merge commit,
+  merged 2026-07-07T06:57Z; CI run 28847337722 green at head `d641ced`, 4 jobs including the
+  new "Bicep Validate" job).
+- Shipped: `deploy/azure/` Bicep (Container Apps hosting for `openclaw-core`, RBAC-enabled Key
+  Vault, Service Bus queue) + `.github/workflows/_bicep-validate.yml` reusable workflow wired
+  into `ci.yml` + `scripts/Test-OpenClawBicepParameterSecrets.ps1` with Pester coverage.
+  Infrastructure-only; no runtime change. One remediation cycle (evidence-only:
+  `modified-workflow-needs-green-run`), closed with 0 blocking / 6/6 AC.
+- Live Azure deployment recorded as a `human_interaction` exception with runbook
+  `runbooks/azure-bicep-deployment.runbook.md`. Issue #125 remains OPEN for epic integration.
+- Worktree (clean) removed 2026-07-07T07:02Z.
+
+## Completed detail — F20 (#124)
+
+- Merged into `epic/openclaw-vision-integration` at `68a516f` (PR #127, merge commit,
+  merged 2026-07-07T07:10Z; CI run 28848225508 green at head `a69bbcb`, all four jobs).
+- Shipped: CloudSync audit instrumentation toward Graph activity log / Purview, via a
+  boundary-preserving `ICloudSyncActivityAuditor` seam (port in bare `OpenClaw.Core`, adapter in
+  `OpenClaw.Core.Agent`, registered at the composition root) — the `CloudSync → Agent`
+  NetArchTest boundary was preserved, not loosened. 0 blocking findings; 5/5 acceptance
+  criteria; live Purview verification recorded as a `human_interaction` exception with runbook.
+- Issue #124 remains OPEN for epic integration. Worktree removed 2026-07-07T07:18Z after
+  salvaging agent-memory updates.
+
+## Completed detail — F18 (#128)
+
+- Merged into `epic/openclaw-vision-integration` at `273c7df` (PR #129, merge commit,
+  merged 2026-07-07T09:07Z; CI run 28854553067 green at head `1d683bc`, all four jobs).
+- Shipped: first real calendar-write RPC — Graph `PATCH /events/{id}` organizer reschedule
+  behind `ENABLE_ORGANIZER_RESCHEDULE` + global `CalendarWriteEnabled` (both default OFF; dry-run
+  + `reschedule_disabled` audit when off). Composes the F10 `CalendarWritePolicy` gate, F8
+  `OneOnOneMoveGuard`/`ISeriesMoveHistory` seam, F9 audit path, and the `IHostAdapterClient`
+  adapter seam. Feature review: 0 blocking; 9/9 AC; OpenClaw.Core coverage line 99.27% / branch
+  92.24%. Live-tenant verification recorded as a `human_interaction` exception with runbook.
+- Issue #128 remains OPEN for epic integration. Worktree removed 2026-07-07T09:12Z after
+  salvaging the program-status memory update.
+
+## Completed detail — F19 (#130)
+
+- Merged into `epic/openclaw-vision-integration` at `a04d95b` (PR #131, merge commit,
+  merged 2026-07-07T10:53Z; CI run 28860556453 green at head `5d5b0d5`, all four jobs).
+- Shipped: attendee-side calendar-write RPC mirroring F18 — `ProposeNewMeetingTimeAsync`
+  (Graph `POST /events/{id}/tentativelyAccept` with `proposedNewTime`; local adapter fail-closed
+  `NOT_SUPPORTED`), `ISchedulingService` seam, flag gate → dedupe → audit pipeline, behind
+  `ENABLE_ATTENDEE_PROPOSE_NEW_TIME` (default OFF). 0 blocking; 9/9 AC; coverage line 99.29% /
+  branch 92.28%. Live verification recorded as a `human_interaction` exception with runbook.
+- Operational note: feature-review resolved to `fable` but the spawn hit a Fable 5 monthly spend
+  limit mid-review; re-run on `opus` with the substitution documented in the delegation receipt.
+- Issue #130 remains OPEN for epic integration. Worktree removed 2026-07-07T11:33Z.
+
 ## Resume
 
-Invoke `Agent(epic-orchestrator)` from the primary checkout
-(`C:/Users/DanMoisan/repos/open-claw-bridge`). It reads
-`artifacts/orchestration/epic-orchestrator-state.json`, re-derives ground truth via
-`git worktree list --porcelain` / `git branch` / `gh pr view`, and resumes at wave 2 by finishing
-F14, then scheduling F15 and F17.
+All waves are complete. If resuming before the integration PR has merged: read
+`artifacts/orchestration/epic-orchestrator-state.json` (`next_step: S10_epic_integration_pr`),
+re-derive ground truth via `gh pr list --base main --head epic/openclaw-vision-integration` and
+`git rev-parse origin/epic/openclaw-vision-integration`, then drive the integration-to-`main`
+PR to merge (merge commit, CI green, gated by `enforce-epic-merge-gate.ps1`) and record
+`epic_merge_pr` in the checkpoint.
