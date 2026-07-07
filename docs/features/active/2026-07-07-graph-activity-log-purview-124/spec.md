@@ -3,9 +3,9 @@
 - **Issue:** #124
 - **Parent (optional):** none
 - **Owner:** drmoisan
-- **Last Updated:** 2026-07-07T01-00
+- **Last Updated:** 2026-07-07T03-00
 - **Status:** Draft
-- **Version:** 0.1
+- **Version:** 0.2 (decision 1 amended: boundary-preserving `ICloudSyncActivityAuditor` mediation added post-execution; see `evidence/other/architecture-boundary-conflict.md`)
 
 ## Overview
 
@@ -29,6 +29,7 @@ These decisions are binding for planning and implementation; they resolve the fo
 1. **Required-non-empty-field gap (`MessageId`, `ActingFlags`).** No schema (`audit_log` DDL) or `IActionAuditLog` interface change. Reuse both fields with legitimately meaningful values rather than arbitrary sentinels or a relaxed `NOT NULL` constraint:
    - `MessageId` carries the CloudSync event's subject-resource identifier: the Graph subscription id for subscription lifecycle events, the notification's `resourceData.id` for webhook-received/rejected events, and the delta-reconcile `requestId` for reconciliation-outcome events.
    - `ActingFlags` carries a new fixed constant, `CloudSyncActingFlags.NotApplicable = "N/A:CloudSyncActivity"`, documented as the CloudSync-domain analogue of the send/calendar acting-flags string (which has no meaning for CloudSync events).
+   - **Boundary-preserving mediation (added post-execution, issue #117 AC-4 conflict).** `OpenClaw.Core.CloudSync` components do not construct `ActionAuditRecord` or reference `IActionAuditLog`/`CloudSyncActivityType`/`CloudSyncActivityResultCode`/`CloudSyncActingFlags` directly, and never reference `OpenClaw.Core.Agent`. Instead they depend on a narrow port, `ICloudSyncActivityAuditor` (bare `OpenClaw.Core` namespace — the one non-CloudSync namespace `CloudSyncArchitectureBoundaryTests` explicitly allows CloudSync to depend on), exposing one semantic async method per `CloudSyncActivityType` value. The Agent-side adapter `CloudSyncActivityAuditor` (`OpenClaw.Core.Agent`) implements the port, performs the `MessageId`/`ActingFlags` mapping described above, constructs the `ActionAuditRecord`, and calls `IActionAuditLog.RecordAsync`. This seam was introduced after initial execution surfaced a direct `CloudSync -> Agent` architecture-boundary violation against the pre-existing, issue-#117 `CloudSyncArchitectureBoundaryTests`; see `evidence/other/architecture-boundary-conflict.md` for the conflict record and the chosen resolution (Option 2: interface seam + composition-root-registered adapter).
 2. **Webhook correlation-id generation point.** Generate a new `Guid.NewGuid().ToString()` once per notification item, at each `queue.TryEnqueue(...)` call site in `NotificationRequestProcessor.ProcessItemAsync` (and at the corresponding rejection point per decision 3), matching the existing "one GUID per operation" pattern already used in `GraphDeltaReconciler.RunAsync`.
 3. **Dropped/invalid webhook audit scope.** In scope. Rejected webhook deliveries (unknown `subscriptionId`, mismatched `clientState`, missing `resourceData.id`) also emit an audit record, with `ResultCode` set to a new `CloudSyncActivityResultCode` constant identifying the specific rejection reason (e.g., `unknown-subscription`, `client-state-mismatch`, `missing-resource-id`). This is a security-relevant signal and is required for a complete Purview-oriented audit trail.
 4. **Target Purview/Graph field set.** Pin to the Microsoft Graph `directoryAudit` resource shape (`id`, `activityDateTime`, `activityDisplayName`, `category`, `correlationId`, `operationType`, `result`, `resultReason`, `initiatedBy`, `targetResources`, `additionalDetails`) per research §3, verified against Microsoft Learn (`https://learn.microsoft.com/en-us/graph/api/resources/directoryaudit`). The mapping is explicitly illustrative/aspirational — no live Purview or Graph activity-log endpoint exists in this environment or CI; live-tenant ingestion verification is deferred to a `human_interaction` exception runbook (F11 HI-1 / F17 precedent).
