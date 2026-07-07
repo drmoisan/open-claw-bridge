@@ -141,31 +141,31 @@ subject-resource identifier) and decision 3's three named rejection reasons:
 
 ### Phase 4 — NotificationRequestProcessor Instrumentation
 
-- [ ] [P4-T1] Add an `IActionAuditLog actionAuditLog` parameter (with null guard) to `NotificationRequestProcessor`'s primary constructor in `src/OpenClaw.Core/CloudSync/NotificationRequestProcessor.cs`.
+- [x] [P4-T1] Add an `IActionAuditLog actionAuditLog` parameter (with null guard) to `NotificationRequestProcessor`'s primary constructor in `src/OpenClaw.Core/CloudSync/NotificationRequestProcessor.cs`.
   - Acceptance: the file compiles; the class stores the dependency for use by `ProcessItemAsync`.
-- [ ] [P4-T2] At the top of `ProcessItemAsync`, add `var correlationId = Guid.NewGuid().ToString();` generated once per notification item (decision 2), reused at every exit point of the method.
+- [x] [P4-T2] At the top of `ProcessItemAsync`, add `var correlationId = Guid.NewGuid().ToString();` generated once per notification item (decision 2), reused at every exit point of the method.
   - Acceptance: exactly one `Guid.NewGuid()` call exists in `ProcessItemAsync`, and every audit emission added by this phase reads `correlationId`.
-- [ ] [P4-T3] In the "no `subscriptionId`" guard branch (the first `return` in `ProcessItemAsync`), emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.UnknownSubscription`, `MessageId = item.ResourceData?.Id ?? item.SubscriptionId ?? "(unresolvable)"`, `CorrelationId = correlationId`.
+- [x] [P4-T3] In the "no `subscriptionId`" guard branch (the first `return` in `ProcessItemAsync`), emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.UnknownSubscription`, `MessageId = item.ResourceData?.Id ?? item.SubscriptionId ?? "(unresolvable)"`, `CorrelationId = correlationId`.
   - Acceptance: this branch calls `RecordAsync` exactly once with the fields above before returning.
-- [ ] [P4-T4] In the "subscription not found" branch (`subscription is null`), emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.UnknownSubscription`, `MessageId = item.SubscriptionId`, `CorrelationId = correlationId`.
+- [x] [P4-T4] In the "subscription not found" branch (`subscription is null`), emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.UnknownSubscription`, `MessageId = item.SubscriptionId`, `CorrelationId = correlationId`.
   - Acceptance: this branch calls `RecordAsync` exactly once with the fields above before returning.
-- [ ] [P4-T5] In the `clientState` mismatch branch, emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.ClientStateMismatch`, `MessageId = item.SubscriptionId`, `CorrelationId = correlationId`.
+- [x] [P4-T5] In the `clientState` mismatch branch, emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.ClientStateMismatch`, `MessageId = item.SubscriptionId`, `CorrelationId = correlationId`.
   - Acceptance: this branch calls `RecordAsync` exactly once with the fields above before returning.
-- [ ] [P4-T6] At the lifecycle-item `queue.TryEnqueue(...)` call site, emit a `WebhookReceived` audit record with `MessageId = item.SubscriptionId`, `ResultCode = CloudSyncActivityResultCode.Success`, `CorrelationId = correlationId`.
+- [x] [P4-T6] At the lifecycle-item `queue.TryEnqueue(...)` call site, emit a `WebhookReceived` audit record with `MessageId = item.SubscriptionId`, `ResultCode = CloudSyncActivityResultCode.Success`, `CorrelationId = correlationId`.
   - Acceptance: this call site calls `RecordAsync` exactly once with the fields above.
-- [ ] [P4-T7] In the missing-`resourceData.id` guard branch, emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.MissingResourceId`, `MessageId = item.SubscriptionId`, `CorrelationId = correlationId`.
+- [x] [P4-T7] In the missing-`resourceData.id` guard branch, emit a `WebhookRejected` audit record with `ResultCode = CloudSyncActivityResultCode.MissingResourceId`, `MessageId = item.SubscriptionId`, `CorrelationId = correlationId`.
   - Acceptance: this branch calls `RecordAsync` exactly once with the fields above before returning.
-- [ ] [P4-T8] At the change-notification `queue.TryEnqueue(...)` call site, emit a `WebhookReceived` audit record with `MessageId = item.ResourceData.Id`, `ResultCode = CloudSyncActivityResultCode.Success`, `CorrelationId = correlationId`.
+- [x] [P4-T8] At the change-notification `queue.TryEnqueue(...)` call site, emit a `WebhookReceived` audit record with `MessageId = item.ResourceData.Id`, `ResultCode = CloudSyncActivityResultCode.Success`, `CorrelationId = correlationId`.
   - Acceptance: this call site calls `RecordAsync` exactly once with the fields above.
-- [ ] [P4-T9] Update the three direct `new NotificationRequestProcessor(...)` call sites in `tests/OpenClaw.Core.Tests/CloudSync/NotificationRequestProcessorTests.cs` to pass a new `FakeActionAuditLog` instance as the fourth constructor argument.
+- [x] [P4-T9] Update the three direct `new NotificationRequestProcessor(...)` call sites in `tests/OpenClaw.Core.Tests/CloudSync/NotificationRequestProcessorTests.cs` to pass a new `FakeActionAuditLog` instance as the fourth constructor argument.
   - Acceptance: `NotificationRequestProcessorTests.cs` compiles and its pre-existing tests pass unchanged.
-- [ ] [P4-T10] Update the four direct `new NotificationRequestProcessor(...)` call sites in `tests/OpenClaw.Core.Tests/CloudSync/NotificationRequestProcessorEdgeTests.cs` to pass a new `FakeActionAuditLog` instance as the fourth constructor argument.
+- [x] [P4-T10] Update the four direct `new NotificationRequestProcessor(...)` call sites in `tests/OpenClaw.Core.Tests/CloudSync/NotificationRequestProcessorEdgeTests.cs` to pass a new `FakeActionAuditLog` instance as the fourth constructor argument.
   - Acceptance: `NotificationRequestProcessorEdgeTests.cs` compiles and its pre-existing tests pass unchanged.
-- [ ] [P4-T11] Create `tests/OpenClaw.Core.Tests/CloudSync/NotificationRequestProcessorAuditTests.cs` (MSTest + Moq + FluentAssertions) verifying: a valid lifecycle notification emits exactly one `WebhookReceived` audit record with a freshly generated correlation id; a valid change notification emits exactly one `WebhookReceived` audit record with `MessageId` equal to `resourceData.id`.
+- [x] [P4-T11] Create `tests/OpenClaw.Core.Tests/CloudSync/NotificationRequestProcessorAuditTests.cs` (MSTest + Moq + FluentAssertions) verifying: a valid lifecycle notification emits exactly one `WebhookReceived` audit record with a freshly generated correlation id; a valid change notification emits exactly one `WebhookReceived` audit record with `MessageId` equal to `resourceData.id`.
   - Acceptance: the test file exists under `tests/OpenClaw.Core.Tests/CloudSync/` and both test methods pass.
-- [ ] [P4-T12] Add test methods to `NotificationRequestProcessorAuditTests.cs` verifying each of the three rejection branches (no subscriptionId, unknown subscription, clientState mismatch, missing resourceData.id — four scenarios) emits exactly one `WebhookRejected` audit record with the matching `CloudSyncActivityResultCode`.
+- [x] [P4-T12] Add test methods to `NotificationRequestProcessorAuditTests.cs` verifying each of the three rejection branches (no subscriptionId, unknown subscription, clientState mismatch, missing resourceData.id — four scenarios) emits exactly one `WebhookRejected` audit record with the matching `CloudSyncActivityResultCode`.
   - Acceptance: all four rejection-scenario test methods pass.
-- [ ] [P4-T13] Run `dotnet test --filter "FullyQualifiedName~NotificationRequestProcessor"` and confirm exit code 0.
+- [x] [P4-T13] Run `dotnet test --filter "FullyQualifiedName~NotificationRequestProcessor"` and confirm exit code 0.
   - Acceptance: command exits 0 with all pre-existing and new `NotificationRequestProcessor`-related tests passing.
 
 ### Phase 5 — GraphDeltaReconciler Instrumentation

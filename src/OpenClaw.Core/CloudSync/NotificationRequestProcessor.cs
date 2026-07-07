@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudGraph;
 
 namespace OpenClaw.Core.CloudSync;
@@ -27,10 +28,17 @@ internal sealed record NotificationProcessorResult(
 internal sealed class NotificationRequestProcessor(
     ISubscriptionStore subscriptionStore,
     INotificationQueue queue,
-    ILogger<NotificationRequestProcessor> logger
+    ILogger<NotificationRequestProcessor> logger,
+    IActionAuditLog actionAuditLog,
+    TimeProvider timeProvider
 )
 {
     private const string InvalidRequestCode = "INVALID_REQUEST";
+
+    private readonly IActionAuditLog actionAuditLog =
+        actionAuditLog ?? throw new ArgumentNullException(nameof(actionAuditLog));
+    private readonly TimeProvider timeProvider =
+        timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     /// <summary>
     /// Handles the Graph validation handshake: HTTP 200, <c>text/plain</c>, body = the
@@ -103,10 +111,20 @@ internal sealed class NotificationRequestProcessor(
     /// <summary>Validates one item and enqueues its work item; invalid items drop with a Warning.</summary>
     private async Task ProcessItemAsync(GraphNotification item, CancellationToken ct)
     {
+        var correlationId = Guid.NewGuid().ToString();
+
         if (string.IsNullOrWhiteSpace(item.SubscriptionId))
         {
             logger.LogWarning(
                 "Dropped a Graph notification with no subscriptionId (D-1 202-and-drop)."
+            );
+            var unresolvedId = item.ResourceData?.Id ?? item.SubscriptionId ?? "(unresolvable)";
+            await RecordWebhookRejectedAsync(
+                unresolvedId,
+                unresolvedId,
+                CloudSyncActivityResultCode.UnknownSubscription,
+                correlationId,
+                ct
             );
             return;
         }
@@ -118,6 +136,13 @@ internal sealed class NotificationRequestProcessor(
                 "Dropped a Graph notification for unknown subscription {SubscriptionId} (D-1 202-and-drop).",
                 item.SubscriptionId
             );
+            await RecordWebhookRejectedAsync(
+                item.SubscriptionId,
+                item.SubscriptionId,
+                CloudSyncActivityResultCode.UnknownSubscription,
+                correlationId,
+                ct
+            );
             return;
         }
 
@@ -127,12 +152,25 @@ internal sealed class NotificationRequestProcessor(
                 "Dropped a Graph notification with mismatched clientState for subscription {SubscriptionId} (D-1 202-and-drop).",
                 item.SubscriptionId
             );
+            await RecordWebhookRejectedAsync(
+                subscription.Mailbox,
+                item.SubscriptionId,
+                CloudSyncActivityResultCode.ClientStateMismatch,
+                correlationId,
+                ct
+            );
             return;
         }
 
         if (item.LifecycleEvent is not null)
         {
             queue.TryEnqueue(new LifecycleWorkItem(item.SubscriptionId, item.LifecycleEvent));
+            await RecordWebhookReceivedAsync(
+                subscription.Mailbox,
+                item.SubscriptionId,
+                correlationId,
+                ct
+            );
             return;
         }
 
@@ -141,6 +179,13 @@ internal sealed class NotificationRequestProcessor(
             logger.LogWarning(
                 "Dropped a Graph change notification without resourceData.id for subscription {SubscriptionId} (fail-visible).",
                 item.SubscriptionId
+            );
+            await RecordWebhookRejectedAsync(
+                subscription.Mailbox,
+                item.SubscriptionId,
+                CloudSyncActivityResultCode.MissingResourceId,
+                correlationId,
+                ct
             );
             return;
         }
@@ -152,7 +197,66 @@ internal sealed class NotificationRequestProcessor(
                 item.ChangeType ?? string.Empty
             )
         );
+        await RecordWebhookReceivedAsync(
+            subscription.Mailbox,
+            item.ResourceData.Id,
+            correlationId,
+            ct
+        );
     }
+
+    /// <summary>Records a <see cref="CloudSyncActivityType.WebhookReceived"/> audit record.</summary>
+    private Task RecordWebhookReceivedAsync(
+        string mailbox,
+        string messageId,
+        string correlationId,
+        CancellationToken ct
+    ) =>
+        actionAuditLog.RecordAsync(
+            new ActionAuditRecord(
+                Mailbox: mailbox,
+                MessageId: messageId,
+                EventId: null,
+                ActionType: CloudSyncActivityType.WebhookReceived,
+                ActingFlags: CloudSyncActingFlags.NotApplicable,
+                CorrelationId: correlationId,
+                ResultCode: CloudSyncActivityResultCode.Success,
+                ErrorDetail: null,
+                OriginalStartUtc: null,
+                OriginalEndUtc: null,
+                NewStartUtc: null,
+                NewEndUtc: null,
+                RecordedAtUtc: timeProvider.GetUtcNow()
+            ),
+            ct
+        );
+
+    /// <summary>Records a <see cref="CloudSyncActivityType.WebhookRejected"/> audit record.</summary>
+    private Task RecordWebhookRejectedAsync(
+        string mailbox,
+        string messageId,
+        string resultCode,
+        string correlationId,
+        CancellationToken ct
+    ) =>
+        actionAuditLog.RecordAsync(
+            new ActionAuditRecord(
+                Mailbox: mailbox,
+                MessageId: messageId,
+                EventId: null,
+                ActionType: CloudSyncActivityType.WebhookRejected,
+                ActingFlags: CloudSyncActingFlags.NotApplicable,
+                CorrelationId: correlationId,
+                ResultCode: resultCode,
+                ErrorDetail: null,
+                OriginalStartUtc: null,
+                OriginalEndUtc: null,
+                NewStartUtc: null,
+                NewEndUtc: null,
+                RecordedAtUtc: timeProvider.GetUtcNow()
+            ),
+            ct
+        );
 
     private static NotificationProcessorResult InvalidRequest(string message) =>
         new(
