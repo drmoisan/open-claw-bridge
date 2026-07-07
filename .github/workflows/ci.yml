@@ -76,6 +76,10 @@ jobs:
           path: artifacts/pester/**
           if-no-files-found: ignore
 
+  bicep-validate:
+    name: Bicep Validate
+    uses: ./.github/workflows/_bicep-validate.yml
+
   actionlint:
     name: Workflow Lint
     runs-on: ubuntu-latest
