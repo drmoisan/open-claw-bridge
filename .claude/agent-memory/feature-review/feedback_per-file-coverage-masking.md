@@ -139,6 +139,16 @@ disposition). New Minor pattern: a measured-and-uncovered defensive `entry is no
 membership loop (3/4 conditions, no null-element test anywhere) — above the 75% gate so Minor not
 Blocking (contrast #117 where sub-75% subsets were Blocking); recommend one directed null-entry test.
 
+#128 (2026-07-07): dual-mode practice worked as designed. Settings mode masked the new async
+orchestration body (38 vs 191 instrumented lines for SchedulingWorker.Reschedule.cs); plain mode
+attested it fully (100% line, 23/24 branch). New grading distinction vs #117: a sub-75% CHANGED-REGION
+branch subset (7/12 on the new RescheduleEventAsync fallback arms) inside a MODIFIED file whose
+whole-file plain figure still passes (75.93%) — and which exactly replicates the pre-existing
+send-path pattern's gap (SendMailAsync lines 136/140/141 identical partials at baseline) — was
+graded MINOR, not Blocking; #117's Blocking applied to whole-new-file subsets below the gate.
+Also reconfirmed the #103 shifted-line technique: Pipeline.cs baseline partials at 298/305 = head
+306/313 (+8 added lines), proving the 50% settings-mode figure is pre-existing.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
