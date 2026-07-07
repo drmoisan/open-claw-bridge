@@ -301,6 +301,41 @@ CREATE TABLE IF NOT EXISTS poll_cursors(
     }
 
     [TestMethod]
+    public async Task RecordAsync_then_GetByMessageIdAsync_should_round_trip_cloudsync_event_unchanged()
+    {
+        // Arrange: a CloudSync subscription-created event using the reused MessageId/ActingFlags
+        // fields (spec.md decision 1) rather than a new schema/interface shape — proves the
+        // existing audit_log schema and IActionAuditLog interface require no change for
+        // CloudSync event types.
+        using var repo = new OpenClaw.Core.CoreCacheRepository(NewConnectionString("cloudsync"));
+        await repo.InitializeAsync();
+        var record = new ActionAuditRecord(
+            Mailbox: "owner@contoso.com",
+            MessageId: "sub-123456",
+            EventId: null,
+            ActionType: CloudSyncActivityType.SubscriptionCreated,
+            ActingFlags: CloudSyncActingFlags.NotApplicable,
+            CorrelationId: "33333333-3333-3333-3333-333333333333",
+            ResultCode: CloudSyncActivityResultCode.Success,
+            ErrorDetail: null,
+            OriginalStartUtc: null,
+            OriginalEndUtc: null,
+            NewStartUtc: null,
+            NewEndUtc: null,
+            RecordedAtUtc: new DateTimeOffset(2026, 7, 7, 1, 0, 0, TimeSpan.Zero)
+        );
+
+        // Act
+        await repo.RecordAsync(record, CancellationToken.None);
+        var records = await repo.GetByMessageIdAsync("sub-123456", CancellationToken.None);
+
+        // Assert
+        records.Should().ContainSingle("one CloudSync audit record was written for the subscription id");
+        records[0].ActingFlags.Should().Be(CloudSyncActingFlags.NotApplicable);
+        records[0].ActionType.Should().Be(CloudSyncActivityType.SubscriptionCreated);
+    }
+
+    [TestMethod]
     [DataRow("Mailbox", "", DisplayName = "empty Mailbox")]
     [DataRow("Mailbox", " ", DisplayName = "whitespace Mailbox")]
     [DataRow("MessageId", "", DisplayName = "empty MessageId")]
