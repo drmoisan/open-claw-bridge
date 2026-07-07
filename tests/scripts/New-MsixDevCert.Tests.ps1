@@ -119,7 +119,11 @@ Describe 'New-MsixDevCert.ps1' {
             Mock Read-EnvFileContent {
                 param([string]$Path)
                 $null = $Path
-                return [string[]]@('OPENCLAW_PACKAGE_VERSION=1.0.2.0', '# comment')
+                # Production-parity return shape: Publish.Env.psm1's real
+                # Read-EnvFileContent returns via the unary-comma idiom
+                # (return , ([string[]]@($lines))), which yields a single,
+                # pipeline-safe string[] rather than letting PowerShell unroll it.
+                return , ([string[]]@('OPENCLAW_PACKAGE_VERSION=1.0.2.0', '# comment'))
             }
             Mock Set-EnvFileValue {
                 param([string[]]$Content, [string]$Key, [string]$Value)
@@ -158,6 +162,65 @@ Describe 'New-MsixDevCert.ps1' {
         It '-WhatIf does not write to the .env seam' {
             Save-CertThumbprintToEnv -Thumbprint 'DEAD00' -EnvPath 'C:\fake\.env' -WhatIf
             Assert-MockCalled Write-EnvFileContent -Times 0 -Scope It
+        }
+    }
+
+    Context 'Save-CertThumbprintToEnv multi-line regression (AC-5)' {
+        BeforeEach {
+            # Mock only the .env file-I/O seam (Read-EnvFileContent,
+            # Write-EnvFileContent). Set-EnvFileValue is left unmocked so this
+            # context exercises the REAL implementation from Publish.Env.psm1
+            # (imported by New-MsixDevCert.ps1's dot-sourced module import) as
+            # the update mechanism.
+            $script:WriteEnvContent = $null
+            Mock Read-EnvFileContent {
+                param([string]$Path)
+                $null = $Path
+                # Production-parity return shape: Publish.Env.psm1's real
+                # Read-EnvFileContent returns via the unary-comma idiom
+                # (return , ([string[]]@($lines))), which yields a single,
+                # pipeline-safe string[] rather than letting PowerShell unroll
+                # it.
+                return , ([string[]]@(
+                        '# leading comment',
+                        'OPENCLAW_PACKAGE_VERSION=1.0.2.0',
+                        'OPENCLAW_CERT_THUMBPRINT=OLDVALUE'
+                    ))
+            }
+            Mock Write-EnvFileContent {
+                param([string]$Path, [string[]]$Content)
+                $null = $Path
+                $script:WriteEnvContent = @($Content)
+            }
+        }
+
+        It 'preserves a multi-line .env verbatim and updates only OPENCLAW_CERT_THUMBPRINT in place (regression: redundant @() wrap)' {
+            # Regression fixture: a comment line plus two KEY=value lines. A
+            # redundant @(Read-EnvFileContent ...) wrap at the call site nests
+            # the mocked return in a one-element array; binding that to a
+            # [string[]] parameter joins every element with $OFS (space),
+            # collapsing all lines into one and appending the target key as a
+            # duplicate second line. This test fails under that regression and
+            # passes once the call site assigns the seam's return value
+            # directly, using the real Set-EnvFileValue to perform the update.
+            $thumb = 'AABBCCDDEEFF00112233445566778899AABBCCDD'
+            Save-CertThumbprintToEnv -Thumbprint $thumb -EnvPath 'C:\fake\.env'
+
+            Assert-MockCalled Write-EnvFileContent -Times 1 -Scope It
+            $written = @($script:WriteEnvContent)
+
+            # Not collapsed into a single space-joined line: line count matches
+            # the original fixture's line count.
+            $written.Count | Should -Be 3
+
+            # Every original line is preserved verbatim except the updated key.
+            ($written -contains '# leading comment') | Should -BeTrue
+            ($written -contains 'OPENCLAW_PACKAGE_VERSION=1.0.2.0') | Should -BeTrue
+
+            # The target key is updated in place with no duplicate.
+            $thumbprintLines = @($written | Where-Object { $_ -like 'OPENCLAW_CERT_THUMBPRINT=*' })
+            $thumbprintLines.Count | Should -Be 1
+            $thumbprintLines[0] | Should -Be "OPENCLAW_CERT_THUMBPRINT=$thumb"
         }
     }
 }

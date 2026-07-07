@@ -69,7 +69,7 @@ function Save-CertThumbprintToEnv {
         [string]$EnvPath
     )
 
-    $content = @(Read-EnvFileContent -Path $EnvPath)
+    $content = Read-EnvFileContent -Path $EnvPath
     $updated = Set-EnvFileValue -Content $content -Key 'OPENCLAW_CERT_THUMBPRINT' -Value $Thumbprint
     if ($PSCmdlet.ShouldProcess($EnvPath, 'Persist OPENCLAW_CERT_THUMBPRINT')) {
         Write-EnvFileContent -Path $EnvPath -Content $updated

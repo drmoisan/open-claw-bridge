@@ -52,9 +52,11 @@ Describe 'scripts/Publish.ps1' {
         Mock Read-EnvFileContent {
             param([string]$Path)
             $null = $Path
-            # Emit each line as separate output so the script's @(...) collects a
-            # flat string[]; a unary-comma return would yield a nested array.
-            return [string[]]@($global:PublishTestEnvContent)
+            # Production-parity return shape: Publish.Env.psm1's real
+            # Read-EnvFileContent returns via the unary-comma idiom
+            # (return , ([string[]]@($lines))), which yields a single,
+            # pipeline-safe string[] rather than letting PowerShell unroll it.
+            return , ([string[]]@($global:PublishTestEnvContent))
         }
         Mock Write-EnvFileContent {
             param([string]$Path, [string[]]$Content)
@@ -329,6 +331,37 @@ Describe 'scripts/Publish.ps1' {
             { & $script:ScriptPath -Version '1.2.3.0' } |
                 Should -Throw -ExpectedMessage '*Either -SkipSign or a non-empty -CertThumbprint*'
             $global:PublishTestEnvWrites.Count | Should -Be 0
+        }
+        It 'preserves a multi-line .env verbatim and updates only OPENCLAW_PACKAGE_VERSION in place (regression: redundant @() wrap)' {
+            # Regression fixture: a comment line plus two KEY=value lines. A
+            # redundant @(Read-EnvFileContent ...) wrap at the call site nests
+            # the mocked return in a one-element array; binding that to a
+            # [string[]] parameter joins every element with $OFS (space),
+            # collapsing all lines into one and appending the target key as a
+            # duplicate second line. This test fails under that regression and
+            # passes once the call site assigns the seam's return value directly.
+            $global:PublishTestEnvContent = @(
+                '# leading comment',
+                'OPENCLAW_PACKAGE_VERSION=1.0.2.0',
+                'OTHER_KEY=unchanged'
+            )
+            & $script:ScriptPath -SkipSign -OutputDir 'D:\out' | Out-Null
+
+            $global:PublishTestEnvWrites.Count | Should -Be 1
+            $written = @($global:PublishTestEnvWrites[0].Content)
+
+            # Not collapsed into a single space-joined line: line count matches
+            # the original fixture's line count.
+            $written.Count | Should -Be 3
+
+            # Every original line is preserved verbatim except the updated key.
+            ($written -contains '# leading comment') | Should -BeTrue
+            ($written -contains 'OTHER_KEY=unchanged') | Should -BeTrue
+
+            # The target key is updated in place with no duplicate.
+            $versionLines = @($written | Where-Object { $_ -like 'OPENCLAW_PACKAGE_VERSION=*' })
+            $versionLines.Count | Should -Be 1
+            $versionLines[0] | Should -Be 'OPENCLAW_PACKAGE_VERSION=1.0.2.1'
         }
     }
 

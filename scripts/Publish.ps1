@@ -115,7 +115,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     # any state-changing stage. The resolved value is persisted to .env later,
     # after the signing fail-fast gate, so an ambiguous signing configuration
     # leaves .env unchanged.
-    $envContent = @(Read-EnvFileContent -Path $EnvFilePath)
+    $envContent = Read-EnvFileContent -Path $EnvFilePath
     if ([string]::IsNullOrWhiteSpace($Version)) {
         $envMap = Get-EnvFileMap -Content $envContent
         $storedVersion = if ($envMap.Contains('OPENCLAW_PACKAGE_VERSION')) { [string]$envMap['OPENCLAW_PACKAGE_VERSION'] } else { '' }
