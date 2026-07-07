@@ -37,7 +37,7 @@ This feature closes that gap additively: it extends the existing F9 audit seam t
 ## Acceptance Criteria
 
 - [x] The F9 audit seam is extended with CloudSync activity event types (subscription lifecycle, webhook received, delta reconciliation outcome), each carrying a correlation id, without changing the existing `IActionAuditLog` contract for prior consumers.
-- [ ] The F14 CloudSync components emit these activity events through the extended audit seam additively, with no change to existing subscription/webhook/delta-reconciliation behavior, return values, or contracts (verified by the existing F14 test suite passing unchanged).
+- [x] The F14 CloudSync components emit these activity events through the extended audit seam additively, with no change to existing subscription/webhook/delta-reconciliation behavior, return values, or contracts (verified by the existing F14 test suite passing unchanged).
 - [x] A host-neutral, pure Purview-activity-log projection maps `ActionAuditRecord` (including the new CloudSync event types) to a Purview/Graph-activity-log-compatible record shape, testable without network access.
 - [x] Mocked-Graph/Purview contract tests cover the projection mapping and the CloudSync event-emission paths, with coverage thresholds held (line >= 85%, branch >= 75%).
 - [ ] A human runbook documents live-tenant Purview ingestion verification and is recorded in orchestrator state as a `human_interaction` exception with a valid runbook_path.
