@@ -93,6 +93,16 @@ evidence numbers outright — the independent figures matched the committed evid
 (OpenClaw.Core 93.03% line / 81.45% branch), which is itself useful confirmation the executor's
 reporting practice on this feature was accurate.
 
+#128 (2026-07-07, F18 organizer reschedule, first calendar-write RPC): PR-context artifacts
+absent again (5th occurrence) — regenerated from git per the #120 recipe. Baseline freshness
+check (`git show -s --format=%cI <mb>` vs artifact mtime) passed this time (baseline 04:03 >
+merge-base 03:10). `--results-directory "<FEATURE>/evidence/qa-gates/coverage-review/{settings,plain}-mode"`
+cleanly routes BOTH dual-mode runs to canonical paths. Manual verification of the
+orchestrator-state `human_interaction` invariants (no Python validator in this repo) accepted for
+an AC that requires an `exception` + `runbook_path` record. Newest validator-shaped C# artifact
+template: `2026-07-07-organizer-reschedule-128/*.2026-07-07T04-50.md` (PASS-verdict, dual-mode
+coverage, prior: #124).
+
 Fourth recurring quirk — **`run_poshqc_test` MCP tool fails in this repo** (pre-existing
 workspace defect, first hit on #111 execution, accepted on the #111 review): the bundled
 `pester.runsettings.psd1` hardcodes drm-copilot `CodeCoverage.Path` entries, six of which do

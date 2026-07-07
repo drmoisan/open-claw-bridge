@@ -148,6 +148,7 @@ public sealed class SchedulingWorkerTests
             sentActionStore.Object,
             new Mock<IActionAuditLog>().Object,
             source.Object,
+            new Mock<ISeriesMoveHistory>().Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
             NullLogger<SchedulingWorker>.Instance
