@@ -9,6 +9,11 @@
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
       <_Parameter1>OpenClaw.Core.Tests</_Parameter1>
     </AssemblyAttribute>
+    <!-- Lets Moq (Castle DynamicProxy) generate proxies for internal interfaces such as
+         IMailboxScopeProbe in the test suite. -->
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>DynamicProxyGenAssembly2</_Parameter1>
+    </AssemblyAttribute>
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpenClaw.HostAdapter.Contracts\OpenClaw.HostAdapter.Contracts.csproj" />
