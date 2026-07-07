@@ -1,0 +1,168 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "version": 1,
+  "routes": {
+    "small": {
+      "description": "Minor-audit path for work inside the applicable language budget.",
+      "required_agents": [
+        "atomic-planner",
+        "atomic-executor",
+        "feature-review"
+      ],
+      "required_skills": [
+        "orchestrate",
+        "feature-promotion-lifecycle",
+        "atomic-plan-contract",
+        "acceptance-criteria-tracking",
+        "pr-context-artifacts",
+        "pr-base-branch-merge-base"
+      ],
+      "required_mcp_tools": [
+        "new_potential_entry",
+        "potential_to_issue",
+        "new_active_feature_folder",
+        "collect_pr_context",
+        "validate_orchestration_artifacts"
+      ]
+    },
+    "large": {
+      "description": "Full feature or bug path for work outside small-path budget.",
+      "requires_pr_gate": true,
+      "required_agents": [
+        "task-researcher",
+        "prd-feature",
+        "atomic-planner",
+        "atomic-executor",
+        "feature-review",
+        "pr-author"
+      ],
+      "required_skills": [
+        "orchestrate",
+        "orchestrator-workflow",
+        "feature-promotion-lifecycle",
+        "repo-automation-adapter",
+        "atomic-plan-contract",
+        "acceptance-criteria-tracking",
+        "pr-context-artifacts",
+        "pr-base-branch-merge-base"
+      ],
+      "required_mcp_tools": [
+        "new_potential_entry",
+        "potential_to_issue",
+        "new_active_feature_folder",
+        "collect_pr_context",
+        "validate_orchestration_artifacts"
+      ]
+    },
+    "remediation": {
+      "description": "Review-triggered remediation loop.",
+      "required_agents": [
+        "atomic-planner",
+        "atomic-executor",
+        "feature-review"
+      ],
+      "required_skills": [
+        "orchestrate",
+        "atomic-plan-contract",
+        "acceptance-criteria-tracking",
+        "pr-context-artifacts"
+      ],
+      "required_mcp_tools": [
+        "collect_pr_context",
+        "validate_orchestration_artifacts"
+      ]
+    },
+    "epic": {
+      "description": "Epic path for scheduling a dependency graph of child features across parallel worktrees with fan-in via a shared integration branch.",
+      "requires_pr_gate": true,
+      "required_agents": [
+        "orchestrator",
+        "pr-author"
+      ],
+      "required_skills": [
+        "epic-orchestrate",
+        "orchestrate",
+        "feature-promotion-lifecycle",
+        "atomic-plan-contract",
+        "acceptance-criteria-tracking",
+        "evidence-and-timestamp-conventions",
+        "pr-context-artifacts",
+        "pr-base-branch-merge-base"
+      ],
+      "required_mcp_tools": [
+        "collect_pr_context",
+        "validate_orchestration_artifacts"
+      ]
+    }
+  },
+  "model_policy": {
+    "description": "Judgment-based complexity-band model selection. This block governs only the delegation model tier. It is not a route input, and route is not an input to model selection.",
+    "tier_order": [
+      "haiku",
+      "sonnet",
+      "opus",
+      "fable"
+    ],
+    "complexity": {
+      "scale": "C1 trivial or mechanical change with no behavior effect. C2 localized feature or bug change confined to a small surface. C3 cross-cutting change that alters an invariant, contract, or behavior across module boundaries. C4 novel, ambiguous, or research-heavy change requiring the most capable tier; C4 is reached only by judgment and is never floor-forced.",
+      "signals": [
+        {
+          "name": "classifier_or_model_logic",
+          "floor": true,
+          "anchor": "Changes to classifier engines, scoring, or model-affecting logic (T1 modules)."
+        },
+        {
+          "name": "auth_or_token_handling",
+          "floor": true,
+          "anchor": "Changes to authentication, token handling, or other security-sensitive paths."
+        },
+        {
+          "name": "concurrency_or_ordering",
+          "floor": true,
+          "anchor": "Introduces or modifies concurrency, ordering, or state-transition invariants."
+        },
+        {
+          "name": "cross_module_contract_change",
+          "floor": true,
+          "anchor": "Alters a public contract or schema consumed across module boundaries."
+        },
+        {
+          "name": "single_file_localized_edit",
+          "floor": false,
+          "anchor": "A localized edit confined to one file with no cross-cutting effect."
+        },
+        {
+          "name": "mechanical_rename_or_move",
+          "floor": false,
+          "anchor": "A mechanical rename, move, or formatting change with no behavior change."
+        },
+        {
+          "name": "docs_or_comment_only",
+          "floor": false,
+          "anchor": "A documentation-only or comment-only change."
+        }
+      ]
+    },
+    "complexity_to_model": {
+      "C1": "haiku",
+      "C2": "sonnet",
+      "C3": "opus",
+      "C4": "fable"
+    },
+    "preferred_overlay": {
+      "description": "Applied only under fable_policy preferred. Changes only the C3 cell to fable, and only for the listed agents. No other agent and no other band is affected.",
+      "agents": [
+        "atomic-planner",
+        "prd-feature",
+        "feature-review",
+        "task-researcher"
+      ],
+      "band": "C3",
+      "model": "fable"
+    }
+  },
+  "model_budget": {
+    "description": "Session-level model budget. fable_policy is a three-way switch controlling whether the fable tier is disabled (removed and clamped to opus), available (used as-is), or preferred (applies the preferred_overlay).",
+    "fable_policy": "preferred"
+  }
+}

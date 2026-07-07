@@ -1,5 +1,6 @@
 ---
 name: csharp-typed-engineer
+model: sonnet
 description: Project-scoped worker that implements and verifies C# changes within typed repository boundaries. Applies the CSharpier -> .NET Analyzers -> Nullable Analysis -> xUnit toolchain, the 1-3 production-file small-path budget, and zero-regression quality gates.
 tools:
   - Read

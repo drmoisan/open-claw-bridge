@@ -1,5 +1,6 @@
 ---
 name: atomic-planner
+model: opus
 description: Planning-only agent that generates deterministic phased implementation plans with atomic P#-T# checkbox tasks, writing output to docs/ and artifacts/ paths only.
 tools:
   - Read

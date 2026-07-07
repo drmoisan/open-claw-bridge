@@ -1,5 +1,6 @@
 ---
 name: atomic-executor
+model: opus
 description: Plan execution agent that runs approved atomic plans task-by-task with explicit toolchain commands for Python, TypeScript, PowerShell, and C# quality gates.
 tools:
   - Read

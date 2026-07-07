@@ -1,5 +1,6 @@
 ---
 name: feature-review
+model: opus
 description: Feature branch review specialist that produces policy-audit, code-review, and feature-audit artifacts restricted to docs/features/active/ write path.
 tools:
   - Read
