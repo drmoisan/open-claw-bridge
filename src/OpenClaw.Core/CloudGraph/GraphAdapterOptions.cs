@@ -78,4 +78,20 @@ public sealed class GraphAdapterOptions
     /// Env binding: <c>OpenClaw__GraphAdapter__AvailabilityViewIntervalMinutes</c>.
     /// </summary>
     public int AvailabilityViewIntervalMinutes { get; set; } = 30;
+
+    /// <summary>
+    /// The allowlist of principal mailbox UPNs the assistant mailbox (<c>{a}</c>) may
+    /// send on behalf of (F15, issue #119). Bound from indexed configuration keys
+    /// (<c>OpenClaw__GraphAdapter__AllowedPrincipalMailboxUpns__0</c>,
+    /// <c>__1</c>, ...). This is a get-only collection so the configuration binder adds
+    /// bound entries to the initialized list.
+    /// </summary>
+    /// <remarks>
+    /// Fail-closed-empty semantics: an empty or absent allowlist denies every
+    /// on-behalf send (<c>{p} != {a}</c>); self-send (<c>{p} == {a}</c>) is unaffected
+    /// by the allowlist and always permitted. Membership is decided by
+    /// <see cref="SendOnBehalfAuthorizer.Authorize"/> with trimmed,
+    /// <see cref="System.StringComparison.OrdinalIgnoreCase"/> comparison.
+    /// </remarks>
+    public IList<string> AllowedPrincipalMailboxUpns { get; } = new List<string>();
 }
