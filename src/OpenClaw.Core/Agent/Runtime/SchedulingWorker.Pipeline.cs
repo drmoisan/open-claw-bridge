@@ -300,6 +300,19 @@ public sealed partial class SchedulingWorker
                 cancellationToken
             )
             .ConfigureAwait(false);
+
+        // Attendee propose-new-time evaluation (issue #130): the F19 attendee-side write
+        // path. Mutual exclusivity with the F18 organizer path comes from the intent
+        // predicates (IsOrganizer true for reschedule vs false for propose), not pipeline
+        // branching; a flag-off or no-intent evaluation performs no outbound side effect.
+        await EvaluateProposeNewTimeAsync(
+                messageId,
+                context,
+                meetingEvent,
+                slots,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
     }
 
     private string MailboxUpn() =>
