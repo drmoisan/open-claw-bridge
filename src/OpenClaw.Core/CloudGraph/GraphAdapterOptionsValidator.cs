@@ -74,6 +74,14 @@ public static class GraphAdapterOptionsValidator
             violations.Add("AvailabilityViewIntervalMinutes must be between 5 and 1440 inclusive.");
         }
 
+        if (options.AllowedPrincipalMailboxUpns.Any(string.IsNullOrWhiteSpace))
+        {
+            violations.Add(
+                "AllowedPrincipalMailboxUpns entries must each be non-whitespace; "
+                    + "an empty allowlist is valid."
+            );
+        }
+
         return violations;
     }
 }
