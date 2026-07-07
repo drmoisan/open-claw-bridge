@@ -22,25 +22,41 @@ This feature closes that gap additively: it extends the existing F9 audit seam t
 - All tenant-dependent verification (that a real Purview/Graph activity log ingests the projected record) ships as mocked-Graph/Purview contract tests plus a human runbook recorded as a `human_interaction` exception, mirroring the F11 HI-1 / F17 precedent, because no Azure/Exchange/Purview credentials exist in this environment or CI.
 
 
+## Design Decisions (resolved from research 2026-07-07T05-10)
+
+These decisions are binding for planning and implementation; they resolve the four open ambiguities recorded in `research/2026-07-07T05-10-graph-activity-log-purview-research.md` §"Open Ambiguities for the Planner".
+
+1. **Required-non-empty-field gap (`MessageId`, `ActingFlags`).** No schema (`audit_log` DDL) or `IActionAuditLog` interface change. Reuse both fields with legitimately meaningful values rather than arbitrary sentinels or a relaxed `NOT NULL` constraint:
+   - `MessageId` carries the CloudSync event's subject-resource identifier: the Graph subscription id for subscription lifecycle events, the notification's `resourceData.id` for webhook-received/rejected events, and the delta-reconcile `requestId` for reconciliation-outcome events.
+   - `ActingFlags` carries a new fixed constant, `CloudSyncActingFlags.NotApplicable = "N/A:CloudSyncActivity"`, documented as the CloudSync-domain analogue of the send/calendar acting-flags string (which has no meaning for CloudSync events).
+2. **Webhook correlation-id generation point.** Generate a new `Guid.NewGuid().ToString()` once per notification item, at each `queue.TryEnqueue(...)` call site in `NotificationRequestProcessor.ProcessItemAsync` (and at the corresponding rejection point per decision 3), matching the existing "one GUID per operation" pattern already used in `GraphDeltaReconciler.RunAsync`.
+3. **Dropped/invalid webhook audit scope.** In scope. Rejected webhook deliveries (unknown `subscriptionId`, mismatched `clientState`, missing `resourceData.id`) also emit an audit record, with `ResultCode` set to a new `CloudSyncActivityResultCode` constant identifying the specific rejection reason (e.g., `unknown-subscription`, `client-state-mismatch`, `missing-resource-id`). This is a security-relevant signal and is required for a complete Purview-oriented audit trail.
+4. **Target Purview/Graph field set.** Pin to the Microsoft Graph `directoryAudit` resource shape (`id`, `activityDateTime`, `activityDisplayName`, `category`, `correlationId`, `operationType`, `result`, `resultReason`, `initiatedBy`, `targetResources`, `additionalDetails`) per research §3, verified against Microsoft Learn (`https://learn.microsoft.com/en-us/graph/api/resources/directoryaudit`). The mapping is explicitly illustrative/aspirational — no live Purview or Graph activity-log endpoint exists in this environment or CI; live-tenant ingestion verification is deferred to a `human_interaction` exception runbook (F11 HI-1 / F17 precedent).
+
+New extensibility constants (new `const string` classes paralleling `SentActionKey`/`ActionAuditResultCode`, per the existing extensibility pattern — no enum, no interface change):
+- `CloudSyncActivityType` (new `ActionType` values): `SubscriptionCreated`, `SubscriptionRenewed`, `SubscriptionExpired`, `SubscriptionRemoved`, `WebhookReceived`, `WebhookRejected`, `DeltaReconciliationRun`.
+- `CloudSyncActivityResultCode` (new `ResultCode` values, alongside existing `ActionAuditResultCode`): rejection-reason codes for `WebhookRejected`, plus `success`/`failure` for the others (reuse `ActionAuditResultCode.Sent`/equivalent where semantically apt, otherwise add new constants).
+- `CloudSyncActingFlags.NotApplicable`.
+
+Test framework for new tests: MSTest + Moq + FluentAssertions, matching the actual established convention in `SchedulingWorkerAuditTests.cs` / `GraphSubscriptionManagerTests.cs` (per research §6 factual note), not the aspirational xUnit/NSubstitute wording in `.claude/rules/csharp.md`.
+
 ## Inputs / Outputs
 
-- Inputs (CLI flags, files, env vars)
-- Outputs (artifacts, logs, telemetry)
-- Config keys and defaults:
-- Versioning or backward-compatibility constraints:
+- Inputs: `ActionAuditRecord` instances constructed by CloudSync components (`GraphSubscriptionManager`, `NotificationRequestProcessor`, `GraphDeltaReconciler`) via named-argument construction with the new optional fields above; no CLI flags or env vars introduced.
+- Outputs: new rows in the existing `audit_log` table (no schema change); a new pure projection function's output is an in-memory Purview-activity-log-shaped record (no I/O, no network call — export/shipping is out of scope for this feature).
+- Config keys and defaults: none new.
+- Versioning or backward-compatibility constraints: `ActionAuditRecord` gains new optional (nullable/default-valued) positional parameters appended after the existing 13; all existing call sites use named arguments and are unaffected. `IActionAuditLog`'s two methods are unchanged.
 
 ## API / CLI Surface
 
-List commands, flags, request/response shapes, and examples.
-- Example invocations with expected outputs (concise):
-- Contracts and validation rules:
+No new CLI commands or HTTP endpoints. The Purview-activity-log projection is a pure, host-neutral mapping function (e.g., `PurviewActivityLogProjection.Project(ActionAuditRecord record) -> PurviewActivityLogRecord`) consumed only by tests and, potentially, a future export path (out of scope here).
+- Contracts and validation rules: the projection must be total over all `ActionType`/`ResultCode` values currently in use (existing send/calendar values plus the new CloudSync values) and must not throw on any valid `ActionAuditRecord`.
 
 ## Data & State
 
-Data flow, storage, or state changes introduced by this feature.
-- Data transformations and invariants:
-- Caching or persistence details:
-- Migration or backfill requirements (if any):
+- Data transformations and invariants: `audit_log` schema is unchanged; `MessageId`/`ActingFlags` remain `NOT NULL`/non-empty and are satisfied per decision 1 above for every new CloudSync event type. `CorrelationId` is always populated per decision 2/existing mechanisms (never empty for the new event types).
+- Caching or persistence details: no new tables, no new caching; all new audit rows persist through the existing `CoreCacheRepository.AuditLog.cs` `RecordAsync` path.
+- Migration or backfill requirements: none — no schema change, so no migration is needed.
 
 ## Constraints & Risks
 
@@ -52,11 +68,11 @@ Data flow, storage, or state changes introduced by this feature.
 
 ## Implementation Strategy
 
-- Implementation scope (what changes, not sequencing):
-- New classes/functions/commands to add or update:
-- Dependency changes (new/removed packages) and rationale:
-- Logging/telemetry additions and locations:
-- Rollout plan (feature flags, staged deploys, fallback path):
+- Implementation scope: (1) extend `ActionAuditRecord` with new optional fields/constants for CloudSync event types; (2) instrument `GraphSubscriptionManager` (create/renew/lifecycle), `NotificationRequestProcessor` (webhook received/rejected), and `GraphDeltaReconciler` (reconciliation outcome) to emit audit records additively; (3) add a new pure `PurviewActivityLogProjection` mapping; (4) add mocked-Graph/Purview contract tests; (5) author a human runbook + `human_interaction` exception for live-tenant Purview ingestion verification.
+- New classes/functions to add: `CloudSyncActivityType` (const strings), `CloudSyncActivityResultCode` (const strings), `CloudSyncActingFlags.NotApplicable` (const string) in `src/OpenClaw.Core/Agent/Contracts/`; `PurviewActivityLogRecord` (record type) and `PurviewActivityLogProjection` (pure static mapper) in `src/OpenClaw.Core/Agent/Contracts/`.
+- Dependency changes: none — all instrumentation uses the existing `IActionAuditLog` singleton already resolvable via DI; no new package.
+- Logging/telemetry additions and locations: new `audit_log` rows only (see instrumentation table in research §2); no new logger calls required beyond what CloudSync components already emit, though `WebhookRejected` audit emission is new observability for previously silent (Warning-log-only) rejection paths.
+- Rollout plan: no feature flag needed — additive audit-only change with no behavior change to subscription/webhook/delta-reconciliation outcomes; safe to ship directly once tests pass.
 
 ## Definition of Done
 

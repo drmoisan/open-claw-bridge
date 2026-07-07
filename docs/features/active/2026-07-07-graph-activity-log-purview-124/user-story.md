@@ -7,8 +7,8 @@
 
 ## Story Statement
 
-- As a ..., I want ..., so that ...
-- As a ..., I want ..., so that ...
+- As a compliance/security administrator responsible for this application's Graph/Exchange footprint, I want every CloudSync (Graph subscription, webhook, delta reconciliation) activity recorded in a structured, correlation-id-threaded audit trail that can be projected into Purview/Graph activity-log conventions, so that I can investigate and demonstrate what the application did against the tenant without relying on unstructured application logs.
+- As a developer extending CloudSync or the outbound-send path, I want the audit seam extended additively with no change to the existing `IActionAuditLog` contract, so that existing send/calendar audit consumers and F14 CloudSync behavior are unaffected by this change.
 
 ## Problem / Why
 
@@ -45,4 +45,6 @@ This feature closes that gap additively: it extends the existing F9 audit seam t
 
 ## Non-Goals
 
-Call out what is explicitly excluded from this feature.
+- No live Purview/Graph activity-log ingestion or export path — the projection is a pure, testable mapping only; shipping the record to a real endpoint is out of scope and deferred (no tenant credentials exist in this environment or CI).
+- No change to send or calendar behavior paths, and no change to the `IActionAuditLog` interface signature or the `audit_log` SQL schema.
+- No change to F14 CloudSync subscription/webhook/delta-reconciliation business behavior or return contracts — instrumentation is additive logging only.
