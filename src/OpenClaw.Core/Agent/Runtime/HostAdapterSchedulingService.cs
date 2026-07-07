@@ -144,4 +144,70 @@ public sealed class HostAdapterSchedulingService(
             throw new InvalidOperationException($"Outbound sendMail failed: {code}: {message}");
         }
     }
+
+    /// <inheritdoc />
+    public async Task RescheduleEventAsync(
+        string eventId,
+        DateTimeOffset newStartUtc,
+        DateTimeOffset newEndUtc,
+        string? correlationId = null,
+        CancellationToken ct = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+
+        var envelope = await hostAdapterClient
+            .UpdateEventTimesAsync(
+                eventId,
+                newStartUtc,
+                newEndUtc,
+                requestId: correlationId,
+                cancellationToken: ct
+            )
+            .ConfigureAwait(false);
+        if (envelope is not { Ok: true })
+        {
+            // Fail fast on a failure envelope; client exceptions (including
+            // OperationCanceledException) propagate unwrapped and unhandled.
+            var code = envelope.Error?.Code ?? "UNKNOWN_ERROR";
+            var message =
+                envelope.Error?.Message
+                ?? "The HostAdapter returned a failure envelope with no error detail.";
+            throw new InvalidOperationException($"Organizer reschedule failed: {code}: {message}");
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task ProposeNewMeetingTimeAsync(
+        string eventId,
+        DateTimeOffset proposedStartUtc,
+        DateTimeOffset proposedEndUtc,
+        string? correlationId = null,
+        CancellationToken ct = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(eventId);
+
+        var envelope = await hostAdapterClient
+            .ProposeNewMeetingTimeAsync(
+                eventId,
+                proposedStartUtc,
+                proposedEndUtc,
+                requestId: correlationId,
+                cancellationToken: ct
+            )
+            .ConfigureAwait(false);
+        if (envelope is not { Ok: true })
+        {
+            // Fail fast on a failure envelope; client exceptions (including
+            // OperationCanceledException) propagate unwrapped and unhandled.
+            var code = envelope.Error?.Code ?? "UNKNOWN_ERROR";
+            var message =
+                envelope.Error?.Message
+                ?? "The HostAdapter returned a failure envelope with no error detail.";
+            throw new InvalidOperationException(
+                $"Attendee propose-new-time failed: {code}: {message}"
+            );
+        }
+    }
 }

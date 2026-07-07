@@ -132,6 +132,37 @@ public sealed class GraphServiceCollectionExtensionsTests
     }
 
     [TestMethod]
+    public void AddGraphHostAdapterClient_BindsIndexedAllowlistKeysToTheCollection()
+    {
+        var config = ValidConfiguration();
+        config["OpenClaw:GraphAdapter:AllowedPrincipalMailboxUpns:0"] = "exec-one@contoso.com";
+        config["OpenClaw:GraphAdapter:AllowedPrincipalMailboxUpns:1"] = "exec-two@contoso.com";
+        using var provider = BuildProvider(config);
+
+        var options = provider.GetRequiredService<IOptions<GraphAdapterOptions>>().Value;
+
+        options
+            .AllowedPrincipalMailboxUpns.Should()
+            .Equal("exec-one@contoso.com", "exec-two@contoso.com");
+    }
+
+    [TestMethod]
+    public void AddGraphHostAdapterClient_WhitespaceAllowlistEntry_FailsValidateOnStart()
+    {
+        var config = ValidConfiguration();
+        config["OpenClaw:GraphAdapter:AllowedPrincipalMailboxUpns:0"] = "exec-one@contoso.com";
+        config["OpenClaw:GraphAdapter:AllowedPrincipalMailboxUpns:1"] = "   ";
+        using var provider = BuildProvider(config);
+
+        var act = () => provider.GetRequiredService<IOptions<GraphAdapterOptions>>().Value;
+
+        act.Should()
+            .Throw<OptionsValidationException>("a whitespace-only allowlist entry fails startup")
+            .Which.Message.Should()
+            .Contain("GraphAdapter options are invalid");
+    }
+
+    [TestMethod]
     public void AddGraphHostAdapterClient_NullServices_Throws()
     {
         var configuration = new ConfigurationBuilder().Build();

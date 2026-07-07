@@ -1,0 +1,21 @@
+name: Bicep Validate
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  bicep-build:
+    name: Bicep Build + Parameter Secret Scan
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Bicep build
+        run: bicep build deploy/azure/main.bicep
+
+      - name: Parameter-file secret scan
+        shell: pwsh
+        run: |
+          ./scripts/Test-OpenClawBicepParameterSecrets.ps1 -Path deploy/azure/parameters

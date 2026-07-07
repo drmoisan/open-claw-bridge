@@ -120,7 +120,11 @@ CREATE TABLE IF NOT EXISTS audit_log(
     new_end_utc TEXT NULL,
     recorded_at_utc TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_audit_log_message_id ON audit_log(message_id);";
+CREATE INDEX IF NOT EXISTS idx_audit_log_message_id ON audit_log(message_id);"
+        // Issue #117: the fresh-database DDL reuses the lazy-ensure constants from the
+        // Subscriptions/DeltaLinks partials so both paths are identical by construction.
+        + CreateGraphSubscriptionsTableSql
+        + CreateGraphDeltaLinksTableSql;
 
     /// <summary>
     /// The issue-#72 columns added to the Core <c>events</c> table on existing databases via

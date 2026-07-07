@@ -3,6 +3,7 @@ using OpenClaw.Core;
 using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.Core.CloudGraph;
+using OpenClaw.Core.CloudSync;
 using OpenClaw.HostAdapter.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -63,6 +64,19 @@ else
         }
     );
 }
+
+// Scope-boundary startup validation (issue #120, D6): opt-in via OpenClaw:ScopeValidation:Enabled; registers nothing when disabled and throws if enabled without the Graph adapter.
+OpenClaw.Core.ScopeValidation.ScopeValidationServiceCollectionExtensions.AddScopeBoundaryValidation(
+    builder.Services,
+    builder.Configuration
+);
+
+// CloudSync opt-in (issue #117, D-6): OpenClaw:CloudSync:Enabled=true registers the
+// webhook processor, stores, and workers; the default path registers nothing new.
+if (builder.Configuration.GetValue<bool>("OpenClaw:CloudSync:Enabled"))
+{
+    builder.Services.AddCloudSync(builder.Configuration);
+}
 builder.Services.AddHostedService<MessagePollingWorker>();
 builder.Services.AddHostedService<CalendarPollingWorker>();
 
@@ -78,12 +92,22 @@ builder.Services.AddSingleton<ISeriesMoveHistory>(sp =>
     sp.GetRequiredService<CoreCacheRepository>()
 );
 builder.Services.AddSingleton<IActionAuditLog>(sp => sp.GetRequiredService<CoreCacheRepository>());
+builder.Services.AddSingleton<
+    ICloudSyncActivityAuditor,
+    OpenClaw.Core.Agent.CloudSyncActivityAuditor
+>();
 builder.Services.AddSingleton<ISchedulingCandidateSource, CacheSchedulingCandidateSource>();
 builder.Services.AddHostedService<SchedulingWorker>();
 
 var app = builder.Build();
 app.UseStaticFiles();
 app.UseRouting();
+
+// CloudSync opt-in (issue #117, D-6): the webhook route exists only when enabled.
+if (app.Configuration.GetValue<bool>("OpenClaw:CloudSync:Enabled"))
+{
+    app.MapGraphNotificationsEndpoint();
+}
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet(

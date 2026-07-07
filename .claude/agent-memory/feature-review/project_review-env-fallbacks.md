@@ -49,10 +49,84 @@ PowerShell-only #111 branch — the summary categorized it correctly.
 #113 (2026-07-02, C# CloudAuth module): misclassification recurred (7th C# branch); autoclose
 noise recurred (`#109`/`#74` design-precedent citations + `#AC-*`/`#ISO-8601` tokens). #115
 (2026-07-02, CloudGraph adapter, 12 prod + 19 test .cs): 8th recurrence of both quirks
-(`#113`/`#74` precedent citations + `#AC-*`/`#ISO-8601`/`#OR-5` tokens). Newest
-validator-shaped C# artifact-set template: #115
-`2026-07-02-graph-backed-adapter-115/*.2026-07-02T21-08.md` (structural self-check passed;
-prior: #113 `2026-07-02-app-only-auth-module-113/*.2026-07-02T19-27.md`).
+(`#113`/`#74` precedent citations + `#AC-*`/`#ISO-8601`/`#OR-5` tokens). #117 (2026-07-03,
+CloudSync, 20 prod + 21 test .cs): 9th recurrence of both quirks (`#113`/`#74` precedent
+citations + `#AC-2`/`#HI-1`/`#ISO-8601` tokens). Newest validator-shaped C# artifact-set
+template: #115 `2026-07-02-graph-backed-adapter-115/*.2026-07-02T21-08.md` (structural
+self-check passed; prior: #113 `2026-07-02-app-only-auth-module-113/*.2026-07-02T19-27.md`).
+The #117 set `2026-07-03-graph-subscriptions-delta-117/*.2026-07-03T02-34.md` is the first
+FAIL-verdict (Blocking + remediation-inputs) artifact set shaped on that template.
+
+#117 re-audit R4 (2026-07-06, epic-branch era): `mcp__drm-copilot__collect_pr_context` was ALSO
+absent from the toolset and the on-disk pr_context pair was stale (pre-rebase head vs origin/main).
+Accepted fallback: regenerate both files manually from git at the canonical `artifacts/pr_context.*`
+paths (base/head/merge-base, commits, name-status categorized by src/tests/docs), state the
+accommodation in policy-audit Section 8 Approved Exceptions. Features now merge into EPIC
+integration branches (e.g. `epic/openclaw-vision-integration`), not main — resolve merge-base
+against the supplied epic base. Rebase-equivalence technique: `git diff <pre-rebase-head>
+<rebased-commit>` returning exactly the base delta proves feature content is byte-identical and
+the old baseline coverage stays valid (base delta had zero .cs). Parser gotcha: XPlat cobertura
+writes `branch="True"` (capital T) — compare case-insensitively or branch totals silently read 0.
+The #117 R4 set `2026-07-03-graph-subscriptions-delta-117/*.2026-07-06T22-26.md` passed the
+structural self-check.
+
+#120 (2026-07-06): PR-context artifacts were entirely ABSENT (not just stale) and no repo-local
+collector script exists — accepted fallback: generate `artifacts/pr_context.summary.txt`
+(branch/head/base/merge-base+timestamp, commit list, name-status, diff stat) and
+`pr_context.appendix.txt` (full `git diff base..HEAD`) directly from git, and record the
+accommodation under Rejected Scope Narrowing + Section 8. Self-generated summaries do not carry
+the docs-only misclassification quirk. Newest validator-shaped C# artifact template: #120
+`2026-07-06-negative-scope-smoke-test-120/*.2026-07-06T23-55.md` (PASS-verdict, dual-mode
+coverage sections; structural self-check passed).
+
+#119 (2026-07-06, F15 allowlist, epic-branch base): PR-context artifacts were ABSENT at review
+start even though the caller prompt claimed they were "refreshed" — never trust the caller's
+freshness claim; `ls artifacts/pr_context.*` first, and regenerate with raw git (log/name-status/
+stat -> summary; full diff -> appendix) when missing. No collector script exists in scripts/.
+Epic-child reviews resolve base to the epic integration branch (e.g. `epic/openclaw-vision-integration`),
+not main. Newest validator-shaped artifact-set template: #119
+`2026-07-06-send-on-behalf-allowlist-119/*.2026-07-06T23-41.md` (structural self-check passed).
+
+Fifth quirk — **executor baseline can predate the merge-base**: on #119 the committed baseline
+(22:45) was captured 4 minutes BEFORE the merge-base commit (22:49, a sibling-feature merge into
+the epic branch), so baseline test counts/coverage omitted that merge. Detection: compare baseline
+timestamp vs `git show -s --format=%cI <merge-base>`, and grep the baseline cobertura for classes
+the base merge added. Grade Minor (non-gating) IF `git diff <mb>^1..<mb> -- <touched paths>` is
+empty (per-file baselines then exact) and head measurements are fresh; otherwise it can mask a
+real regression.
+
+#124 (2026-07-07, T1 OpenClaw.Core, CloudSync audit instrumentation): PR-context artifacts were
+absent (no `artifacts/pr_context.*` files); reviewed directly off `git diff
+origin/epic/openclaw-vision-integration...HEAD` (merge-base `7a29286`) per the epic-child
+base-resolution rule from #119. Newest validator-shaped C# artifact template:
+`2026-07-07-graph-activity-log-purview-124/*.2026-07-07T06-54.md`. This review is also the first
+to independently re-run `dotnet test --collect:"XPlat Code Coverage"` AND parse the resulting
+Cobertura report with a scratch script rather than trusting the executor's committed coverage
+evidence numbers outright — the independent figures matched the committed evidence exactly
+(OpenClaw.Core 93.03% line / 81.45% branch), which is itself useful confirmation the executor's
+reporting practice on this feature was accurate.
+
+#130 (2026-07-07, F19 attendee-propose-new-time, the F18 SIBLING/mirror; final openclaw-vision
+feature, Epic D): PR-context artifacts were PRESENT this time (caller-provided in the worktree),
+but the summary "Changed files overview" STILL misclassified the C# branch as docs-only
+(`Core logic changes: 0 files`, 20 docs; real diff 9 prod + 6 test .cs) — 10th recurrence; scope
+from `git diff --stat <mb>..HEAD`, not the summary. Autoclose noise recurred (`#AC-1..#AC-9`,
+`#HI-1`, `#ISO-8601` + `#107/#109/#119/#128` precedent citations; only `#130` closes). Verdict
+PASS, zero blocking (1 Minor + 2 Info). Structural self-check passed; MCP validator/template tools
+unavailable (mirrored the #128 F18 set). Newest validator-shaped PASS C# template:
+`2026-07-07-attendee-propose-new-time-130/*.2026-07-07T06-35.md`. Notable: F19 modified ZERO
+pre-existing test files (loose Moq mocks absorbed the new IHostAdapterClient/ISchedulingService
+members automatically), contrast F18 which mechanically edited 4 worker test files.
+
+#128 (2026-07-07, F18 organizer reschedule, first calendar-write RPC): PR-context artifacts
+absent again (5th occurrence) — regenerated from git per the #120 recipe. Baseline freshness
+check (`git show -s --format=%cI <mb>` vs artifact mtime) passed this time (baseline 04:03 >
+merge-base 03:10). `--results-directory "<FEATURE>/evidence/qa-gates/coverage-review/{settings,plain}-mode"`
+cleanly routes BOTH dual-mode runs to canonical paths. Manual verification of the
+orchestrator-state `human_interaction` invariants (no Python validator in this repo) accepted for
+an AC that requires an `exception` + `runbook_path` record. Newest validator-shaped C# artifact
+template: `2026-07-07-organizer-reschedule-128/*.2026-07-07T04-50.md` (PASS-verdict, dual-mode
+coverage, prior: #124).
 
 Fourth recurring quirk — **`run_poshqc_test` MCP tool fails in this repo** (pre-existing
 workspace defect, first hit on #111 execution, accepted on the #111 review): the bundled

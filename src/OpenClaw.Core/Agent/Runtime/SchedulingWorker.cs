@@ -23,6 +23,7 @@ public sealed partial class SchedulingWorker(
     ISentActionStore sentActionStore,
     IActionAuditLog actionAuditLog,
     ISchedulingCandidateSource candidateSource,
+    ISeriesMoveHistory seriesMoveHistory,
     IOptions<AgentPolicyOptions> policyOptions,
     TimeProvider timeProvider,
     ILogger<SchedulingWorker> logger

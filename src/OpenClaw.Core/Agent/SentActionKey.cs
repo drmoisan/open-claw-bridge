@@ -15,6 +15,12 @@ public static class SentActionKey
     /// <summary>The action type for an outbound proposal reply.</summary>
     public const string ProposalReply = "proposal-reply";
 
+    /// <summary>The action type for an organizer-reschedule calendar write (issue #128, colon-free).</summary>
+    public const string OrganizerReschedule = "organizer-reschedule";
+
+    /// <summary>The action type for an attendee propose-new-time calendar write (issue #130, colon-free).</summary>
+    public const string AttendeeProposeNewTime = "attendee-propose-new-time";
+
     /// <summary>
     /// Builds the dedupe key <c>{mailbox}:{messageId}:{actionType}</c> for the supplied
     /// components.

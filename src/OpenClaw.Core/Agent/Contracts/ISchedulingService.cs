@@ -71,4 +71,66 @@ public interface ISchedulingService
         string? correlationId = null,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Reschedules an organizer-owned event to the given UTC start/end (issue #128, the
+    /// first calendar-write path; gated upstream by the worker's
+    /// <c>CalendarWritePolicy.OrganizerRescheduleAllowed</c> check). Mirrors the
+    /// <see cref="SendMailAsync"/> seam shape: returns <see cref="Task"/> (not the updated
+    /// DTO) because the worker already holds the times it recorded, and fails fast on a
+    /// non-<c>Ok</c> adapter envelope so a failure is surfaced as an exception the worker
+    /// audits as <c>reschedule_failed</c>.
+    /// </summary>
+    /// <param name="eventId">The event identifier to reschedule.</param>
+    /// <param name="newStartUtc">The new event start (UTC instant).</param>
+    /// <param name="newEndUtc">The new event end (UTC instant).</param>
+    /// <param name="correlationId">
+    /// The worker-generated GUID for this outbound-action evaluation (issue #107),
+    /// forwarded to the adapter as the Graph <c>client-request-id</c>. When
+    /// <see langword="null"/>, the underlying client self-generates a request id.
+    /// </param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <returns>A task that completes when the reschedule finishes.</returns>
+    /// <exception cref="System.InvalidOperationException">
+    /// The adapter returned a non-<c>Ok</c> envelope; the message carries the error code
+    /// and message.
+    /// </exception>
+    Task RescheduleEventAsync(
+        string eventId,
+        DateTimeOffset newStartUtc,
+        DateTimeOffset newEndUtc,
+        string? correlationId = null,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Proposes a new time for a meeting the principal is invited to but does not organize
+    /// (issue #130, the attendee-side calendar-write path; gated upstream by the worker's
+    /// <c>CalendarWritePolicy.AttendeeProposeNewTimeAllowed</c> check). Mirrors the
+    /// <see cref="RescheduleEventAsync"/> seam shape: returns <see cref="Task"/> (not a DTO)
+    /// because the wire response has no body and the worker already holds the times it
+    /// audits, and fails fast on a non-<c>Ok</c> adapter envelope so a failure is surfaced
+    /// as an exception the worker audits as <c>propose_new_time_failed</c>.
+    /// </summary>
+    /// <param name="eventId">The event identifier to propose a new time for.</param>
+    /// <param name="proposedStartUtc">The proposed event start (UTC instant).</param>
+    /// <param name="proposedEndUtc">The proposed event end (UTC instant).</param>
+    /// <param name="correlationId">
+    /// The worker-generated GUID for this outbound-action evaluation (issue #107),
+    /// forwarded to the adapter as the Graph <c>client-request-id</c>. When
+    /// <see langword="null"/>, the underlying client self-generates a request id.
+    /// </param>
+    /// <param name="ct">A cancellation token.</param>
+    /// <returns>A task that completes when the proposal finishes.</returns>
+    /// <exception cref="System.InvalidOperationException">
+    /// The adapter returned a non-<c>Ok</c> envelope; the message carries the error code
+    /// and message.
+    /// </exception>
+    Task ProposeNewMeetingTimeAsync(
+        string eventId,
+        DateTimeOffset proposedStartUtc,
+        DateTimeOffset proposedEndUtc,
+        string? correlationId = null,
+        CancellationToken ct = default
+    );
 }
