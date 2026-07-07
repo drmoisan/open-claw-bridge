@@ -92,6 +92,10 @@ builder.Services.AddSingleton<ISeriesMoveHistory>(sp =>
     sp.GetRequiredService<CoreCacheRepository>()
 );
 builder.Services.AddSingleton<IActionAuditLog>(sp => sp.GetRequiredService<CoreCacheRepository>());
+builder.Services.AddSingleton<
+    ICloudSyncActivityAuditor,
+    OpenClaw.Core.Agent.CloudSyncActivityAuditor
+>();
 builder.Services.AddSingleton<ISchedulingCandidateSource, CacheSchedulingCandidateSource>();
 builder.Services.AddHostedService<SchedulingWorker>();
 

@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using OpenClaw.Core.Agent;
+using OpenClaw.Core;
 using OpenClaw.Core.CloudGraph;
 using OpenClaw.Core.CloudSync;
 
@@ -48,7 +48,7 @@ public sealed class CloudSyncServiceCollectionExtensionsTests
             new FakeTimeProvider(new DateTimeOffset(2026, 7, 3, 8, 0, 0, TimeSpan.Zero))
         );
         services.AddSingleton(typeof(ILogger<>), typeof(NullLogger<>));
-        services.AddSingleton<IActionAuditLog>(new FakeActionAuditLog());
+        services.AddSingleton<ICloudSyncActivityAuditor>(new NoOpCloudSyncActivityAuditor());
         services.AddSingleton(
             new OpenClaw.Core.CoreCacheRepository(
                 $"Data Source=core-di-{Guid.NewGuid():N};Mode=Memory;Cache=Shared"
