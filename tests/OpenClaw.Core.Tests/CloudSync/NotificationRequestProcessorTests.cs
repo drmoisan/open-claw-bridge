@@ -1,5 +1,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.CloudSync;
 
@@ -16,6 +17,8 @@ namespace OpenClaw.Core.Tests.CloudSync;
 [TestClass]
 public sealed class NotificationRequestProcessorTests
 {
+    private static readonly DateTimeOffset Now = new(2026, 7, 7, 1, 0, 0, TimeSpan.Zero);
+
     private const string StoredClientState = "client-state-secret-1";
 
     /// <summary>Recorded change-notification batch with a valid item (Graph webhook shape).</summary>
@@ -108,7 +111,13 @@ public sealed class NotificationRequestProcessorTests
         // Arrange
         var queue = new RecordingNotificationQueue();
         var logger = new CapturingLogger<NotificationRequestProcessor>();
-        var processor = new NotificationRequestProcessor(StoreWithSub1(), queue, logger);
+        var processor = new NotificationRequestProcessor(
+            StoreWithSub1(),
+            queue,
+            logger,
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
+        );
 
         // Act
         var result = await processor.ProcessNotificationsAsync(
@@ -134,7 +143,13 @@ public sealed class NotificationRequestProcessorTests
         // Arrange
         var queue = new RecordingNotificationQueue();
         var logger = new CapturingLogger<NotificationRequestProcessor>();
-        var processor = new NotificationRequestProcessor(StoreWithSub1(), queue, logger);
+        var processor = new NotificationRequestProcessor(
+            StoreWithSub1(),
+            queue,
+            logger,
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
+        );
 
         // Act
         var result = await processor.ProcessNotificationsAsync(
@@ -162,7 +177,13 @@ public sealed class NotificationRequestProcessorTests
         // Arrange
         var queue = new RecordingNotificationQueue();
         var logger = new CapturingLogger<NotificationRequestProcessor>();
-        var processor = new NotificationRequestProcessor(StoreWithSub1(), queue, logger);
+        var processor = new NotificationRequestProcessor(
+            StoreWithSub1(),
+            queue,
+            logger,
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
+        );
 
         // Act
         var result = await processor.ProcessNotificationsAsync(

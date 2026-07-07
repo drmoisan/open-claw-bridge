@@ -1,2 +1,4 @@
+- [Worktree write path](feedback_worktree_write_path.md) — Write must target the worktree-prefixed path, not the shared-checkout path.
+- [Sourcing and citations](reference_sourcing_and_citations.md) — no MCP doc tool exists; WebFetch against learn.microsoft.com is the working citation path, useful page set for Entra/Graph/Purview runbooks.
 - [No MCP doc tool, web-second only](project_no-mcp-doc-tool-web-second-only.md) — repo has no MCP doc-retrieval tool; use WebFetch for all runbook citations until one exists.
 - [Runbook structural precedent](reference_runbook-precedent.md) — F11's exchange-rbac-setup.runbook.md is the template for header block + five required sections + per-step citation table.

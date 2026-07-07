@@ -1,6 +1,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.CloudSync;
 
@@ -16,6 +17,8 @@ namespace OpenClaw.Core.Tests.CloudSync;
 [TestClass]
 public sealed class NotificationRequestProcessorEdgeTests
 {
+    private static readonly DateTimeOffset Now = new(2026, 7, 7, 1, 0, 0, TimeSpan.Zero);
+
     private const string StoredClientState = "client-state-secret-1";
 
     private static FakeSubscriptionStore StoreWithSub1()
@@ -80,7 +83,13 @@ public sealed class NotificationRequestProcessorEdgeTests
         // Arrange
         var queue = new RecordingNotificationQueue();
         var logger = new CapturingLogger<NotificationRequestProcessor>();
-        var processor = new NotificationRequestProcessor(StoreWithSub1(), queue, logger);
+        var processor = new NotificationRequestProcessor(
+            StoreWithSub1(),
+            queue,
+            logger,
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
+        );
 
         // Act
         var result = await processor.ProcessNotificationsAsync(
@@ -108,7 +117,9 @@ public sealed class NotificationRequestProcessorEdgeTests
         var processor = new NotificationRequestProcessor(
             StoreWithSub1(),
             queue,
-            new CapturingLogger<NotificationRequestProcessor>()
+            new CapturingLogger<NotificationRequestProcessor>(),
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
         );
         await processor.ProcessNotificationsAsync(
             ChangeNotification("msg-fills-queue"),
@@ -141,7 +152,13 @@ public sealed class NotificationRequestProcessorEdgeTests
         // Arrange
         var queue = new RecordingNotificationQueue();
         var logger = new CapturingLogger<NotificationRequestProcessor>();
-        var processor = new NotificationRequestProcessor(StoreWithSub1(), queue, logger);
+        var processor = new NotificationRequestProcessor(
+            StoreWithSub1(),
+            queue,
+            logger,
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
+        );
 
         // Act
         var result = await processor.ProcessNotificationsAsync(
@@ -165,7 +182,13 @@ public sealed class NotificationRequestProcessorEdgeTests
         // Arrange
         var queue = new RecordingNotificationQueue();
         var logger = new CapturingLogger<NotificationRequestProcessor>();
-        var processor = new NotificationRequestProcessor(StoreWithSub1(), queue, logger);
+        var processor = new NotificationRequestProcessor(
+            StoreWithSub1(),
+            queue,
+            logger,
+            new NoOpCloudSyncActivityAuditor(),
+            new FakeTimeProvider(Now)
+        );
 
         // Act
         var result = await processor.ProcessNotificationsAsync(

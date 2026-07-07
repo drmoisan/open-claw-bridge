@@ -48,6 +48,7 @@ internal sealed class GraphSubscriptionManager
     private readonly IDeltaReconcileTrigger reconcileTrigger;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<GraphSubscriptionManager> logger;
+    private readonly ICloudSyncActivityAuditor activityAuditor;
 
     /// <summary>Creates the manager; all seams are injected (D-8 executor reuse).</summary>
     public GraphSubscriptionManager(
@@ -59,7 +60,8 @@ internal sealed class GraphSubscriptionManager
         ISubscriptionStore subscriptionStore,
         IDeltaReconcileTrigger reconcileTrigger,
         TimeProvider timeProvider,
-        ILogger<GraphSubscriptionManager> logger
+        ILogger<GraphSubscriptionManager> logger,
+        ICloudSyncActivityAuditor activityAuditor
     )
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -71,6 +73,7 @@ internal sealed class GraphSubscriptionManager
         ArgumentNullException.ThrowIfNull(reconcileTrigger);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(activityAuditor);
 
         graphOptions = graphOptionsAccessor.Value;
         cloudSyncOptions = cloudSyncOptionsAccessor.Value;
@@ -79,6 +82,7 @@ internal sealed class GraphSubscriptionManager
         this.reconcileTrigger = reconcileTrigger;
         this.timeProvider = timeProvider;
         this.logger = logger;
+        this.activityAuditor = activityAuditor;
         executor = new GraphRequestExecutor(
             httpClient,
             tokenProvider,
@@ -144,6 +148,14 @@ internal sealed class GraphSubscriptionManager
         );
         if (!envelope.Ok)
         {
+            await activityAuditor.RecordSubscriptionCreatedAsync(
+                graphOptions.PrincipalMailboxUpn,
+                subscriptionId: null,
+                envelope.Meta.RequestId,
+                success: false,
+                envelope.Error?.Message,
+                ct
+            );
             return new ApiEnvelope<GraphSubscriptionRecord>(
                 false,
                 null,
@@ -161,6 +173,14 @@ internal sealed class GraphSubscriptionManager
             SubscriptionStatus.Active
         );
         await subscriptionStore.UpsertSubscriptionAsync(record, timeProvider.GetUtcNow(), ct);
+        await activityAuditor.RecordSubscriptionCreatedAsync(
+            graphOptions.PrincipalMailboxUpn,
+            record.SubscriptionId,
+            envelope.Meta.RequestId,
+            success: true,
+            errorDetail: null,
+            ct
+        );
         logger.LogInformation(
             "Created Graph subscription {SubscriptionId} expiring {ExpirationUtc:O}.",
             record.SubscriptionId,
@@ -205,6 +225,14 @@ internal sealed class GraphSubscriptionManager
         );
         if (!envelope.Ok)
         {
+            await activityAuditor.RecordSubscriptionRenewedAsync(
+                graphOptions.PrincipalMailboxUpn,
+                subscriptionId,
+                envelope.Meta.RequestId,
+                success: false,
+                envelope.Error?.Message,
+                ct
+            );
             return new ApiEnvelope<GraphSubscriptionRecord>(
                 false,
                 null,
@@ -220,16 +248,25 @@ internal sealed class GraphSubscriptionManager
                 "Renewed Graph subscription {SubscriptionId} has no local record to update.",
                 subscriptionId
             );
+            var noRecordError = new ApiError(
+                "INTERNAL_ERROR",
+                "The renewed subscription has no local record.",
+                null,
+                false
+            );
+            await activityAuditor.RecordSubscriptionRenewedAsync(
+                graphOptions.PrincipalMailboxUpn,
+                subscriptionId,
+                envelope.Meta.RequestId,
+                success: false,
+                noRecordError.Message,
+                ct
+            );
             return new ApiEnvelope<GraphSubscriptionRecord>(
                 false,
                 null,
                 envelope.Meta,
-                new ApiError(
-                    "INTERNAL_ERROR",
-                    "The renewed subscription has no local record.",
-                    null,
-                    false
-                )
+                noRecordError
             );
         }
 
@@ -239,6 +276,14 @@ internal sealed class GraphSubscriptionManager
             Status = SubscriptionStatus.Active,
         };
         await subscriptionStore.UpsertSubscriptionAsync(updated, timeProvider.GetUtcNow(), ct);
+        await activityAuditor.RecordSubscriptionRenewedAsync(
+            graphOptions.PrincipalMailboxUpn,
+            updated.SubscriptionId,
+            envelope.Meta.RequestId,
+            success: true,
+            errorDetail: null,
+            ct
+        );
         logger.LogInformation(
             "Renewed Graph subscription {SubscriptionId} to {ExpirationUtc:O}.",
             updated.SubscriptionId,
@@ -266,15 +311,23 @@ internal sealed class GraphSubscriptionManager
                 var renewal = await RenewAsync(item.SubscriptionId, null, ct);
                 if (!renewal.Ok && renewal.Error?.Code is "CONFIGURATION_ERROR" or "UNAUTHORIZED")
                 {
+                    var renewalError = renewal.Error!;
                     await subscriptionStore.UpdateSubscriptionStatusAsync(
                         item.SubscriptionId,
                         SubscriptionStatus.ReauthorizeFailed,
                         timeProvider.GetUtcNow(),
                         ct
                     );
+                    await activityAuditor.RecordSubscriptionExpiredAsync(
+                        graphOptions.PrincipalMailboxUpn,
+                        item.SubscriptionId,
+                        renewal.Meta.RequestId,
+                        renewalError.Message,
+                        ct
+                    );
                     logger.LogWarning(
                         "Reauthorization renewal failed with {Code} for subscription {SubscriptionId}; marked reauthorize_failed.",
-                        renewal.Error.Code,
+                        renewalError.Code,
                         item.SubscriptionId
                     );
                 }
@@ -282,6 +335,13 @@ internal sealed class GraphSubscriptionManager
                 break;
             case LifecycleEvents.Removed:
                 await subscriptionStore.DeleteSubscriptionAsync(item.SubscriptionId, ct);
+                var correlationId = Guid.NewGuid().ToString();
+                await activityAuditor.RecordSubscriptionRemovedAsync(
+                    graphOptions.PrincipalMailboxUpn,
+                    item.SubscriptionId,
+                    correlationId,
+                    ct
+                );
                 logger.LogInformation(
                     "Graph subscription {SubscriptionId} was removed; recreating.",
                     item.SubscriptionId

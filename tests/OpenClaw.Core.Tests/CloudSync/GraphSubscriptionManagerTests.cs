@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Moq;
+using OpenClaw.Core;
 using OpenClaw.Core.CloudAuth;
 using OpenClaw.Core.CloudGraph;
 using OpenClaw.Core.CloudSync;
@@ -50,7 +51,8 @@ public sealed class GraphSubscriptionManagerTests
         FakeTimeProvider timeProvider,
         RecordingReconcileTrigger? trigger = null,
         FixedClientStateGenerator? generator = null,
-        Microsoft.Extensions.Logging.ILogger<GraphSubscriptionManager>? logger = null
+        Microsoft.Extensions.Logging.ILogger<GraphSubscriptionManager>? logger = null,
+        ICloudSyncActivityAuditor? activityAuditor = null
     )
     {
         var tokenProvider = new Mock<IAppTokenProvider>(MockBehavior.Strict);
@@ -80,7 +82,8 @@ public sealed class GraphSubscriptionManagerTests
             store,
             trigger ?? new RecordingReconcileTrigger(),
             timeProvider,
-            logger ?? NullLogger<GraphSubscriptionManager>.Instance
+            logger ?? NullLogger<GraphSubscriptionManager>.Instance,
+            activityAuditor ?? new NoOpCloudSyncActivityAuditor()
         );
     }
 

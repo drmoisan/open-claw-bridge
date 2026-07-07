@@ -27,10 +27,17 @@ internal sealed record NotificationProcessorResult(
 internal sealed class NotificationRequestProcessor(
     ISubscriptionStore subscriptionStore,
     INotificationQueue queue,
-    ILogger<NotificationRequestProcessor> logger
+    ILogger<NotificationRequestProcessor> logger,
+    ICloudSyncActivityAuditor activityAuditor,
+    TimeProvider timeProvider
 )
 {
     private const string InvalidRequestCode = "INVALID_REQUEST";
+
+    private readonly ICloudSyncActivityAuditor activityAuditor =
+        activityAuditor ?? throw new ArgumentNullException(nameof(activityAuditor));
+    private readonly TimeProvider timeProvider =
+        timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
     /// <summary>
     /// Handles the Graph validation handshake: HTTP 200, <c>text/plain</c>, body = the
@@ -100,13 +107,39 @@ internal sealed class NotificationRequestProcessor(
         );
     }
 
+    /// <summary>
+    /// The literal webhook-rejection reason codes CloudSync passes through the audit port
+    /// (Phase 9 architecture-boundary revision): CloudSync no longer references
+    /// <c>OpenClaw.Core.Agent</c>'s <c>CloudSyncActivityResultCode</c> constants directly, so
+    /// these values are declared locally; they match <c>CloudSyncActivityResultCode</c>'s
+    /// literal values verbatim, and <c>CloudSyncActivityAuditorTests</c> pins that the port's
+    /// <c>rejectionReasonCode</c> argument flows through unchanged to
+    /// <c>ActionAuditRecord.ResultCode</c>.
+    /// </summary>
+    private static class RejectionReasonCode
+    {
+        internal const string UnknownSubscription = "unknown-subscription";
+        internal const string ClientStateMismatch = "client-state-mismatch";
+        internal const string MissingResourceId = "missing-resource-id";
+    }
+
     /// <summary>Validates one item and enqueues its work item; invalid items drop with a Warning.</summary>
     private async Task ProcessItemAsync(GraphNotification item, CancellationToken ct)
     {
+        var correlationId = Guid.NewGuid().ToString();
+
         if (string.IsNullOrWhiteSpace(item.SubscriptionId))
         {
             logger.LogWarning(
                 "Dropped a Graph notification with no subscriptionId (D-1 202-and-drop)."
+            );
+            var unresolvedId = item.ResourceData?.Id ?? item.SubscriptionId ?? "(unresolvable)";
+            await RecordWebhookRejectedAsync(
+                unresolvedId,
+                unresolvedId,
+                RejectionReasonCode.UnknownSubscription,
+                correlationId,
+                ct
             );
             return;
         }
@@ -118,6 +151,13 @@ internal sealed class NotificationRequestProcessor(
                 "Dropped a Graph notification for unknown subscription {SubscriptionId} (D-1 202-and-drop).",
                 item.SubscriptionId
             );
+            await RecordWebhookRejectedAsync(
+                item.SubscriptionId,
+                item.SubscriptionId,
+                RejectionReasonCode.UnknownSubscription,
+                correlationId,
+                ct
+            );
             return;
         }
 
@@ -127,12 +167,25 @@ internal sealed class NotificationRequestProcessor(
                 "Dropped a Graph notification with mismatched clientState for subscription {SubscriptionId} (D-1 202-and-drop).",
                 item.SubscriptionId
             );
+            await RecordWebhookRejectedAsync(
+                subscription.Mailbox,
+                item.SubscriptionId,
+                RejectionReasonCode.ClientStateMismatch,
+                correlationId,
+                ct
+            );
             return;
         }
 
         if (item.LifecycleEvent is not null)
         {
             queue.TryEnqueue(new LifecycleWorkItem(item.SubscriptionId, item.LifecycleEvent));
+            await RecordWebhookReceivedAsync(
+                subscription.Mailbox,
+                item.SubscriptionId,
+                correlationId,
+                ct
+            );
             return;
         }
 
@@ -141,6 +194,13 @@ internal sealed class NotificationRequestProcessor(
             logger.LogWarning(
                 "Dropped a Graph change notification without resourceData.id for subscription {SubscriptionId} (fail-visible).",
                 item.SubscriptionId
+            );
+            await RecordWebhookRejectedAsync(
+                subscription.Mailbox,
+                item.SubscriptionId,
+                RejectionReasonCode.MissingResourceId,
+                correlationId,
+                ct
             );
             return;
         }
@@ -152,7 +212,37 @@ internal sealed class NotificationRequestProcessor(
                 item.ChangeType ?? string.Empty
             )
         );
+        await RecordWebhookReceivedAsync(
+            subscription.Mailbox,
+            item.ResourceData.Id,
+            correlationId,
+            ct
+        );
     }
+
+    /// <summary>Records a <c>CloudSyncActivityType.WebhookReceived</c> audit event.</summary>
+    private Task RecordWebhookReceivedAsync(
+        string mailbox,
+        string messageId,
+        string correlationId,
+        CancellationToken ct
+    ) => activityAuditor.RecordWebhookReceivedAsync(mailbox, messageId, correlationId, ct);
+
+    /// <summary>Records a <c>CloudSyncActivityType.WebhookRejected</c> audit event.</summary>
+    private Task RecordWebhookRejectedAsync(
+        string mailbox,
+        string messageId,
+        string resultCode,
+        string correlationId,
+        CancellationToken ct
+    ) =>
+        activityAuditor.RecordWebhookRejectedAsync(
+            mailbox,
+            messageId,
+            resultCode,
+            correlationId,
+            ct
+        );
 
     private static NotificationProcessorResult InvalidRequest(string message) =>
         new(
