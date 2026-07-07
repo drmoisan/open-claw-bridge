@@ -57,6 +57,15 @@ self-check passed; prior: #113 `2026-07-02-app-only-auth-module-113/*.2026-07-02
 The #117 set `2026-07-03-graph-subscriptions-delta-117/*.2026-07-03T02-34.md` is the first
 FAIL-verdict (Blocking + remediation-inputs) artifact set shaped on that template.
 
+#120 (2026-07-06): PR-context artifacts were entirely ABSENT (not just stale) and no repo-local
+collector script exists — accepted fallback: generate `artifacts/pr_context.summary.txt`
+(branch/head/base/merge-base+timestamp, commit list, name-status, diff stat) and
+`pr_context.appendix.txt` (full `git diff base..HEAD`) directly from git, and record the
+accommodation under Rejected Scope Narrowing + Section 8. Self-generated summaries do not carry
+the docs-only misclassification quirk. Newest validator-shaped C# artifact template: #120
+`2026-07-06-negative-scope-smoke-test-120/*.2026-07-06T23-55.md` (PASS-verdict, dual-mode
+coverage sections; structural self-check passed).
+
 #119 (2026-07-06, F15 allowlist, epic-branch base): PR-context artifacts were ABSENT at review
 start even though the caller prompt claimed they were "refreshed" — never trust the caller's
 freshness claim; `ls artifacts/pr_context.*` first, and regenerate with raw git (log/name-status/

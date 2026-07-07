@@ -65,6 +65,12 @@ else
     );
 }
 
+// Scope-boundary startup validation (issue #120, D6): opt-in via OpenClaw:ScopeValidation:Enabled; registers nothing when disabled and throws if enabled without the Graph adapter.
+OpenClaw.Core.ScopeValidation.ScopeValidationServiceCollectionExtensions.AddScopeBoundaryValidation(
+    builder.Services,
+    builder.Configuration
+);
+
 // CloudSync opt-in (issue #117, D-6): OpenClaw:CloudSync:Enabled=true registers the
 // webhook processor, stores, and workers; the default path registers nothing new.
 if (builder.Configuration.GetValue<bool>("OpenClaw:CloudSync:Enabled"))
