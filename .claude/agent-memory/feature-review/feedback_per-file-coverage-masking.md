@@ -118,6 +118,17 @@ executor per-file raw counts were exactly 2x the deduped values (duplicate class
 identical — dedupe before comparing. GraphDeltaReconciler landed at exactly 75.00% (12/16) —
 zero-margin file, named-arm Minor per the #115 pattern.
 
+CRITICAL mode discovery on #120 (2026-07-06): the CompilerGenerated exclusion is NOT automatic —
+it applies only when `--settings mailbridge.runsettings` is passed. A plain
+`dotnet test --collect:"XPlat Code Coverage"` fully instruments async bodies, auto-properties,
+and Program.cs endpoint lambdas (verified: probe/StartAsync/ValidateAsync bodies all measured
+at 100% on #120; no behavioral-verification substitution needed). Corollary: under plain
+instrumentation Program.cs shows ~56% whole-file branch from OTHER features' uncovered endpoint
+lambdas — grade modified Program.cs on the convention (--settings) run per the #115/#117
+precedent (100%/100% there) and disclose the plain figures with a verified statement that all
+misses lie outside the changed line range. Best practice: run BOTH modes — plain for per-file
+new-code attestation (strongest evidence), --settings for baseline comparability.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
