@@ -198,7 +198,7 @@ subject-resource identifier) and decision 3's three named rejection reasons:
 
 ### Phase 7 — Human-Interaction Exception Checkpoint
 
-- [ ] [P7-T1] Write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/other/human-interaction-checkpoint.md` recording that live-tenant Purview/Graph activity-log ingestion verification (AC5) requires a `human_interaction` entry with `response: exception` and a non-empty `runbook_path` (recommended path: `docs/features/active/2026-07-07-graph-activity-log-purview-124/runbooks/purview-live-tenant-ingestion.runbook.md`), mirroring the F11 HI-1 / F17 precedent; state explicitly that this plan does not author the runbook content and that the orchestrator must delegate to the `human-exception-runbook` agent separately after this plan's preflight clears.
+- [x] [P7-T1] Write `docs/features/active/2026-07-07-graph-activity-log-purview-124/evidence/other/human-interaction-checkpoint.md` recording that live-tenant Purview/Graph activity-log ingestion verification (AC5) requires a `human_interaction` entry with `response: exception` and a non-empty `runbook_path` (recommended path: `docs/features/active/2026-07-07-graph-activity-log-purview-124/runbooks/purview-live-tenant-ingestion.runbook.md`), mirroring the F11 HI-1 / F17 precedent; state explicitly that this plan does not author the runbook content and that the orchestrator must delegate to the `human-exception-runbook` agent separately after this plan's preflight clears.
   - Acceptance: the evidence file exists, names the recommended `runbook_path`, and states the runbook authorship is out of this plan's scope.
 
 ### Phase 8 — Final QA Loop
