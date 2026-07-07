@@ -2,3 +2,4 @@
 - [Per-file coverage masking](feedback_per-file-coverage-masking.md) — aggregates mask per-file fails; async exclusion applies ONLY with --settings runsettings (plain run instruments async, #120); run both modes
 - [Review env fallbacks](project_review-env-fallbacks.md) — MCP template/validator tools and `dotnet tool restore` unavailable; latest artifact template #120; global csharpier; git-based PR-context regen when artifacts absent
 - [T1/T2 property-test gate](project_t2-property-test-gate.md) — CsCheck present in OpenClaw.Core.Tests (expect real property tests there); elsewhere closable via directed deterministic invariant tests + dated decision record (#18 precedent)
+- [CloudSync/Agent boundary seam](project_cloudsync-agent-boundary-seam.md) — CloudSync must never depend on OpenClaw.Core.Agent; #124 precedent is a bare-OpenClaw.Core port + composition-root adapter

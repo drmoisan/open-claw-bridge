@@ -82,6 +82,17 @@ the base merge added. Grade Minor (non-gating) IF `git diff <mb>^1..<mb> -- <tou
 empty (per-file baselines then exact) and head measurements are fresh; otherwise it can mask a
 real regression.
 
+#124 (2026-07-07, T1 OpenClaw.Core, CloudSync audit instrumentation): PR-context artifacts were
+absent (no `artifacts/pr_context.*` files); reviewed directly off `git diff
+origin/epic/openclaw-vision-integration...HEAD` (merge-base `7a29286`) per the epic-child
+base-resolution rule from #119. Newest validator-shaped C# artifact template:
+`2026-07-07-graph-activity-log-purview-124/*.2026-07-07T06-54.md`. This review is also the first
+to independently re-run `dotnet test --collect:"XPlat Code Coverage"` AND parse the resulting
+Cobertura report with a scratch script rather than trusting the executor's committed coverage
+evidence numbers outright — the independent figures matched the committed evidence exactly
+(OpenClaw.Core 93.03% line / 81.45% branch), which is itself useful confirmation the executor's
+reporting practice on this feature was accurate.
+
 Fourth recurring quirk — **`run_poshqc_test` MCP tool fails in this repo** (pre-existing
 workspace defect, first hit on #111 execution, accepted on the #111 review): the bundled
 `pester.runsettings.psd1` hardcodes drm-copilot `CodeCoverage.Path` entries, six of which do
