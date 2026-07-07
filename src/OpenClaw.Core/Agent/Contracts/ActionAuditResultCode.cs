@@ -39,4 +39,17 @@ public static class ActionAuditResultCode
     /// (<c>OneOnOneMoveGuard</c>) before the flag gate; no write occurred regardless of the flags.
     /// </summary>
     public const string RescheduleBlocked = "reschedule_blocked";
+
+    /// <summary>The attendee propose-new-time Graph write completed successfully (Stage 2, F19).</summary>
+    public const string ProposedNewTime = "proposed_new_time";
+
+    /// <summary>The attendee propose-new-time write threw; the original exception still propagates.</summary>
+    public const string ProposeNewTimeFailed = "propose_new_time_failed";
+
+    /// <summary>
+    /// The attendee propose-new-time was a dry-run: the flag gate
+    /// (<c>CalendarWritePolicy.AttendeeProposeNewTimeAllowed</c>) is off, so no Graph write
+    /// occurred. The attendee path has no move guard, so there is no blocked result code.
+    /// </summary>
+    public const string ProposeNewTimeDisabled = "propose_new_time_disabled";
 }
