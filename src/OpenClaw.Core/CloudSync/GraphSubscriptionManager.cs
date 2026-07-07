@@ -3,7 +3,6 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudAuth;
 using OpenClaw.Core.CloudGraph;
 using OpenClaw.HostAdapter.Contracts;
@@ -49,7 +48,7 @@ internal sealed class GraphSubscriptionManager
     private readonly IDeltaReconcileTrigger reconcileTrigger;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<GraphSubscriptionManager> logger;
-    private readonly IActionAuditLog actionAuditLog;
+    private readonly ICloudSyncActivityAuditor activityAuditor;
 
     /// <summary>Creates the manager; all seams are injected (D-8 executor reuse).</summary>
     public GraphSubscriptionManager(
@@ -62,7 +61,7 @@ internal sealed class GraphSubscriptionManager
         IDeltaReconcileTrigger reconcileTrigger,
         TimeProvider timeProvider,
         ILogger<GraphSubscriptionManager> logger,
-        IActionAuditLog actionAuditLog
+        ICloudSyncActivityAuditor activityAuditor
     )
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -74,7 +73,7 @@ internal sealed class GraphSubscriptionManager
         ArgumentNullException.ThrowIfNull(reconcileTrigger);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
-        ArgumentNullException.ThrowIfNull(actionAuditLog);
+        ArgumentNullException.ThrowIfNull(activityAuditor);
 
         graphOptions = graphOptionsAccessor.Value;
         cloudSyncOptions = cloudSyncOptionsAccessor.Value;
@@ -83,7 +82,7 @@ internal sealed class GraphSubscriptionManager
         this.reconcileTrigger = reconcileTrigger;
         this.timeProvider = timeProvider;
         this.logger = logger;
-        this.actionAuditLog = actionAuditLog;
+        this.activityAuditor = activityAuditor;
         executor = new GraphRequestExecutor(
             httpClient,
             tokenProvider,
@@ -149,22 +148,12 @@ internal sealed class GraphSubscriptionManager
         );
         if (!envelope.Ok)
         {
-            await actionAuditLog.RecordAsync(
-                new ActionAuditRecord(
-                    Mailbox: graphOptions.PrincipalMailboxUpn,
-                    MessageId: graphOptions.PrincipalMailboxUpn,
-                    EventId: null,
-                    ActionType: CloudSyncActivityType.SubscriptionCreated,
-                    ActingFlags: CloudSyncActingFlags.NotApplicable,
-                    CorrelationId: envelope.Meta.RequestId,
-                    ResultCode: CloudSyncActivityResultCode.Failure,
-                    ErrorDetail: envelope.Error?.Message,
-                    OriginalStartUtc: null,
-                    OriginalEndUtc: null,
-                    NewStartUtc: null,
-                    NewEndUtc: null,
-                    RecordedAtUtc: timeProvider.GetUtcNow()
-                ),
+            await activityAuditor.RecordSubscriptionCreatedAsync(
+                graphOptions.PrincipalMailboxUpn,
+                subscriptionId: null,
+                envelope.Meta.RequestId,
+                success: false,
+                envelope.Error?.Message,
                 ct
             );
             return new ApiEnvelope<GraphSubscriptionRecord>(
@@ -184,22 +173,12 @@ internal sealed class GraphSubscriptionManager
             SubscriptionStatus.Active
         );
         await subscriptionStore.UpsertSubscriptionAsync(record, timeProvider.GetUtcNow(), ct);
-        await actionAuditLog.RecordAsync(
-            new ActionAuditRecord(
-                Mailbox: graphOptions.PrincipalMailboxUpn,
-                MessageId: record.SubscriptionId,
-                EventId: null,
-                ActionType: CloudSyncActivityType.SubscriptionCreated,
-                ActingFlags: CloudSyncActingFlags.NotApplicable,
-                CorrelationId: envelope.Meta.RequestId,
-                ResultCode: CloudSyncActivityResultCode.Success,
-                ErrorDetail: null,
-                OriginalStartUtc: null,
-                OriginalEndUtc: null,
-                NewStartUtc: null,
-                NewEndUtc: null,
-                RecordedAtUtc: timeProvider.GetUtcNow()
-            ),
+        await activityAuditor.RecordSubscriptionCreatedAsync(
+            graphOptions.PrincipalMailboxUpn,
+            record.SubscriptionId,
+            envelope.Meta.RequestId,
+            success: true,
+            errorDetail: null,
             ct
         );
         logger.LogInformation(
@@ -246,22 +225,12 @@ internal sealed class GraphSubscriptionManager
         );
         if (!envelope.Ok)
         {
-            await actionAuditLog.RecordAsync(
-                new ActionAuditRecord(
-                    Mailbox: graphOptions.PrincipalMailboxUpn,
-                    MessageId: subscriptionId,
-                    EventId: null,
-                    ActionType: CloudSyncActivityType.SubscriptionRenewed,
-                    ActingFlags: CloudSyncActingFlags.NotApplicable,
-                    CorrelationId: envelope.Meta.RequestId,
-                    ResultCode: CloudSyncActivityResultCode.Failure,
-                    ErrorDetail: envelope.Error?.Message,
-                    OriginalStartUtc: null,
-                    OriginalEndUtc: null,
-                    NewStartUtc: null,
-                    NewEndUtc: null,
-                    RecordedAtUtc: timeProvider.GetUtcNow()
-                ),
+            await activityAuditor.RecordSubscriptionRenewedAsync(
+                graphOptions.PrincipalMailboxUpn,
+                subscriptionId,
+                envelope.Meta.RequestId,
+                success: false,
+                envelope.Error?.Message,
                 ct
             );
             return new ApiEnvelope<GraphSubscriptionRecord>(
@@ -285,22 +254,12 @@ internal sealed class GraphSubscriptionManager
                 null,
                 false
             );
-            await actionAuditLog.RecordAsync(
-                new ActionAuditRecord(
-                    Mailbox: graphOptions.PrincipalMailboxUpn,
-                    MessageId: subscriptionId,
-                    EventId: null,
-                    ActionType: CloudSyncActivityType.SubscriptionRenewed,
-                    ActingFlags: CloudSyncActingFlags.NotApplicable,
-                    CorrelationId: envelope.Meta.RequestId,
-                    ResultCode: CloudSyncActivityResultCode.Failure,
-                    ErrorDetail: noRecordError.Message,
-                    OriginalStartUtc: null,
-                    OriginalEndUtc: null,
-                    NewStartUtc: null,
-                    NewEndUtc: null,
-                    RecordedAtUtc: timeProvider.GetUtcNow()
-                ),
+            await activityAuditor.RecordSubscriptionRenewedAsync(
+                graphOptions.PrincipalMailboxUpn,
+                subscriptionId,
+                envelope.Meta.RequestId,
+                success: false,
+                noRecordError.Message,
                 ct
             );
             return new ApiEnvelope<GraphSubscriptionRecord>(
@@ -317,22 +276,12 @@ internal sealed class GraphSubscriptionManager
             Status = SubscriptionStatus.Active,
         };
         await subscriptionStore.UpsertSubscriptionAsync(updated, timeProvider.GetUtcNow(), ct);
-        await actionAuditLog.RecordAsync(
-            new ActionAuditRecord(
-                Mailbox: graphOptions.PrincipalMailboxUpn,
-                MessageId: updated.SubscriptionId,
-                EventId: null,
-                ActionType: CloudSyncActivityType.SubscriptionRenewed,
-                ActingFlags: CloudSyncActingFlags.NotApplicable,
-                CorrelationId: envelope.Meta.RequestId,
-                ResultCode: CloudSyncActivityResultCode.Success,
-                ErrorDetail: null,
-                OriginalStartUtc: null,
-                OriginalEndUtc: null,
-                NewStartUtc: null,
-                NewEndUtc: null,
-                RecordedAtUtc: timeProvider.GetUtcNow()
-            ),
+        await activityAuditor.RecordSubscriptionRenewedAsync(
+            graphOptions.PrincipalMailboxUpn,
+            updated.SubscriptionId,
+            envelope.Meta.RequestId,
+            success: true,
+            errorDetail: null,
             ct
         );
         logger.LogInformation(
@@ -369,22 +318,11 @@ internal sealed class GraphSubscriptionManager
                         timeProvider.GetUtcNow(),
                         ct
                     );
-                    await actionAuditLog.RecordAsync(
-                        new ActionAuditRecord(
-                            Mailbox: graphOptions.PrincipalMailboxUpn,
-                            MessageId: item.SubscriptionId,
-                            EventId: null,
-                            ActionType: CloudSyncActivityType.SubscriptionExpired,
-                            ActingFlags: CloudSyncActingFlags.NotApplicable,
-                            CorrelationId: renewal.Meta.RequestId,
-                            ResultCode: CloudSyncActivityResultCode.Failure,
-                            ErrorDetail: renewalError.Message,
-                            OriginalStartUtc: null,
-                            OriginalEndUtc: null,
-                            NewStartUtc: null,
-                            NewEndUtc: null,
-                            RecordedAtUtc: timeProvider.GetUtcNow()
-                        ),
+                    await activityAuditor.RecordSubscriptionExpiredAsync(
+                        graphOptions.PrincipalMailboxUpn,
+                        item.SubscriptionId,
+                        renewal.Meta.RequestId,
+                        renewalError.Message,
                         ct
                     );
                     logger.LogWarning(
@@ -398,22 +336,10 @@ internal sealed class GraphSubscriptionManager
             case LifecycleEvents.Removed:
                 await subscriptionStore.DeleteSubscriptionAsync(item.SubscriptionId, ct);
                 var correlationId = Guid.NewGuid().ToString();
-                await actionAuditLog.RecordAsync(
-                    new ActionAuditRecord(
-                        Mailbox: graphOptions.PrincipalMailboxUpn,
-                        MessageId: item.SubscriptionId,
-                        EventId: null,
-                        ActionType: CloudSyncActivityType.SubscriptionRemoved,
-                        ActingFlags: CloudSyncActingFlags.NotApplicable,
-                        CorrelationId: correlationId,
-                        ResultCode: CloudSyncActivityResultCode.Success,
-                        ErrorDetail: null,
-                        OriginalStartUtc: null,
-                        OriginalEndUtc: null,
-                        NewStartUtc: null,
-                        NewEndUtc: null,
-                        RecordedAtUtc: timeProvider.GetUtcNow()
-                    ),
+                await activityAuditor.RecordSubscriptionRemovedAsync(
+                    graphOptions.PrincipalMailboxUpn,
+                    item.SubscriptionId,
+                    correlationId,
                     ct
                 );
                 logger.LogInformation(

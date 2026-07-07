@@ -1,21 +1,25 @@
 using System.Net;
-using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using OpenClaw.Core.Agent;
+using Moq;
+using OpenClaw.Core;
 using OpenClaw.Core.CloudSync;
 
 namespace OpenClaw.Core.Tests.CloudSync;
 
 /// <summary>
-/// Audit-emission tests for <see cref="GraphSubscriptionManager"/> (issue #124, AC2/AC4):
-/// <c>CreateAsync</c>/<c>RenewAsync</c> emit exactly one audit record per success/failure
-/// outcome, and <c>HandleLifecycleAsync</c> emits exactly one audit record for a failed
-/// <c>reauthorizationRequired</c> renewal and one for a <c>removed</c> lifecycle event.
+/// Audit-emission tests for <see cref="GraphSubscriptionManager"/> (issue #124, AC2/AC4;
+/// revised in the Phase 9 architecture-boundary seam): <c>CreateAsync</c>/<c>RenewAsync</c>
+/// call <see cref="ICloudSyncActivityAuditor"/>'s matching port method exactly once per
+/// success/failure outcome, and <c>HandleLifecycleAsync</c> calls the port exactly once for
+/// a failed <c>reauthorizationRequired</c> renewal and once for a <c>removed</c> lifecycle
+/// event.
 /// </summary>
 [TestClass]
 public sealed class GraphSubscriptionManagerAuditTests
 {
+    private const string Mailbox = "paula@contoso.com";
+
     private static readonly DateTimeOffset Now = new(2026, 7, 3, 8, 0, 0, TimeSpan.Zero);
 
     private const string ClientState = "deterministic-client-state";
@@ -62,22 +66,30 @@ public sealed class GraphSubscriptionManagerAuditTests
             )
         );
         var store = new FakeSubscriptionStore();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var manager = GraphSubscriptionManagerTests.Manager(
             handler,
             store,
             new FakeTimeProvider(Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
         await manager.CreateAsync("req-create", CancellationToken.None);
 
         // Assert
-        var record = auditLog.Recorded.Should().ContainSingle().Which;
-        record.ActionType.Should().Be(CloudSyncActivityType.SubscriptionCreated);
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Success);
-        record.MessageId.Should().Be("sub-audit-1");
+        auditor.Verify(
+            a =>
+                a.RecordSubscriptionCreatedAsync(
+                    Mailbox,
+                    "sub-audit-1",
+                    It.IsAny<string?>(),
+                    true,
+                    null,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 
     [TestMethod]
@@ -93,21 +105,30 @@ public sealed class GraphSubscriptionManagerAuditTests
             )
         );
         var store = new FakeSubscriptionStore();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var manager = GraphSubscriptionManagerTests.Manager(
             handler,
             store,
             new FakeTimeProvider(Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
         await manager.CreateAsync("req-create-fail", CancellationToken.None);
 
         // Assert
-        var record = auditLog.Recorded.Should().ContainSingle().Which;
-        record.ActionType.Should().Be(CloudSyncActivityType.SubscriptionCreated);
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Failure);
+        auditor.Verify(
+            a =>
+                a.RecordSubscriptionCreatedAsync(
+                    Mailbox,
+                    null,
+                    It.IsAny<string?>(),
+                    false,
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 
     [TestMethod]
@@ -133,22 +154,30 @@ public sealed class GraphSubscriptionManagerAuditTests
             Now.AddMinutes(20),
             SubscriptionStatus.Active
         );
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var manager = GraphSubscriptionManagerTests.Manager(
             handler,
             store,
             new FakeTimeProvider(Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
         await manager.RenewAsync("sub-renew-1", "req-renew", CancellationToken.None);
 
         // Assert
-        var record = auditLog.Recorded.Should().ContainSingle().Which;
-        record.ActionType.Should().Be(CloudSyncActivityType.SubscriptionRenewed);
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Success);
-        record.MessageId.Should().Be("sub-renew-1");
+        auditor.Verify(
+            a =>
+                a.RecordSubscriptionRenewedAsync(
+                    Mailbox,
+                    "sub-renew-1",
+                    It.IsAny<string?>(),
+                    true,
+                    null,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 
     [TestMethod]
@@ -164,21 +193,30 @@ public sealed class GraphSubscriptionManagerAuditTests
             )
         );
         var store = new FakeSubscriptionStore();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var manager = GraphSubscriptionManagerTests.Manager(
             handler,
             store,
             new FakeTimeProvider(Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
         await manager.RenewAsync("sub-renew-fail", "req-renew-fail", CancellationToken.None);
 
         // Assert
-        var record = auditLog.Recorded.Should().ContainSingle().Which;
-        record.ActionType.Should().Be(CloudSyncActivityType.SubscriptionRenewed);
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Failure);
+        auditor.Verify(
+            a =>
+                a.RecordSubscriptionRenewedAsync(
+                    Mailbox,
+                    "sub-renew-fail",
+                    It.IsAny<string?>(),
+                    false,
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 
     [TestMethod]
@@ -194,12 +232,12 @@ public sealed class GraphSubscriptionManagerAuditTests
             )
         );
         var store = StoreWithSub1();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var manager = GraphSubscriptionManagerTests.Manager(
             handler,
             store,
             new FakeTimeProvider(Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
@@ -208,15 +246,20 @@ public sealed class GraphSubscriptionManagerAuditTests
             CancellationToken.None
         );
 
-        // Assert: RenewAsync's own failure path also records a SubscriptionRenewed-failure
-        // record; the lifecycle branch must additionally record exactly one
-        // SubscriptionExpired record for the reauthorize-failed outcome.
-        var record = auditLog
-            .Recorded.Should()
-            .ContainSingle(r => r.ActionType == CloudSyncActivityType.SubscriptionExpired)
-            .Which;
-        record.ResultCode.Should().Be(CloudSyncActivityResultCode.Failure);
-        record.MessageId.Should().Be("sub-1");
+        // Assert: RenewAsync's own failure path also calls RecordSubscriptionRenewedAsync;
+        // the lifecycle branch must additionally call RecordSubscriptionExpiredAsync exactly
+        // once for the reauthorize-failed outcome.
+        auditor.Verify(
+            a =>
+                a.RecordSubscriptionExpiredAsync(
+                    Mailbox,
+                    "sub-1",
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 
     [TestMethod]
@@ -232,12 +275,12 @@ public sealed class GraphSubscriptionManagerAuditTests
             )
         );
         var store = StoreWithSub1();
-        var auditLog = new FakeActionAuditLog();
+        var auditor = new Mock<ICloudSyncActivityAuditor>();
         var manager = GraphSubscriptionManagerTests.Manager(
             handler,
             store,
             new FakeTimeProvider(Now),
-            actionAuditLog: auditLog
+            activityAuditor: auditor.Object
         );
 
         // Act
@@ -246,12 +289,17 @@ public sealed class GraphSubscriptionManagerAuditTests
             CancellationToken.None
         );
 
-        // Assert: one SubscriptionRemoved record for the removal, plus one
-        // SubscriptionCreated record from the recreate that follows.
-        auditLog
-            .Recorded.Should()
-            .ContainSingle(r => r.ActionType == CloudSyncActivityType.SubscriptionRemoved)
-            .Which.MessageId.Should()
-            .Be("sub-1");
+        // Assert: one RecordSubscriptionRemovedAsync call for the removal (the recreate
+        // that follows also calls RecordSubscriptionCreatedAsync, asserted elsewhere).
+        auditor.Verify(
+            a =>
+                a.RecordSubscriptionRemovedAsync(
+                    Mailbox,
+                    "sub-1",
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once()
+        );
     }
 }

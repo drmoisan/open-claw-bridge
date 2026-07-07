@@ -1,6 +1,5 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
-using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudSync;
 
 namespace OpenClaw.Core.Tests.CloudSync;
@@ -166,23 +165,68 @@ internal sealed class FakeDeltaLinkStore : IDeltaLinkStore
 }
 
 /// <summary>
-/// In-memory <see cref="IActionAuditLog"/> recording every <see cref="RecordAsync"/> call for
-/// assertions (issue #124). Used as the default audit-log dependency for the CloudSync test
-/// factories in <c>GraphSubscriptionManagerTests</c>, <c>NotificationRequestProcessorTests</c>,
-/// and <c>GraphDeltaReconcilerTests</c>, and directly by the <c>*AuditTests.cs</c> files.
+/// No-op <see cref="ICloudSyncActivityAuditor"/> for tests that do not assert on audit
+/// behavior (issue #124, architecture-boundary revision). Used as the default audit-port
+/// dependency for the CloudSync test factories in <c>GraphSubscriptionManagerTests</c>,
+/// <c>NotificationRequestProcessorTests</c>, and <c>GraphDeltaReconcilerTests</c>, superseding
+/// <c>FakeActionAuditLog</c> now that the CloudSync classes depend on the port rather than
+/// <c>IActionAuditLog</c> directly.
 /// </summary>
-internal sealed class FakeActionAuditLog : IActionAuditLog
+internal sealed class NoOpCloudSyncActivityAuditor : ICloudSyncActivityAuditor
 {
-    public List<ActionAuditRecord> Recorded { get; } = [];
-
-    public Task RecordAsync(ActionAuditRecord record, CancellationToken ct)
-    {
-        Recorded.Add(record);
-        return Task.CompletedTask;
-    }
-
-    public Task<IReadOnlyList<ActionAuditRecord>> GetByMessageIdAsync(
-        string messageId,
+    public Task RecordSubscriptionCreatedAsync(
+        string mailbox,
+        string? subscriptionId,
+        string? correlationId,
+        bool success,
+        string? errorDetail,
         CancellationToken ct
-    ) => Task.FromResult<IReadOnlyList<ActionAuditRecord>>([]);
+    ) => Task.CompletedTask;
+
+    public Task RecordSubscriptionRenewedAsync(
+        string mailbox,
+        string subscriptionId,
+        string? correlationId,
+        bool success,
+        string? errorDetail,
+        CancellationToken ct
+    ) => Task.CompletedTask;
+
+    public Task RecordSubscriptionExpiredAsync(
+        string mailbox,
+        string subscriptionId,
+        string? correlationId,
+        string? errorDetail,
+        CancellationToken ct
+    ) => Task.CompletedTask;
+
+    public Task RecordSubscriptionRemovedAsync(
+        string mailbox,
+        string subscriptionId,
+        string correlationId,
+        CancellationToken ct
+    ) => Task.CompletedTask;
+
+    public Task RecordWebhookReceivedAsync(
+        string mailbox,
+        string messageId,
+        string correlationId,
+        CancellationToken ct
+    ) => Task.CompletedTask;
+
+    public Task RecordWebhookRejectedAsync(
+        string mailbox,
+        string messageId,
+        string rejectionReasonCode,
+        string correlationId,
+        CancellationToken ct
+    ) => Task.CompletedTask;
+
+    public Task RecordDeltaReconciliationRunAsync(
+        string mailbox,
+        string requestId,
+        bool success,
+        string? errorDetail,
+        CancellationToken ct
+    ) => Task.CompletedTask;
 }
