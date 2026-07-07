@@ -118,6 +118,16 @@ executor per-file raw counts were exactly 2x the deduped values (duplicate class
 identical — dedupe before comparing. GraphDeltaReconciler landed at exactly 75.00% (12/16) —
 zero-margin file, named-arm Minor per the #115 pattern.
 
+Counter-example on #119 (2026-07-06): NO masking — the new gate in
+GraphHostAdapterClient.SendMail.cs is a SYNCHRONOUS Task-returning method (deny path is
+Task.FromResult), so the entire gate body was instrumented (56/56 lines, 4/4 branches) and the
+new pure authorizer (also sync) was 20/20 lines. When a diff avoids async bodies, cobertura per-line
+attestation works normally — state that explicitly in the audit as a positive. The auto-property
+variant recurred (GraphAdapterOptions.cs NOT INSTRUMENTED; executor disclosed openly, #109
+disposition). New Minor pattern: a measured-and-uncovered defensive `entry is not null` arm in a
+membership loop (3/4 conditions, no null-element test anywhere) — above the 75% gate so Minor not
+Blocking (contrast #117 where sub-75% subsets were Blocking); recommend one directed null-entry test.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden

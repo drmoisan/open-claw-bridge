@@ -57,6 +57,22 @@ self-check passed; prior: #113 `2026-07-02-app-only-auth-module-113/*.2026-07-02
 The #117 set `2026-07-03-graph-subscriptions-delta-117/*.2026-07-03T02-34.md` is the first
 FAIL-verdict (Blocking + remediation-inputs) artifact set shaped on that template.
 
+#119 (2026-07-06, F15 allowlist, epic-branch base): PR-context artifacts were ABSENT at review
+start even though the caller prompt claimed they were "refreshed" — never trust the caller's
+freshness claim; `ls artifacts/pr_context.*` first, and regenerate with raw git (log/name-status/
+stat -> summary; full diff -> appendix) when missing. No collector script exists in scripts/.
+Epic-child reviews resolve base to the epic integration branch (e.g. `epic/openclaw-vision-integration`),
+not main. Newest validator-shaped artifact-set template: #119
+`2026-07-06-send-on-behalf-allowlist-119/*.2026-07-06T23-41.md` (structural self-check passed).
+
+Fifth quirk — **executor baseline can predate the merge-base**: on #119 the committed baseline
+(22:45) was captured 4 minutes BEFORE the merge-base commit (22:49, a sibling-feature merge into
+the epic branch), so baseline test counts/coverage omitted that merge. Detection: compare baseline
+timestamp vs `git show -s --format=%cI <merge-base>`, and grep the baseline cobertura for classes
+the base merge added. Grade Minor (non-gating) IF `git diff <mb>^1..<mb> -- <touched paths>` is
+empty (per-file baselines then exact) and head measurements are fresh; otherwise it can mask a
+real regression.
+
 Fourth recurring quirk — **`run_poshqc_test` MCP tool fails in this repo** (pre-existing
 workspace defect, first hit on #111 execution, accepted on the #111 review): the bundled
 `pester.runsettings.psd1` hardcodes drm-copilot `CodeCoverage.Path` entries, six of which do
