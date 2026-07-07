@@ -93,6 +93,18 @@ evidence numbers outright — the independent figures matched the committed evid
 (OpenClaw.Core 93.03% line / 81.45% branch), which is itself useful confirmation the executor's
 reporting practice on this feature was accurate.
 
+#130 (2026-07-07, F19 attendee-propose-new-time, the F18 SIBLING/mirror; final openclaw-vision
+feature, Epic D): PR-context artifacts were PRESENT this time (caller-provided in the worktree),
+but the summary "Changed files overview" STILL misclassified the C# branch as docs-only
+(`Core logic changes: 0 files`, 20 docs; real diff 9 prod + 6 test .cs) — 10th recurrence; scope
+from `git diff --stat <mb>..HEAD`, not the summary. Autoclose noise recurred (`#AC-1..#AC-9`,
+`#HI-1`, `#ISO-8601` + `#107/#109/#119/#128` precedent citations; only `#130` closes). Verdict
+PASS, zero blocking (1 Minor + 2 Info). Structural self-check passed; MCP validator/template tools
+unavailable (mirrored the #128 F18 set). Newest validator-shaped PASS C# template:
+`2026-07-07-attendee-propose-new-time-130/*.2026-07-07T06-35.md`. Notable: F19 modified ZERO
+pre-existing test files (loose Moq mocks absorbed the new IHostAdapterClient/ISchedulingService
+members automatically), contrast F18 which mechanically edited 4 worker test files.
+
 #128 (2026-07-07, F18 organizer reschedule, first calendar-write RPC): PR-context artifacts
 absent again (5th occurrence) — regenerated from git per the #120 recipe. Baseline freshness
 check (`git show -s --format=%cI <mb>` vs artifact mtime) passed this time (baseline 04:03 >

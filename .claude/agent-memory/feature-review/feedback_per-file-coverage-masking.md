@@ -149,6 +149,23 @@ graded MINOR, not Blocking; #117's Blocking applied to whole-new-file subsets be
 Also reconfirmed the #103 shifted-line technique: Pipeline.cs baseline partials at 298/305 = head
 306/313 (+8 added lines), proving the 50% settings-mode figure is pre-existing.
 
+#130 (2026-07-07, F19 attendee-propose-new-time): mixed-shape branch, clean disposition. The new
+worker orchestration `SchedulingWorker.ProposeNewTime.cs` `EvaluateProposeNewTimeAsync` (124-254)
+is async — under `--settings` it instruments ONLY the sync helpers (lines 47-115:
+ComputeProposeNewTimeIntent/BuildProposeNewTimeActingFlags/audit-record builder), so the executor's
+committed "100% line / 93.75% branch" attests only the sync sub-portion (undisclosed — graded Minor
+evidence-hygiene, NOT a coverage gap). Plain-mode `dotnet test tests/OpenClaw.Core.Tests` fully
+instruments the async body (24-254, 145/145 line, branch-rate 0.9375). BUT the other three new
+members — `GraphHostAdapterClient.ProposeNewMeetingTimeAsync`, `HostAdapterHttpClient` fail-closed
+`NOT_SUPPORTED`, and `HostAdapterSchedulingService.ProposeNewMeetingTimeAsync`... wait the service
+one IS async — the two client members are SYNC `Task`-returning (Task.FromResult / direct
+executor.ExecuteAsync return, no async/await), so fully instrumented in BOTH modes (the #119
+sync-Task pattern). Single un-distinctly-hit arm: the mixed Start-null/End-present combo at the
+compound null-check (line 56), identical Info to #128's line-52 — property test nulls both together.
+Reviewer only needed to run plain mode (executor's committed final was settings); parsing the
+executor's final settings cobertura for per-file instrumented LINE RANGES (47-115 vs full) is the
+fast tell that the async body is excluded before spending a plain-mode rerun.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
