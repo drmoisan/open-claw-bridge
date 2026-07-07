@@ -115,7 +115,7 @@ public sealed class NotificationRequestProcessorTests
             StoreWithSub1(),
             queue,
             logger,
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
 
@@ -147,7 +147,7 @@ public sealed class NotificationRequestProcessorTests
             StoreWithSub1(),
             queue,
             logger,
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
 
@@ -181,7 +181,7 @@ public sealed class NotificationRequestProcessorTests
             StoreWithSub1(),
             queue,
             logger,
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
 

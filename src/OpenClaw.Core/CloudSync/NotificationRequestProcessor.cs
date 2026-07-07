@@ -3,7 +3,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudGraph;
 
 namespace OpenClaw.Core.CloudSync;
@@ -29,14 +28,14 @@ internal sealed class NotificationRequestProcessor(
     ISubscriptionStore subscriptionStore,
     INotificationQueue queue,
     ILogger<NotificationRequestProcessor> logger,
-    IActionAuditLog actionAuditLog,
+    ICloudSyncActivityAuditor activityAuditor,
     TimeProvider timeProvider
 )
 {
     private const string InvalidRequestCode = "INVALID_REQUEST";
 
-    private readonly IActionAuditLog actionAuditLog =
-        actionAuditLog ?? throw new ArgumentNullException(nameof(actionAuditLog));
+    private readonly ICloudSyncActivityAuditor activityAuditor =
+        activityAuditor ?? throw new ArgumentNullException(nameof(activityAuditor));
     private readonly TimeProvider timeProvider =
         timeProvider ?? throw new ArgumentNullException(nameof(timeProvider));
 
@@ -108,6 +107,22 @@ internal sealed class NotificationRequestProcessor(
         );
     }
 
+    /// <summary>
+    /// The literal webhook-rejection reason codes CloudSync passes through the audit port
+    /// (Phase 9 architecture-boundary revision): CloudSync no longer references
+    /// <c>OpenClaw.Core.Agent</c>'s <c>CloudSyncActivityResultCode</c> constants directly, so
+    /// these values are declared locally; they match <c>CloudSyncActivityResultCode</c>'s
+    /// literal values verbatim, and <c>CloudSyncActivityAuditorTests</c> pins that the port's
+    /// <c>rejectionReasonCode</c> argument flows through unchanged to
+    /// <c>ActionAuditRecord.ResultCode</c>.
+    /// </summary>
+    private static class RejectionReasonCode
+    {
+        internal const string UnknownSubscription = "unknown-subscription";
+        internal const string ClientStateMismatch = "client-state-mismatch";
+        internal const string MissingResourceId = "missing-resource-id";
+    }
+
     /// <summary>Validates one item and enqueues its work item; invalid items drop with a Warning.</summary>
     private async Task ProcessItemAsync(GraphNotification item, CancellationToken ct)
     {
@@ -122,7 +137,7 @@ internal sealed class NotificationRequestProcessor(
             await RecordWebhookRejectedAsync(
                 unresolvedId,
                 unresolvedId,
-                CloudSyncActivityResultCode.UnknownSubscription,
+                RejectionReasonCode.UnknownSubscription,
                 correlationId,
                 ct
             );
@@ -139,7 +154,7 @@ internal sealed class NotificationRequestProcessor(
             await RecordWebhookRejectedAsync(
                 item.SubscriptionId,
                 item.SubscriptionId,
-                CloudSyncActivityResultCode.UnknownSubscription,
+                RejectionReasonCode.UnknownSubscription,
                 correlationId,
                 ct
             );
@@ -155,7 +170,7 @@ internal sealed class NotificationRequestProcessor(
             await RecordWebhookRejectedAsync(
                 subscription.Mailbox,
                 item.SubscriptionId,
-                CloudSyncActivityResultCode.ClientStateMismatch,
+                RejectionReasonCode.ClientStateMismatch,
                 correlationId,
                 ct
             );
@@ -183,7 +198,7 @@ internal sealed class NotificationRequestProcessor(
             await RecordWebhookRejectedAsync(
                 subscription.Mailbox,
                 item.SubscriptionId,
-                CloudSyncActivityResultCode.MissingResourceId,
+                RejectionReasonCode.MissingResourceId,
                 correlationId,
                 ct
             );
@@ -205,33 +220,15 @@ internal sealed class NotificationRequestProcessor(
         );
     }
 
-    /// <summary>Records a <see cref="CloudSyncActivityType.WebhookReceived"/> audit record.</summary>
+    /// <summary>Records a <c>CloudSyncActivityType.WebhookReceived</c> audit event.</summary>
     private Task RecordWebhookReceivedAsync(
         string mailbox,
         string messageId,
         string correlationId,
         CancellationToken ct
-    ) =>
-        actionAuditLog.RecordAsync(
-            new ActionAuditRecord(
-                Mailbox: mailbox,
-                MessageId: messageId,
-                EventId: null,
-                ActionType: CloudSyncActivityType.WebhookReceived,
-                ActingFlags: CloudSyncActingFlags.NotApplicable,
-                CorrelationId: correlationId,
-                ResultCode: CloudSyncActivityResultCode.Success,
-                ErrorDetail: null,
-                OriginalStartUtc: null,
-                OriginalEndUtc: null,
-                NewStartUtc: null,
-                NewEndUtc: null,
-                RecordedAtUtc: timeProvider.GetUtcNow()
-            ),
-            ct
-        );
+    ) => activityAuditor.RecordWebhookReceivedAsync(mailbox, messageId, correlationId, ct);
 
-    /// <summary>Records a <see cref="CloudSyncActivityType.WebhookRejected"/> audit record.</summary>
+    /// <summary>Records a <c>CloudSyncActivityType.WebhookRejected</c> audit event.</summary>
     private Task RecordWebhookRejectedAsync(
         string mailbox,
         string messageId,
@@ -239,22 +236,11 @@ internal sealed class NotificationRequestProcessor(
         string correlationId,
         CancellationToken ct
     ) =>
-        actionAuditLog.RecordAsync(
-            new ActionAuditRecord(
-                Mailbox: mailbox,
-                MessageId: messageId,
-                EventId: null,
-                ActionType: CloudSyncActivityType.WebhookRejected,
-                ActingFlags: CloudSyncActingFlags.NotApplicable,
-                CorrelationId: correlationId,
-                ResultCode: resultCode,
-                ErrorDetail: null,
-                OriginalStartUtc: null,
-                OriginalEndUtc: null,
-                NewStartUtc: null,
-                NewEndUtc: null,
-                RecordedAtUtc: timeProvider.GetUtcNow()
-            ),
+        activityAuditor.RecordWebhookRejectedAsync(
+            mailbox,
+            messageId,
+            resultCode,
+            correlationId,
             ct
         );
 

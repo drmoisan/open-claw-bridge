@@ -87,7 +87,7 @@ public sealed class NotificationRequestProcessorEdgeTests
             StoreWithSub1(),
             queue,
             logger,
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
 
@@ -118,7 +118,7 @@ public sealed class NotificationRequestProcessorEdgeTests
             StoreWithSub1(),
             queue,
             new CapturingLogger<NotificationRequestProcessor>(),
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
         await processor.ProcessNotificationsAsync(
@@ -156,7 +156,7 @@ public sealed class NotificationRequestProcessorEdgeTests
             StoreWithSub1(),
             queue,
             logger,
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
 
@@ -186,7 +186,7 @@ public sealed class NotificationRequestProcessorEdgeTests
             StoreWithSub1(),
             queue,
             logger,
-            new FakeActionAuditLog(),
+            new NoOpCloudSyncActivityAuditor(),
             new FakeTimeProvider(Now)
         );
 
