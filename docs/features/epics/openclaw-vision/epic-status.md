@@ -8,11 +8,14 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 - Integration branch: `epic/openclaw-vision-integration` (base: `main` @ `e085712`)
 - Manifest: [epic-plan.md](epic-plan.md)
 - Current wave: **5 (all waves complete)**
-- Last projected: 2026-07-07T11:33Z
-- Status: **FEATURE-COMPLETE — integration PR in progress.** All 20 features (waves 0–5) are
-  merged into `epic/openclaw-vision-integration`; every worktree is removed. Integration tip:
-  `a04d95b`. The final step is the integration-to-`main` PR (merge commit on CI green), which
-  closes issues #117/#119/#120/#124/#125/#128/#130.
+- Last projected: 2026-07-07T11:54Z
+- Status: **COMPLETE.** All 20 features (waves 0–5) merged into
+  `epic/openclaw-vision-integration`, and the integration branch merged into `main` via
+  [PR #132](https://github.com/drmoisan/open-claw-bridge/pull/132) (merge commit `019bd35`,
+  merged 2026-07-07T11:41Z, CI green on all four jobs). Issues
+  #117/#119/#120/#124/#125/#128/#130 autoclosed on merge (verified). The epic checkpoint
+  (`artifacts/orchestration/epic-orchestrator-state.json`, gitignored) records
+  `next_step: complete` with the full `epic_merge_pr` object.
 
 ## Feature status
 
@@ -133,11 +136,13 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
   limit mid-review; re-run on `opus` with the substitution documented in the delegation receipt.
 - Issue #130 remains OPEN for epic integration. Worktree removed 2026-07-07T11:33Z.
 
-## Resume
+## Epic integration (final)
 
-All waves are complete. If resuming before the integration PR has merged: read
-`artifacts/orchestration/epic-orchestrator-state.json` (`next_step: S10_epic_integration_pr`),
-re-derive ground truth via `gh pr list --base main --head epic/openclaw-vision-integration` and
-`git rev-parse origin/epic/openclaw-vision-integration`, then drive the integration-to-`main`
-PR to merge (merge commit, CI green, gated by `enforce-epic-merge-gate.ps1`) and record
-`epic_merge_pr` in the checkpoint.
+- PR [#132](https://github.com/drmoisan/open-claw-bridge/pull/132):
+  `epic/openclaw-vision-integration` → `main`, merge commit `019bd359`, merged
+  2026-07-07T11:41Z. CI run 28863282182 green (PowerShell QC, .NET Build + Test, Bicep
+  Validate, Workflow Lint).
+- Issues closed at integration: #117, #119, #120, #124, #125, #128, #130 (all verified CLOSED).
+- The epic is complete; no resume steps remain. Follow-ups are tracked in the PR #132 body
+  (PSScriptAnalyzer version pin, `PersistPollResultAsync` `Meta.Bridge` gap, F14 review notes,
+  live-tenant runbook executions).
