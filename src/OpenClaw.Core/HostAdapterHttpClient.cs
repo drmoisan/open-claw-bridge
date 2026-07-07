@@ -150,6 +150,39 @@ internal sealed class HostAdapterHttpClient(
         );
     }
 
+    public Task<ApiEnvelope<EventDto>> UpdateEventTimesAsync(
+        string bridgeId,
+        DateTimeOffset newStartUtc,
+        DateTimeOffset newEndUtc,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        // Fail closed with no I/O: the local Stage-0 HostAdapter backend has no
+        // calendar-write route (master line 108, deferred behind feature flags), so a
+        // real PATCH would 404 and misreport a permanent capability gap as a transient
+        // TRANSPORT_FAILURE. The synthesized non-retryable NOT_SUPPORTED envelope names
+        // the Graph adapter as the required backend. No HttpClient invocation and no
+        // token acquisition occur on this path.
+        var actualRequestId = string.IsNullOrWhiteSpace(requestId)
+            ? Guid.NewGuid().ToString()
+            : requestId;
+        return Task.FromResult(
+            new ApiEnvelope<EventDto>(
+                false,
+                default,
+                new ApiMeta(actualRequestId, "hostadapter", null),
+                new ApiError(
+                    "NOT_SUPPORTED",
+                    "The local HostAdapter backend has no calendar-write route; organizer "
+                        + "reschedule requires the Graph adapter.",
+                    null,
+                    Retryable: false
+                )
+            )
+        );
+    }
+
     private async Task<ApiEnvelope<TResponse>> PostAsync<TBody, TResponse>(
         string relativePath,
         TBody body,

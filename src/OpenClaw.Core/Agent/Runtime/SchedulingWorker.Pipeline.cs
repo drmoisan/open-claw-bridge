@@ -67,7 +67,7 @@ public sealed partial class SchedulingWorker
             recurringKind
         );
 
-        await ProposeAndActAsync(messageId, context, priority, cancellationToken)
+        await ProposeAndActAsync(messageId, context, meetingEvent, priority, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -125,6 +125,7 @@ public sealed partial class SchedulingWorker
     private async Task ProposeAndActAsync(
         string messageId,
         NormalizedMeetingContext context,
+        SchedulingEventDto? meetingEvent,
         OwnerPriority priority,
         CancellationToken cancellationToken
     )
@@ -285,13 +286,20 @@ public sealed partial class SchedulingWorker
                 .ConfigureAwait(false);
         }
 
-        if (!options.CalendarWriteEnabled)
-        {
-            logger.LogInformation(
-                "CalendarWriteEnabled is false; not writing the calendar for message {MessageId}.",
-                messageId
-            );
-        }
+        // Organizer-reschedule evaluation (issue #128): the F18 write path subsumes the
+        // former !CalendarWriteEnabled stub. Intent computation, move-guard consult, the
+        // flag gate, dedupe, the Graph write, and post-write bookkeeping all live in the
+        // SchedulingWorker.Reschedule partial; a flag-off or no-intent evaluation performs
+        // no outbound side effect.
+        await EvaluateRescheduleAsync(
+                messageId,
+                context,
+                meetingEvent,
+                priority,
+                slots,
+                cancellationToken
+            )
+            .ConfigureAwait(false);
     }
 
     private string MailboxUpn() =>

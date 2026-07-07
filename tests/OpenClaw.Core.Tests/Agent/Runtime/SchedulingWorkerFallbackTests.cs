@@ -164,6 +164,7 @@ public sealed class SchedulingWorkerFallbackTests
             sentActionStore.Object,
             new Mock<IActionAuditLog>().Object,
             CandidateSource("msg-1").Object,
+            new Mock<ISeriesMoveHistory>().Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
             NullLogger<SchedulingWorker>.Instance

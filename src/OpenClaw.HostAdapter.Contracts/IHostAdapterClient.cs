@@ -168,4 +168,39 @@ public interface IHostAdapterClient
         string? requestId = null,
         CancellationToken cancellationToken = default
     );
+
+    /// <summary>
+    /// Updates only the start and end times of an organizer-owned event via
+    /// <c>PATCH /users/{principal}/events/{id}</c> (member 10, the first calendar-write
+    /// route; issue #128).
+    /// </summary>
+    /// <remarks>
+    /// The update scope is deliberately narrow: the request body carries exactly the
+    /// <c>start</c> and <c>end</c> <c>dateTimeTimeZone</c> pairs and nothing else. The
+    /// body structurally cannot carry <c>body</c>, <c>subject</c>, <c>location</c>, or
+    /// <c>attendees</c>, which realizes the master §11.1 guardrail against clobbering the
+    /// online-meeting blob on an online meeting.
+    /// <para>
+    /// The Graph-backed adapter issues the real PATCH through the shared request pipeline
+    /// (bearer auth, <c>client-request-id</c> from <paramref name="requestId"/>,
+    /// 429/5xx retry, D5 error mapping) and maps a 200 response to the updated
+    /// <see cref="EventDto"/>. The local Stage-0 HostAdapter backend has no calendar-write
+    /// route (master line 108, deferred), so it fails closed with a synthesized
+    /// non-retryable <c>NOT_SUPPORTED</c> failure envelope and performs no I/O; organizer
+    /// reschedule therefore requires the Graph adapter.
+    /// </para>
+    /// </remarks>
+    /// <param name="bridgeId">The event identifier rendered into the <c>{id}</c> route segment.</param>
+    /// <param name="newStartUtc">The new event start (UTC instant).</param>
+    /// <param name="newEndUtc">The new event end (UTC instant).</param>
+    /// <param name="requestId">An optional caller-supplied correlation identifier.</param>
+    /// <param name="cancellationToken">Cancels the outbound operation.</param>
+    /// <returns>The updated event wrapped in an API envelope; a fail-closed error envelope otherwise.</returns>
+    Task<ApiEnvelope<EventDto>> UpdateEventTimesAsync(
+        string bridgeId,
+        DateTimeOffset newStartUtc,
+        DateTimeOffset newEndUtc,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    );
 }

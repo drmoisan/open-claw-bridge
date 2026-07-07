@@ -154,6 +154,7 @@ public sealed class SchedulingWorkerAuditTests
             store.Object,
             audit.Object,
             CandidateSource("msg-1").Object,
+            new Mock<ISeriesMoveHistory>().Object,
             Microsoft.Extensions.Options.Options.Create(options),
             new FakeTimeProvider(Now),
             logger ?? NullLogger<SchedulingWorker>.Instance
