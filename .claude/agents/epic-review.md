@@ -1,5 +1,6 @@
 ---
 name: epic-review
+model: opus
 description: Project-scoped worker that reviews epic folders and writes epic-audit artifacts.
 tools:
   - Read

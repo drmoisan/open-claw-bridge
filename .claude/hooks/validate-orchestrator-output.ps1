@@ -27,10 +27,18 @@
 #>
 
 [CmdletBinding()]
-param()
+param(
+    [Parameter(Mandatory = $false)]
+    [string] $CheckpointPath = 'artifacts/orchestration/orchestrator-state.json',
+
+    [Parameter(Mandatory = $false)]
+    [string] $ArtifactType = 'orchestrator-state'
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot '../lib/orchestrator-state/OrchestratorState.psm1') -Force
 
 function Get-CheckpointFileContent {
     <#
@@ -150,9 +158,11 @@ function Invoke-RoutingContractValidation {
         Invokes the validator through an injectable subprocess scriptblock seam.
         The default Invoker runs the authoritative Python CLI:
           python -m scripts.dev_tools.validate_orchestration_artifacts \
-              orchestrator-state <CheckpointPath> --require-complete
+              <ArtifactType> <CheckpointPath> --require-complete
         Tests inject a mock scriptblock so no Python process runs. The function
         does not reimplement routing logic; it delegates to the Python validator.
+        ArtifactType defaults to 'orchestrator-state' so the default invocation
+        string is unchanged for every existing caller of this hook.
 
         Returns a hashtable with keys:
           - HasErrors:  $true when the validator reported a non-zero exit or
@@ -166,18 +176,40 @@ function Invoke-RoutingContractValidation {
         [string] $CheckpointPath,
 
         [Parameter(Mandatory = $false)]
+        [string] $ArtifactType = 'orchestrator-state',
+
+        [Parameter(Mandatory = $false)]
         [scriptblock] $Invoker = {
-            param($Path)
-            $output = & python -m scripts.dev_tools.validate_orchestration_artifacts `
-                orchestrator-state $Path --require-complete 2>&1
-            [pscustomobject]@{
-                ExitCode = $LASTEXITCODE
-                Output   = ($output | Out-String)
+            param($Path, $Type)
+            # Capability detection: use the authoritative Python CLI when
+            # scripts.dev_tools is importable (drm-copilot); otherwise fall back to
+            # the portable PowerShell completion module that travels with the
+            # pushed-down pack. The portable path performs the presence-level
+            # required-once-delegated existence gate and still fails closed.
+            if (Test-PythonOrchestratorValidatorAvailable) {
+                $output = & python -m scripts.dev_tools.validate_orchestration_artifacts `
+                    $Type $Path --require-complete --require-model-routing 2>&1
+                [pscustomobject]@{
+                    ExitCode = $LASTEXITCODE
+                    Output   = ($output | Out-String)
+                }
+            } else {
+                # Import the portable completion module only when its function is not
+                # already available, so a repeated call (or a test that pre-imports and
+                # mocks the function) does not reload the module and reset the seam.
+                if (-not (Get-Command -Name Test-OrchestratorStateCompletionReadiness -ErrorAction SilentlyContinue)) {
+                    Import-Module (Join-Path $PSScriptRoot '../lib/orchestrator-state/OrchestratorStateCompletion.psm1') -Force
+                }
+                $portable = Test-OrchestratorStateCompletionReadiness -CheckpointPath $Path
+                [pscustomobject]@{
+                    ExitCode = $portable.ExitCode
+                    Output   = $portable.Output
+                }
             }
         }
     )
 
-    $result = & $Invoker $CheckpointPath
+    $result = & $Invoker $CheckpointPath $ArtifactType
     $exitCode = 0
     if ($null -ne $result -and ($result.PSObject.Properties.Name -contains 'ExitCode')) {
         $exitCode = [int]$result.ExitCode
@@ -207,6 +239,7 @@ function Invoke-OrchestratorOutputValidation {
     param(
         [string] $RawPayload,
         [string] $CheckpointPath = 'artifacts/orchestration/orchestrator-state.json',
+        [string] $ArtifactType = 'orchestrator-state',
 
         [Parameter(Mandatory = $false)]
         [scriptblock] $RoutingInvoker
@@ -275,12 +308,20 @@ function Invoke-OrchestratorOutputValidation {
     # Delegate to the authoritative Python routing-contract validator. The
     # optional RoutingInvoker seam lets tests inject a mock; the default seam
     # produces the real subprocess call.
-    $routingArgs = @{ CheckpointPath = $CheckpointPath }
+    $routingArgs = @{ CheckpointPath = $CheckpointPath; ArtifactType = $ArtifactType }
     if ($PSBoundParameters.ContainsKey('RoutingInvoker') -and $null -ne $RoutingInvoker) {
         $routingArgs['Invoker'] = $RoutingInvoker
     }
     $routingResult = Invoke-RoutingContractValidation @routingArgs
     if ($routingResult.HasErrors) {
+        # One subprocess call now covers both --require-complete and
+        # --require-model-routing. Surface a model-routing gate failure under its
+        # own block reason (its errors name model_routing_receipts or
+        # complexity_assessments); otherwise fall back to the routing-contract
+        # block reason for a generic completion/routing failure.
+        if ($routingResult.ErrorText -match 'model_routing_receipts|complexity_assessments') {
+            return @{ Ok = $false; Message = "MODEL_ROUTING_BLOCKED: $($routingResult.ErrorText)" }
+        }
         return @{ Ok = $false; Message = "ROUTING_CONTRACT_BLOCKED: $($routingResult.ErrorText)" }
     }
 
@@ -292,7 +333,7 @@ if ($MyInvocation.InvocationName -eq '.') {
     return
 }
 
-$result = Invoke-OrchestratorOutputValidation -RawPayload $env:CLAUDE_HOOK_INPUT
+$result = Invoke-OrchestratorOutputValidation -RawPayload $env:CLAUDE_HOOK_INPUT -CheckpointPath $CheckpointPath -ArtifactType $ArtifactType
 if (-not $result.Ok) {
     Write-Error $result.Message
     exit 1

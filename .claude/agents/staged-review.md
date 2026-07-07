@@ -1,5 +1,6 @@
 ---
 name: staged-review
+model: opus
 description: Project-scoped worker that reviews staged diffs and writes staged-review artifacts.
 tools:
   - Read

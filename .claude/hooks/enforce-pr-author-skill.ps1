@@ -20,8 +20,10 @@
       Case A - gh pr create or gh pr edit with --body (inline, no --body-file): blocked.
       Case B - gh pr create with neither --body nor --body-file: blocked.
       Case C - gh pr create or gh pr edit with --body-file but context artifact absent: blocked.
-      Receipt - --body-file present and context artifact present: the SHA-256 receipt is verified
-                in five ordered checks (Section below). The first failing check blocks.
+      Preflight - --body-file/context present: orchestrator-state checkpoint must pass
+                  --require-pr-creation-ready before receipt verification runs, else blocked.
+      Receipt - preflight passed: the SHA-256 receipt is verified in five ordered checks
+                (Section below). The first failing check blocks.
 
     Receipt verification decision order on the --body-file-with-context path:
       PR_BODY_PATH_NONCANONICAL -> PR_AUTHOR_RECEIPT_MISSING -> PR_AUTHOR_RECEIPT_NUMBER_MISMATCH
@@ -42,6 +44,9 @@
 param()
 
 $script:PrContextArtifactPath = 'artifacts/pr_context.summary.txt'
+$script:OrchestratorStateCheckpointPath = 'artifacts/orchestration/orchestrator-state.json'
+
+Import-Module (Join-Path $PSScriptRoot '../lib/orchestrator-state/OrchestratorState.psm1') -Force
 
 function Get-PrContextArtifactExistence {
     <#
@@ -134,12 +139,14 @@ function Get-PrContextSummaryLastWriteUtc {
     return (Get-Item -LiteralPath $script:PrContextArtifactPath).LastWriteTimeUtc
 }
 
+. (Join-Path $PSScriptRoot 'enforce-pr-author-skill.epic-base-branch.ps1')
+
 function Test-PrAuthorReceiptVerification {
     <#
     .SYNOPSIS
         Verify the SHA-256 receipt and return a block-reason string, or $null when verified.
     .DESCRIPTION
-        Runs the five ordered receipt checks on the --body-file-with-context path. Each check is its
+        Runs the six ordered receipt checks on the --body-file-with-context path. Each check is its
         own short-circuiting branch; the first failure returns its reason code:
           1. PR_BODY_PATH_NONCANONICAL        - --body-file path does not match the canonical
                                                  artifacts/pr_body_<N>.md pattern (case-sensitive).
@@ -149,11 +156,13 @@ function Test-PrAuthorReceiptVerification {
                                                  != receipt.sha256.
           5. PR_AUTHOR_RECEIPT_STALE          - receipt.created_at (UTC) not strictly newer than the
                                                  context summary last-write time.
-        Returns $null when all five checks pass (allow). All disk access flows through the three
+          6. EPIC_BASE_BRANCH_MISMATCH        - under epic_mode, gh pr create does not carry a
+                                                 matching --base <epic_context.integration_branch>.
+        Returns $null when all six checks pass (allow). All disk access flows through the four
         injectable seams (Get-PrBodyFileBytes, Get-PrAuthorReceiptContent,
-        Get-PrContextSummaryLastWriteUtc); SHA-256 is computed inline. This is a policy-level
-        integrity check, not a cryptographic control: any actor with Write access to artifacts/ can
-        replace the body file and the receipt together.
+        Get-PrContextSummaryLastWriteUtc, Get-PrAuthorCheckpointContent); SHA-256 is computed
+        inline. This is a policy-level integrity check, not a cryptographic control: any actor
+        with Write access to artifacts/ can replace the body file and the receipt together.
     .PARAMETER CommandText
         The Bash command text containing the --body-file argument.
     .OUTPUTS
@@ -233,6 +242,12 @@ function Test-PrAuthorReceiptVerification {
         return "PR_AUTHOR_RECEIPT_STALE: ``$receiptFilePath`` ``created_at`` is not strictly newer than the last-write time of ``$script:PrContextArtifactPath``. The pr-author agent must regenerate the body and receipt after refreshing the PR context."
     }
 
+    # Check 6: under epic_mode, gh pr create must carry a matching --base override.
+    $epicBaseBranchReason = Test-EpicBaseBranchOverride -CommandText $CommandText
+    if ($epicBaseBranchReason) {
+        return $epicBaseBranchReason
+    }
+
     return $null
 }
 
@@ -302,8 +317,21 @@ function Get-PrAuthorBypassReason {
         return "PR_CONTEXT_MISSING: ``$script:PrContextArtifactPath`` is absent. Run ``mcp__drm-copilot__collect_pr_context`` before creating or editing the PR body."
     }
 
-    # Receipt verification: --body-file present and context artifact exists. Verify the SHA-256
-    # receipt in five ordered checks. This extends, and does not replace, the previously-allowed path.
+    # Orchestrator-state preflight: runs inside this same PreToolUse hook (so it cannot be
+    # bypassed by invoking gh pr create/edit directly) before receipt verification.
+    if ($hasBodyFile -and $ContextExists) {
+        $preflightResult = Invoke-OrchestratorStatePreflight -CheckpointPath $script:OrchestratorStateCheckpointPath
+        if ($preflightResult.HasErrors) {
+            $preflightSummary = if ([string]::IsNullOrWhiteSpace($preflightResult.ErrorText)) {
+                "checkpoint missing at $script:OrchestratorStateCheckpointPath"
+            } else {
+                $preflightResult.ErrorText
+            }
+            return "ORCHESTRATOR_STATE_PREFLIGHT_FAILED: $preflightSummary"
+        }
+    }
+
+    # Receipt verification: extends, and does not replace, the previously-allowed path.
     if ($hasBodyFile -and $ContextExists) {
         $receiptReason = Test-PrAuthorReceiptVerification -CommandText $CommandText
         if ($receiptReason) {

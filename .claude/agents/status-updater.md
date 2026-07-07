@@ -1,5 +1,6 @@
 ---
 name: status-updater
+model: haiku
 description: Project-scoped worker that reconciles plan and issue status and writes status-sync artifacts.
 tools:
   - Read

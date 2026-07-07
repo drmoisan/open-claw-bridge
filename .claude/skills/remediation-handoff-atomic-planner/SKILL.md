@@ -21,9 +21,9 @@ Use this skill when:
 
 ```
 orchestrator
-  -> writes remediation-inputs.<entry-ts>.md
+  -> writes remediation/<entry-ts>/remediation-inputs.md
   -> delegates to atomic-planner
-     -> atomic-planner authors remediation-plan.<entry-ts>.md
+     -> atomic-planner authors remediation/<entry-ts>/remediation-plan.md
         (plan shape per .claude/skills/atomic-plan-contract/SKILL.md)
      -> orchestrator hands plan to atomic-executor for preflight
         -> atomic-executor returns one of:
@@ -34,12 +34,14 @@ orchestrator
      -> atomic-executor executes the cleared plan task-by-task
         (workers are invoked by atomic-executor only)
      -> orchestrator delegates to feature-review
-        -> feature-review writes code-review.<exit-ts>.md,
-           feature-audit.<exit-ts>.md, and policy-audit.<exit-ts>.md
+        -> feature-review writes audit/<exit-ts>/code-review.md,
+           audit/<exit-ts>/feature-audit.md, and audit/<exit-ts>/policy-audit.md
   -> orchestrator evaluates exit condition:
      blocking_count == 0 -> mark exit_condition_met = true, end loop
-     blocking_count > 0  -> begin cycle N+1 with new remediation-inputs.<new-ts>.md
+     blocking_count > 0  -> begin cycle N+1 with new remediation/<new-ts>/remediation-inputs.md
 ```
+
+Every audit (including the initial, non-remediation-triggered `feature-review` pass that first discovers findings) is written under an `audit/<timestamp>/` folder. Every remediation cycle's entry artifacts are written under a `remediation/<timestamp>/` folder. This folder-per-cycle layout is the canonical pattern for multi-cycle remediation: it keeps each cycle's inputs, plan, and reaudit artifacts visually and structurally grouped, rather than relying on filename timestamp suffixes alone to disambiguate cycles sharing a feature folder.
 
 The orchestrator must not call typed-engineer workers directly during any phase of the cycle. The orchestrator must not act on a preflight delta itself; revisions are routed to `atomic-planner`.
 
@@ -54,7 +56,7 @@ Trigger remediation when any of these are true:
 
 ## Required Remediation Inputs
 
-The orchestrator authors `remediation-inputs.<entry-ts>.md` with:
+The orchestrator authors `remediation/<entry-ts>/remediation-inputs.md` with:
 
 - Enumerated fix list with file paths, expected behavior, and verification commands.
 - A "do not do" list (no scope creep, no policy weakening, no silent skips).
@@ -62,24 +64,26 @@ The orchestrator authors `remediation-inputs.<entry-ts>.md` with:
 
 ## Required Artifacts
 
-Each remediation cycle produces exactly five artifacts under the active feature folder:
+Each remediation cycle produces exactly five artifacts under the active feature folder, grouped into one `remediation/<entry-ts>/` folder and one `audit/<exit-ts>/` folder:
 
-1. `docs/features/active/<slug>/remediation-inputs.<entry-ts>.md` — orchestrator authors at cycle entry.
-2. `docs/features/active/<slug>/remediation-plan.<entry-ts>.md` — `atomic-planner` authors at cycle entry.
-3. `docs/features/active/<slug>/code-review.<exit-ts>.md` — `feature-review` authors at cycle exit.
-4. `docs/features/active/<slug>/feature-audit.<exit-ts>.md` — `feature-review` authors at cycle exit.
-5. `docs/features/active/<slug>/policy-audit.<exit-ts>.md` — `feature-review` authors at cycle exit.
+1. `docs/features/active/<slug>/remediation/<entry-ts>/remediation-inputs.md` — orchestrator authors at cycle entry.
+2. `docs/features/active/<slug>/remediation/<entry-ts>/remediation-plan.md` — `atomic-planner` authors at cycle entry.
+3. `docs/features/active/<slug>/audit/<exit-ts>/code-review.md` — `feature-review` authors at cycle exit.
+4. `docs/features/active/<slug>/audit/<exit-ts>/feature-audit.md` — `feature-review` authors at cycle exit.
+5. `docs/features/active/<slug>/audit/<exit-ts>/policy-audit.md` — `feature-review` authors at cycle exit.
+
+The initial, non-remediation-triggered `feature-review` pass (the audit that first discovers findings and opens cycle 1) also writes its three artifacts under `docs/features/active/<slug>/audit/<its-own-timestamp>/`, for the same reason: one timestamped folder per audit event, regardless of whether that audit opens, closes, or does not trigger a remediation cycle.
 
 Timestamp rule:
 
-- `<entry-ts>` is the ISO-8601 timestamp at cycle entry, in the `yyyy-MM-ddTHH-mm` format defined in `.claude/skills/evidence-and-timestamp-conventions/SKILL.md`. It applies to both `remediation-inputs.<entry-ts>.md` and `remediation-plan.<entry-ts>.md`.
-- `<exit-ts>` is the ISO-8601 timestamp at cycle exit (when `feature-review` runs), in the same `yyyy-MM-ddTHH-mm` format. It applies to all three reaudit artifacts: `code-review.<exit-ts>.md`, `feature-audit.<exit-ts>.md`, and `policy-audit.<exit-ts>.md`.
+- `<entry-ts>` is the ISO-8601 timestamp at cycle entry, in the `yyyy-MM-ddTHH-mm` format defined in `.claude/skills/evidence-and-timestamp-conventions/SKILL.md`. It names both the `remediation/<entry-ts>/` folder and, within it, `remediation-inputs.md` and `remediation-plan.md`.
+- `<exit-ts>` is the ISO-8601 timestamp at cycle exit (when `feature-review` runs), in the same `yyyy-MM-ddTHH-mm` format. It names the `audit/<exit-ts>/` folder and, within it, all three reaudit artifacts: `code-review.md`, `feature-audit.md`, and `policy-audit.md`.
 
-A cycle with fewer than five artifacts is malformed. A cycle that uses a single timestamp for both entry and exit is malformed unless both phases ran within the same minute.
+A cycle with fewer than five artifacts is malformed. A cycle that uses the same timestamp value for both its `remediation/<ts>/` and `audit/<ts>/` folders is malformed unless entry and exit genuinely ran within the same minute — the two folders remain distinct either way, since one is named `remediation/` and the other `audit/`.
 
 ## Plan Shape
 
-`remediation-plan.<entry-ts>.md` MUST conform to `.claude/skills/atomic-plan-contract/SKILL.md`. In particular:
+`remediation/<entry-ts>/remediation-plan.md` MUST conform to `.claude/skills/atomic-plan-contract/SKILL.md`. In particular:
 
 - Phase headings: `### Phase N — <Title>`.
 - Tasks: `- [ ] [P#-T#]` with sequential per-phase IDs.
@@ -102,11 +106,11 @@ The orchestrator records the preflight outcome in `remediation_loop.cycles[curre
 
 When preflight is clear, `atomic-executor` executes the plan task-by-task. The executor invokes workers (`python-typed-engineer`, `typescript-engineer`, `csharp-typed-engineer`, `powershell-typed-engineer`) internally as needed. The orchestrator does not call workers.
 
-When execution is complete, the orchestrator delegates to `feature-review`. `feature-review` produces the three reaudit artifacts under the active feature folder using the exit timestamp.
+When execution is complete, the orchestrator delegates to `feature-review`. `feature-review` produces the three reaudit artifacts under `docs/features/active/<slug>/audit/<exit-ts>/` using the exit timestamp.
 
 ## Exit Gate
 
-The orchestrator reads the latest cycle's three reaudit artifacts and computes `blocking_count` as the total number of FAIL findings plus material PARTIAL findings flagged as blocking. Only when `blocking_count == 0` does the orchestrator set `exit_condition_met = true` on the current cycle and mark the remediation loop complete. Otherwise, the orchestrator opens cycle N+1 with a new `remediation-inputs.<new-ts>.md` and runs the full chain again.
+The orchestrator reads the latest cycle's three reaudit artifacts and computes `blocking_count` as the total number of FAIL findings plus material PARTIAL findings flagged as blocking. Only when `blocking_count == 0` does the orchestrator set `exit_condition_met = true` on the current cycle and mark the remediation loop complete. Otherwise, the orchestrator opens cycle N+1 with a new `remediation/<new-ts>/remediation-inputs.md` and runs the full chain again.
 
 ## Context Package (When Required)
 

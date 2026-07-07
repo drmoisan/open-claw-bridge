@@ -1,5 +1,6 @@
 ---
 name: prd-feature
+model: opus
 description: Project-scoped worker that produces feature-document outputs from issue and research context.
 tools:
   - Read

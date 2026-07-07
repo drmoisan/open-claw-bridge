@@ -1,8 +1,10 @@
 ---
 name: orchestrator
+model: opus
 description: Deterministic repository orchestrator that estimates change budget, selects small or large workflow path, delegates to specialist subagents, persists checkpoint state, and enforces completion gates proactively.
 tools:
-  - "Agent(atomic-planner,atomic-executor,feature-review,task-researcher,prd-feature,staged-review,epic-review,status-updater,pr-author,python-typed-engineer,powershell-typed-engineer,csharp-typed-engineer,typescript-engineer)"
+  - "Agent(atomic-planner,atomic-executor,feature-review,task-researcher,prd-feature,staged-review,epic-review,status-updater,pr-author,commit-message,human-exception-runbook,python-typed-engineer,powershell-typed-engineer,csharp-typed-engineer,typescript-engineer)"
+  - "Agent(epic-orchestrator)"
   - Read
   - Grep
   - Glob
@@ -55,12 +57,25 @@ On every invocation:
 4. If a valid checkpoint exists with a matching objective, resume from the recorded `next_step`.
 5. If no checkpoint exists or the objective is new, begin from change-budget estimation.
 
+### Model-choice reconciliation on resume
+
+When the resumed `next_step` is a delegating step, repair a missing model choice deterministically before delegating (this mirrors `## Checkpoint Handling` in `.claude/skills/orchestrate/SKILL.md`):
+
+a. Run the orchestrator-state validator with `--require-model-routing` before the first delegation and record a `model_routing_preflight` block `{ status ("pass"|"fail"), checked_at, validator_command, output_summary }`.
+b. Recompute the upcoming phase's floor with `compute_complexity_floor(signals_present)` (no reimplementation).
+c. Record a `complexity_assessments[]` entry `{ phase, band, floor, signals_present[], rationale, assessed_at }` with `floor` equal to the recomputed value and `band >= floor`.
+d. Resolve the model with `resolve_delegation_model(agent, complexity_band, fable_policy)` and record a `model_routing_receipts[]` entry `{ agent, phase, complexity_band, fable_policy, table_model, clamped_from | null, model }`.
+e. Persist the checkpoint, then delegate with `model` equal to the receipt's `model`.
+
+The orchestrator MUST NOT delegate at a delegating `next_step` while `model_routing_preflight` status is `fail`; it repairs the missing choice (steps b-e) and re-preflights until the status is `pass`.
+
 ## Change Budget Routing
 
 The first action is always to estimate the change budget by identifying likely affected production files and tests:
 
 - **Small path** (1–3 production files + corresponding tests): promotion, active folder, minimal plan, implementation, QC, small-audit review.
 - **Large path** (4+ production files or cross-cutting changes): scope, promotion, research, spec, atomic planning, atomic execution, feature review.
+- **Epic path**: the objective names or references an epic manifest (`docs/features/epics/<epic-slug>/epic-plan.md`) or explicitly requests multi-feature/epic orchestration. On this outcome the orchestrator delegates to `Agent(epic-orchestrator)` with the manifest path, instead of running change-budget/small/large routing itself.
 
 ## Delegation Model
 
@@ -75,7 +90,7 @@ For required delegated steps, delegation is mandatory. If a handoff cannot be st
 
 ## PR Creation Delegation
 
-PR creation and PR body edits must be delegated to `Agent(pr-author)`. The orchestrator must not call `gh pr create` or `gh pr edit --body*` directly from the main thread; those commands are blocked by the `enforce-pr-author-skill.ps1` PreToolUse hook unless the `--body-file` argument resolves to a canonical `artifacts/pr_body_<N>.md` path with a matching, verified `artifacts/pr_body_<N>.receipt.json`. The orchestrator first refreshes the PR-context artifact via `mcp__drm-copilot__collect_pr_context`, then delegates to `Agent(pr-author)`, which authors the PR body via the `pr-author` skill, writes `artifacts/pr_body_<N>.md` and the sibling receipt `artifacts/pr_body_<N>.receipt.json` (carrying the lowercase-hex SHA-256 of the body bytes), issues `gh pr create --body-file ...`, and reports the resulting PR URL or PR number. The authoritative handoff contract is `.claude/skills/orchestrate/SKILL.md` `## PR Authoring (pr-author Handoff)`; this section defers to it. The orchestrator records `pr_author_receipt` in the checkpoint.
+PR creation and PR body edits must be delegated to `Agent(pr-author)`. The orchestrator must not call `gh pr create` or `gh pr edit --body*` directly from the main thread; those commands are blocked by the `enforce-pr-author-skill.ps1` PreToolUse hook unless the `--body-file` argument resolves to a canonical `artifacts/pr_body_<N>.md` path with a matching, verified `artifacts/pr_body_<N>.receipt.json`. The orchestrator first refreshes the PR-context artifact via `mcp__drm-copilot__collect_pr_context`, then runs the orchestrator-state validator against `artifacts/orchestration/orchestrator-state.json --require-pr-creation-ready` and records the result under `pr_author_preflight` (`{status, checked_at, checkpoint_path, validator_command, output_summary}`) before delegating to `Agent(pr-author)`. This is a local enforcement mechanism, not a CI check: `enforce-pr-author-skill.ps1` independently re-validates the same checkpoint inside the PreToolUse hook itself (via an injectable `$Invoker` subprocess seam) and blocks with `ORCHESTRATOR_STATE_PREFLIGHT_FAILED` when it is missing or invalid, closing the bypass path that a CI-only check could never close. `Agent(pr-author)` authors the PR body via the `pr-author` skill, writes `artifacts/pr_body_<N>.md` and the sibling receipt `artifacts/pr_body_<N>.receipt.json` (carrying the lowercase-hex SHA-256 of the body bytes), issues `gh pr create --body-file ...`, and reports the resulting PR URL or PR number. The authoritative handoff contract is `.claude/skills/orchestrate/SKILL.md` `## PR Authoring (pr-author Handoff)`; this section defers to it. The orchestrator records `pr_author_receipt` in the checkpoint.
 
 ### Remediation Loop Checkpoint Shape
 

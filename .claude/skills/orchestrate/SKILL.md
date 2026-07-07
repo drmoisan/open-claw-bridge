@@ -24,6 +24,18 @@ On every invocation, the main session must:
 2. If a valid checkpoint exists with a matching objective, resume from the recorded `next_step`.
 3. If no checkpoint exists or the objective is new, begin the orchestration lifecycle from the start.
 
+### Model-choice reconciliation on resume
+
+Because model selection is required once delegation occurs (see `## Model Selection`), a resuming orchestrator must repair a missing model choice deterministically before delegating at a delegating `next_step`. When the resumed `next_step` is a delegating step:
+
+a. **Preflight the checkpoint.** Run the orchestrator-state validator with `--require-model-routing` (via `mcp__drm-copilot__validate_orchestration_artifacts` or the local CLI) against `artifacts/orchestration/orchestrator-state.json` before the first delegation. Record the result in a `model_routing_preflight` block `{ status ("pass"|"fail"), checked_at (ISO-8601 UTC), validator_command, output_summary }`.
+b. **Recompute the floor.** For the upcoming phase, recompute the complexity floor with `Get-ComplexityFloor -SignalsPresent <names>` (`.claude/lib/model-routing/ModelRouting.psm1`); do not reimplement the formula.
+c. **Record the assessment.** Write a `complexity_assessments[]` entry `{ phase, band, floor, signals_present[], rationale, assessed_at }` with `floor` equal to the recomputed value and `band >= floor`.
+d. **Resolve and record the receipt.** Resolve the model with `Resolve-DelegationModel -Agent <agent> -Band <complexity_band> -FablePolicy <fable_policy>` (`.claude/lib/model-routing/ModelRouting.psm1`) and write a `model_routing_receipts[]` entry `{ agent, phase, complexity_band, fable_policy, table_model, clamped_from | null, model }`.
+e. **Persist and delegate.** Persist the checkpoint, then delegate with `model` equal to the receipt's `model`.
+
+The orchestrator MUST NOT delegate at a delegating `next_step` while `model_routing_preflight` status is `fail`; it repairs the missing choice (steps b-e) and re-preflights until the status is `pass`.
+
 ## Autonomous-Execution Mandate
 
 The orchestrator must achieve all actions agentically with no human interaction; full autonomy is a hard requirement. A silent manual blocker discovered at the end of a workflow is a defect, not an acceptable outcome. Every unautomatable (human-interaction) requirement must be detected early, resolved by exactly one of three permitted responses, and recorded in orchestrator state.
@@ -44,7 +56,7 @@ When a step cannot be performed without a human, the orchestrator chooses exactl
 
 ### Exception-runbook requirement
 
-On a permitted `exception`, the orchestrator emits a human-readable runbook at `<FEATURE>/runbooks/<name>.runbook.md` and records its repo-root-relative path in `human_interaction.requirements[].runbook_path`. The runbook contract — canonical path, the five required sections (Cue, Prerequisites, Step-by-step Instructions, Verification, Source and Citation), and the MCP-first / web-second sourcing rule — is defined authoritatively in `.claude/skills/human-exception-runbook/SKILL.md`.
+On a permitted `exception`, the orchestrator delegates runbook authoring to `Agent(human-exception-runbook)`, which emits a human-readable runbook at `<FEATURE>/runbooks/<name>.runbook.md` and returns the `runbook_path`. The orchestrator records the returned repo-root-relative path in `human_interaction.requirements[].runbook_path`. The runbook contract — canonical path, the five required sections (Cue, Prerequisites, Step-by-step Instructions, Verification, Source and Citation), and the MCP-first / web-second sourcing rule — is defined authoritatively in `.claude/skills/human-exception-runbook/SKILL.md`.
 
 ### Enforcement points
 
@@ -65,6 +77,34 @@ After reading `artifacts/orchestration/orchestrator-state.json`, the main sessio
 
 The orchestrator does not perform deep implementation itself. It coordinates, tracks state, and enforces completion.
 
+## Model Selection
+
+Model selection is a second axis, strictly separate from `route`. `route` (`small | large | remediation | epic`) is deterministic and file-count driven; it governs `required_agents`, `required_skills`, and `required_mcp_tools` only. `route` is NOT an input to model selection anywhere. The sole feature-level input to the delegation model tier is a judgment-based `complexity_band` (`C1 | C2 | C3 | C4`). The authoritative values live in the `model_policy` block of `config/orchestration-routing.json`.
+
+The two canonical, tested reference implementations express the formulas the orchestrator applies by judgment:
+
+- `.claude/lib/model-routing/ModelRouting.psm1` (`Get-ComplexityFloor`) — the deterministic complexity-floor formula. Each present `[floor]` signal contributes a candidate band of `C3`; the floor is the maximum triggered candidate band; the floor never exceeds `C3`. C4 is never floor-forced; it is reached only by judgment.
+- `.claude/lib/model-routing/ModelRouting.psm1` (`Resolve-DelegationModel`) — the delegation-model selection formula (base `complexity_to_model` table, the `preferred` overlay, and the `disabled` clamp).
+
+The runnable reference the destination runtime applies is the `.claude`-resident PowerShell module above; the repository validator remains the Python authority (`scripts/dev_tools/compute_complexity_floor.py` and `scripts/dev_tools/resolve_delegation_model.py`), pinned to the same `config/orchestration-routing.json` truth table by a static config-parity test.
+
+End-to-end procedure:
+
+1. **Parse the kickoff marker.** Read the session `model_budget.fable_policy` value (`disabled | available | preferred`, default `disabled`) from the kickoff marker line. This is the only session-level model-budget switch.
+2. **Assess `complexity_band` and record it.** For each assessed phase, judge the `complexity_band` against the `model_policy.complexity` signal catalog and anchors, then record a `complexity_assessments[]` entry `{ phase, band, floor, signals_present[], rationale, assessed_at }`. The recorded `floor` must equal `compute_complexity_floor(signals_present)`, and the assessed `band` must satisfy `band >= floor`. The floor is a lower bound only; it never raises a judgment or evaluates its merit.
+3. **Run the per-delegation selection order.** For each delegation, resolve the model as `resolve_delegation_model(agent, complexity_band, fable_policy)`: the `table_model` is the `preferred` overlay value when (`fable_policy == "preferred"` and the agent is in the overlay set `{atomic-planner, prd-feature, feature-review, task-researcher}` and `band == "C3"`), otherwise the base `complexity_to_model[band]`. Under `fable_policy == "disabled"`, a `fable` `table_model` clamps to `model = "opus"` with `clamped_from = "fable"`. `atomic-executor` and `pr-author` C3 cells stay `opus` under every policy.
+4. **Emit a routing receipt.** Record a `model_routing_receipts[]` entry `{ agent, phase, complexity_band, fable_policy, table_model, clamped_from | null, model }`. `table_model` is the pre-clamp lookup; `model` is the post-clamp result.
+
+5. **Delegate with the resolved model.** Pass `model` equal to the receipt's `model` on the `Agent(...)` spawn call for that delegation. The orchestrator MUST NOT omit `model` on the spawn (an omitted `model` falls back to the delegate's frontmatter default — `opus` for most workers — which suppresses a `fable` or `sonnet` resolution), and MUST NOT hard-code `model=opus` in a way that overrides the resolved routing model. This applies to every fresh delegation, mirroring the resume-path rule ("delegate with `model` equal to the receipt's `model`") so both paths bind the spawn model to the routing receipt.
+
+The `complexity_assessments[]` and `model_routing_receipts[]` invariants are enforced by `scripts/dev_tools/validate_orchestrator_state.py` per `.claude/rules/orchestrator-state.md`; both arrays remain additive (a checkpoint that predates model routing stays valid).
+
+### Required-once-delegated invariant (`require_model_routing` mode)
+
+The `validate_orchestrator_state_text(...)` validator accepts a `require_model_routing` mode (CLI flag `--require-model-routing`; MCP parameter `require_model_routing`). Under this mode the arrays stop being merely optional: once the checkpoint records at least one delegation (a well-formed `delegation_receipts[]` entry, or a `next_step` that names a delegating agent), every delegated agent must have a matching `model_routing_receipts[]` entry, each matched receipt's phase must have a `complexity_assessments[]` entry, and every present receipt/assessment must be consistent with the reference formulas. A delegation-free checkpoint imposes no requirement, so old checkpoints stay valid. The gate is implemented in `scripts/dev_tools/_orchestrator_state_model_routing_gate.py`; it reuses the per-entry validators and never reimplements `compute_complexity_floor` or `resolve_delegation_model`. Two enforcement layers consume it: the completion gate (`.claude/hooks/validate-orchestrator-output.ps1` passes `--require-model-routing` and surfaces failures as `MODEL_ROUTING_BLOCKED:`), and the pre-delegation deterrent (`.claude/hooks/enforce-model-routing-receipt.ps1`, presence-only). The MCP TypeScript surface performs the existence check only (delegated-agent set ⊆ routing-receipt-agent set); the Python validator is authoritative for per-receipt correctness.
+
+**`fork` caveat.** A skill whose frontmatter `context` field holds the value `fork` inherits the parent model and ignores a model override. Model selection therefore applies to agent delegations, not to fork-routed skill invocations.
+
 ## PR Authoring (pr-author Handoff)
 
 PR creation and PR body edits are delegated work, not orchestrator work. The orchestrator MUST NOT call `gh pr create` or `gh pr edit --body*` directly from the main thread; the `enforce-pr-author-skill.ps1` PreToolUse hook blocks those commands unless the `--body-file` argument resolves to a canonical `artifacts/pr_body_<N>.md` path with a matching, verified `artifacts/pr_body_<N>.receipt.json`.
@@ -72,10 +112,11 @@ PR creation and PR body edits are delegated work, not orchestrator work. The orc
 The mandatory sequence is:
 
 1. The orchestrator first refreshes the PR-context artifact via `mcp__drm-copilot__collect_pr_context` (or the equivalent context-collection mechanism), which writes `artifacts/pr_context.summary.txt`.
-2. The orchestrator then delegates PR creation and any PR body edits to `Agent(pr-author)`. The `pr-author` agent runs the `pr-author` skill to author the body, writes the body file `artifacts/pr_body_<N>.md` and the sibling receipt `artifacts/pr_body_<N>.receipt.json` with the shape `{skill, pr_body_path, number, sha256 (lowercase hex of the body bytes), context_summary_path, created_at (ISO-8601 UTC, strictly newer than `artifacts/pr_context.summary.txt` last-write)}`, issues `gh pr create --body-file artifacts/pr_body_<N>.md` (or `gh pr edit --body-file ...`), and reports the resulting PR URL or PR number.
-3. The orchestrator records `pr_author_receipt` in the checkpoint, citing the body-file path and the receipt path that were verified.
+2. The orchestrator runs the orchestrator-state validator (`mcp__drm-copilot__validate_orchestration_artifacts` or the equivalent local CLI call) against `artifacts/orchestration/orchestrator-state.json --require-pr-creation-ready` and records the pass/fail result under a new `pr_author_preflight` field in the checkpoint, alongside `pr_author_receipt`: `{status ("pass"|"fail"), checked_at (ISO-8601 UTC), checkpoint_path, validator_command, output_summary}`. The orchestrator must not delegate to `Agent(pr-author)` when this preflight fails. The validator's full-lifecycle completion flag (`ci_gate`/`pr_gate`/routing-contract receipts) remains reserved for the post-PR/CI completion context (Step S9 / PR Creation Gate condition 6), not this pre-PR-creation preflight, because those values cannot exist before the first `gh pr create` of a branch.
+3. The orchestrator then delegates PR creation and any PR body edits to `Agent(pr-author)`. The `pr-author` agent runs the `pr-author` skill to author the body, writes the body file `artifacts/pr_body_<N>.md` and the sibling receipt `artifacts/pr_body_<N>.receipt.json` with the shape `{skill, pr_body_path, number, sha256 (lowercase hex of the body bytes), context_summary_path, created_at (ISO-8601 UTC, strictly newer than `artifacts/pr_context.summary.txt` last-write)}`, issues `gh pr create --body-file artifacts/pr_body_<N>.md` (or `gh pr edit --body-file ...`), and reports the resulting PR URL or PR number.
+4. The orchestrator records `pr_author_receipt` in the checkpoint, citing the body-file path and the receipt path that were verified.
 
-`Agent(pr-author)` is the mandatory delegate for PR creation and PR body edits. Direct `gh pr create`/`gh pr edit --body*` from the main thread is prohibited and is blocked by the hook. The PreToolUse hook verifies the receipt in five ordered checks: canonical body-file path, receipt present, `number` match, `sha256` match against the body bytes, and `created_at` strictly newer than the context summary last-write.
+`Agent(pr-author)` is the mandatory delegate for PR creation and PR body edits. Direct `gh pr create`/`gh pr edit --body*` from the main thread is prohibited and is blocked by the hook. Before the five receipt checks, the `enforce-pr-author-skill.ps1` PreToolUse hook independently re-validates the orchestrator-state checkpoint against `--require-pr-creation-ready` (via an injectable `$Invoker` subprocess seam) and blocks with `ORCHESTRATOR_STATE_PREFLIGHT_FAILED` when the checkpoint is missing or invalid — this is the local, hook-level enforcement mechanism that closes the bypass path (it runs inside the same hook that already intercepts `gh pr create`/`gh pr edit`, not as a CI check). The PreToolUse hook then verifies the receipt in five ordered checks: canonical body-file path, receipt present, `number` match, `sha256` match against the body bytes, and `created_at` strictly newer than the context summary last-write.
 
 The SHA-256 receipt is a policy-level integrity check, not a cryptographic or security boundary; any actor with `Write(/artifacts/**)` access can replace both the body file and its receipt together with a matching SHA-256. It binds the body bytes to the receipt, prevents accidental bypass, and requires a deliberate, documented act to circumvent.
 
@@ -105,14 +146,15 @@ The orchestrator must not report completion until:
 1. All required artifacts for the selected workflow path are present on disk.
 2. All validation gates (toolchain, acceptance criteria, audit artifacts) have passed.
 3. The checkpoint file at `artifacts/orchestration/orchestrator-state.json` reflects the completed state.
+4. The model-routing gate passes: `.claude/hooks/validate-orchestrator-output.ps1` runs the validator with `--require-model-routing` alongside `--require-complete` and refuses DONE with `MODEL_ROUTING_BLOCKED:` when a recorded delegation lacks a matching `model_routing_receipts[]` / `complexity_assessments[]` entry (see the required-once-delegated invariant under `## Model Selection`).
 
 ## Pre-Feature-Review Commit
 
 Before delegating to the `feature-review` subagent, the orchestrator must:
 
 1. Stage all modified and new files: `git add -A`.
-2. Invoke the `commit-message` skill to generate a conventional commit message from the staged diff.
-3. Commit using the generated message: `git commit -m "<generated message>"`.
+2. Delegate to `Agent(commit-message)` to generate a conventional commit message from the staged diff. The agent is read-only and returns message text only; it does not commit.
+3. Commit using the generated message: `git commit -m "<generated message>"`. The `git add` and `git commit` actions remain on the orchestrator.
 4. Only after a successful commit may the orchestrator proceed to the `feature-review` delegation.
 
 The review subagent compares against a base branch; uncommitted changes are invisible to the diff tool and cannot be audited.
@@ -132,7 +174,7 @@ A bounded loop consisting of five steps. The loop variable `remediation_pass` st
 - **R1 — Remediation planning:** Delegate to `atomic-planner` with `remediation-inputs.<timestamp>.md` path as primary context. Receive `remediation-plan.<timestamp>.md` in the active feature folder.
 - **R2 — Preflight clearance:** Delegate to `atomic-executor` for precondition validation only (no implementation). If the executor does not return `PREFLIGHT: ALL CLEAR`, return to R1 and re-delegate to `atomic-planner` with the required-changes output from the executor. Only after `PREFLIGHT: ALL CLEAR` may the orchestrator advance to R3.
 - **R3 — Remediation execution:** Delegate to `atomic-executor` with full execution authorization. Each task's toolchain loop (format → lint → type-check → test) is mandatory; no skipping.
-- **Pre-R4 commit:** Stage all changes (`git add -A`), invoke the `commit-message` skill to generate a commit message from the staged diff, commit with the generated message. Advance to R4 only after a successful commit.
+- **Pre-R4 commit:** Stage all changes (`git add -A`), delegate to `Agent(commit-message)` to generate a commit message from the staged diff (the agent returns message text only and does not commit), then commit with the generated message. The `git commit` action remains on the orchestrator. Advance to R4 only after a successful commit.
 - **R4 — Re-audit:** Delegate to `feature-review` with the same inputs as the original review (resolved base branch, feature folder, refreshed PR context artifacts, acceptance-criteria source). No scope narrowing. The canonical issue number line must be included.
 - **R5 — Loop-exit decision:** If the re-audit produces zero blocking findings, exit the loop and advance to the PR creation gate. Otherwise, record `remediation_pass` increment in the checkpoint and return to R1.
 
@@ -159,6 +201,7 @@ S9 procedure:
 3. Parse the JSON via `scripts/orchestration/Invoke-CiGateParser.ps1`, which emits the `ci_gate` object defined below and derives `ci_gate.conclusion` as `success` when all required checks pass, `failure` when any required check failed, and `pending` when any required check is still in progress.
 4. Poll with a bounded interval and a documented total timeout while `conclusion == "pending"`. When the timeout is exhausted, set `step9_status: "failed_remediation_required"` and enter the remediation-loop CI-failure handling below with a timeout log.
 5. Write the `ci_gate` object and `last_verified_ci_sha` to the checkpoint, and set `step9_status` to `passed` only when `ci_gate.conclusion == "success"` AND `ci_gate.head_sha` equals the current PR head SHA.
+6. If the checkpoint's `epic_mode` is `true`, execute `gh pr merge --merge <PR>` merging the feature branch into `epic_context.integration_branch` (already the PR's base branch per the epic-mode `--base` override applied at S8). On success, record `epic_merge: { merge_commit_sha, target_branch, merged_at }` in the checkpoint. On failure due to merge conflict (non-mergeable PR), do not retry blindly: convert the conflict into a synthetic Blocking finding per "Merge-Conflict Remediation" below and re-enter the standard R1–R5 remediation loop; do not proceed to DONE.
 
 DONE is not written while `step9_status` is anything other than `passed`.
 
@@ -174,6 +217,10 @@ The orchestrator checkpoint (`artifacts/orchestration/orchestrator-state.json`) 
   - `verified_at` — ISO-8601 timestamp of when S9 recorded the result.
 - a top-level `last_verified_ci_sha` — the most recent head SHA for which S9 recorded a result.
 - a top-level `step9_status` — an enumeration with at minimum the values `pending`, `passed`, `failed_remediation_required`, and `blocked_ci_loop_limit`.
+- a top-level `epic_merge` object (populated only in epic mode) containing:
+  - `merge_commit_sha` — the merge commit SHA produced by merging the feature branch into `epic_context.integration_branch`.
+  - `target_branch` — the integration branch the feature branch was merged into.
+  - `merged_at` — ISO-8601 timestamp of when S9 step 6 recorded the merge.
 
 Illustrative shape:
 
@@ -216,8 +263,9 @@ The orchestrator must not create a PR, push a branch for PR purposes, or report 
 4. The checkpoint `next_step` is `S8_create_pr` (precondition to entering S9).
 5. PR body produced via the pr-author handoff: `artifacts/pr_body_<N>.md` exists with a matching `artifacts/pr_body_<N>.receipt.json`, created with `--body-file`.
 6. `ci_gate.conclusion == "success"` AND `ci_gate.head_sha == current head SHA of the PR branch`. DONE is not written while either sub-condition is false.
+7. `epic_mode` is `false`, OR (`epic_mode` is `true` AND the integration-branch merge (`gh pr merge --merge`) has completed and `epic_merge.merge_commit_sha` is recorded in the checkpoint).
 
-This gate is non-negotiable. Each condition is independently verified before PR creation proceeds. Conditions 1-4 are unchanged from the prior contract; condition 5 (receipt handoff) and condition 6 (CI-green gate) are additive.
+This gate is non-negotiable. Each condition is independently verified before PR creation proceeds. Conditions 1-4 are unchanged from the prior contract; conditions 5-7 (receipt handoff, CI-green gate, and epic-mode merge-on-green gate) are additive.
 
 ## Step 6 Delegation — Prohibited Prompt Language
 
