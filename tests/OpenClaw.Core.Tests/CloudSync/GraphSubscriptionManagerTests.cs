@@ -50,7 +50,8 @@ public sealed class GraphSubscriptionManagerTests
         FakeTimeProvider timeProvider,
         RecordingReconcileTrigger? trigger = null,
         FixedClientStateGenerator? generator = null,
-        Microsoft.Extensions.Logging.ILogger<GraphSubscriptionManager>? logger = null
+        Microsoft.Extensions.Logging.ILogger<GraphSubscriptionManager>? logger = null,
+        OpenClaw.Core.Agent.IActionAuditLog? actionAuditLog = null
     )
     {
         var tokenProvider = new Mock<IAppTokenProvider>(MockBehavior.Strict);
@@ -80,7 +81,8 @@ public sealed class GraphSubscriptionManagerTests
             store,
             trigger ?? new RecordingReconcileTrigger(),
             timeProvider,
-            logger ?? NullLogger<GraphSubscriptionManager>.Instance
+            logger ?? NullLogger<GraphSubscriptionManager>.Instance,
+            actionAuditLog ?? new FakeActionAuditLog()
         );
     }
 

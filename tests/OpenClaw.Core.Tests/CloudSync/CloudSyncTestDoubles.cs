@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
+using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudSync;
 
 namespace OpenClaw.Core.Tests.CloudSync;
@@ -162,4 +163,26 @@ internal sealed class FakeDeltaLinkStore : IDeltaLinkStore
         Links[mailbox] = deltaLink;
         return Task.CompletedTask;
     }
+}
+
+/// <summary>
+/// In-memory <see cref="IActionAuditLog"/> recording every <see cref="RecordAsync"/> call for
+/// assertions (issue #124). Used as the default audit-log dependency for the CloudSync test
+/// factories in <c>GraphSubscriptionManagerTests</c>, <c>NotificationRequestProcessorTests</c>,
+/// and <c>GraphDeltaReconcilerTests</c>, and directly by the <c>*AuditTests.cs</c> files.
+/// </summary>
+internal sealed class FakeActionAuditLog : IActionAuditLog
+{
+    public List<ActionAuditRecord> Recorded { get; } = [];
+
+    public Task RecordAsync(ActionAuditRecord record, CancellationToken ct)
+    {
+        Recorded.Add(record);
+        return Task.CompletedTask;
+    }
+
+    public Task<IReadOnlyList<ActionAuditRecord>> GetByMessageIdAsync(
+        string messageId,
+        CancellationToken ct
+    ) => Task.FromResult<IReadOnlyList<ActionAuditRecord>>([]);
 }

@@ -330,7 +330,9 @@ CREATE TABLE IF NOT EXISTS poll_cursors(
         var records = await repo.GetByMessageIdAsync("sub-123456", CancellationToken.None);
 
         // Assert
-        records.Should().ContainSingle("one CloudSync audit record was written for the subscription id");
+        records
+            .Should()
+            .ContainSingle("one CloudSync audit record was written for the subscription id");
         records[0].ActingFlags.Should().Be(CloudSyncActingFlags.NotApplicable);
         records[0].ActionType.Should().Be(CloudSyncActivityType.SubscriptionCreated);
     }
