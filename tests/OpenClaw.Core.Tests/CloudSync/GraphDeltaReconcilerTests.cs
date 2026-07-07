@@ -71,7 +71,8 @@ public sealed class GraphDeltaReconcilerTests
         FakeDeltaLinkStore linkStore,
         FakeTimeProvider timeProvider,
         GraphAdapterOptions? options = null,
-        ILogger<GraphDeltaReconciler>? logger = null
+        ILogger<GraphDeltaReconciler>? logger = null,
+        OpenClaw.Core.Agent.IActionAuditLog? actionAuditLog = null
     )
     {
         var tokenProvider = new Mock<IAppTokenProvider>(MockBehavior.Strict);
@@ -94,7 +95,8 @@ public sealed class GraphDeltaReconcilerTests
             linkStore,
             repository,
             timeProvider,
-            logger ?? NullLogger<GraphDeltaReconciler>.Instance
+            logger ?? NullLogger<GraphDeltaReconciler>.Instance,
+            actionAuditLog ?? new FakeActionAuditLog()
         );
     }
 

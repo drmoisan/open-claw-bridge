@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using OpenClaw.Core.Agent;
 using OpenClaw.Core.CloudAuth;
 using OpenClaw.Core.CloudGraph;
 using OpenClaw.MailBridge.Contracts.Models;
@@ -39,6 +40,7 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
     private readonly CoreCacheRepository repository;
     private readonly TimeProvider timeProvider;
     private readonly ILogger<GraphDeltaReconciler> logger;
+    private readonly IActionAuditLog actionAuditLog;
 
     /// <summary>Creates the reconciler; all seams are injected (D-8 executor reuse).</summary>
     public GraphDeltaReconciler(
@@ -48,7 +50,8 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
         IDeltaLinkStore deltaLinkStore,
         CoreCacheRepository repository,
         TimeProvider timeProvider,
-        ILogger<GraphDeltaReconciler> logger
+        ILogger<GraphDeltaReconciler> logger,
+        IActionAuditLog actionAuditLog
     )
     {
         ArgumentNullException.ThrowIfNull(httpClient);
@@ -58,12 +61,14 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
         ArgumentNullException.ThrowIfNull(repository);
         ArgumentNullException.ThrowIfNull(timeProvider);
         ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(actionAuditLog);
 
         graphOptions = graphOptionsAccessor.Value;
         this.deltaLinkStore = deltaLinkStore;
         this.repository = repository;
         this.timeProvider = timeProvider;
         this.logger = logger;
+        this.actionAuditLog = actionAuditLog;
         executor = new GraphRequestExecutor(
             httpClient,
             tokenProvider,
@@ -118,7 +123,13 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
                     page,
                     envelope.Error?.Code
                 );
-                await RecordRunAsync("failed", requestId, startedAtUtc, envelope.Error?.Message);
+                await RecordRunAsync(
+                    "failed",
+                    requestId,
+                    mailbox,
+                    startedAtUtc,
+                    envelope.Error?.Message
+                );
                 return;
             }
 
@@ -165,6 +176,7 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
             await RecordRunAsync(
                 "failed",
                 requestId,
+                mailbox,
                 startedAtUtc,
                 $"The delta walk hit the MaxPages bound ({graphOptions.MaxPages}) before the terminal deltaLink."
             );
@@ -177,7 +189,7 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
             timeProvider.GetUtcNow(),
             ct
         );
-        await RecordRunAsync("success", requestId, startedAtUtc, null);
+        await RecordRunAsync("success", requestId, mailbox, startedAtUtc, null);
         logger.LogInformation(
             "Delta reconcile {RequestId} for {Mailbox} completed: {UpsertedCount} message(s) upserted.",
             requestId,
@@ -191,13 +203,15 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
         $"users/{Uri.EscapeDataString(mailbox)}/mailFolders/Inbox/messages/delta"
         + $"?$select={GraphHostAdapterClient.MessageSelect}";
 
-    private Task RecordRunAsync(
+    private async Task RecordRunAsync(
         string outcome,
         string requestId,
+        string mailbox,
         DateTimeOffset startedAtUtc,
         string? errorMessage
-    ) =>
-        repository.AddIngestRunAsync(
+    )
+    {
+        await repository.AddIngestRunAsync(
             "delta_reconcile",
             outcome,
             requestId,
@@ -205,6 +219,30 @@ internal sealed class GraphDeltaReconciler : IDeltaReconcileTrigger
             timeProvider.GetUtcNow(),
             errorMessage
         );
+        await actionAuditLog.RecordAsync(
+            new ActionAuditRecord(
+                Mailbox: mailbox,
+                MessageId: requestId,
+                EventId: null,
+                ActionType: CloudSyncActivityType.DeltaReconciliationRun,
+                ActingFlags: CloudSyncActingFlags.NotApplicable,
+                CorrelationId: requestId,
+                ResultCode: outcome switch
+                {
+                    "success" => CloudSyncActivityResultCode.Success,
+                    "failed" => CloudSyncActivityResultCode.Failure,
+                    _ => CloudSyncActivityResultCode.Failure,
+                },
+                ErrorDetail: errorMessage,
+                OriginalStartUtc: null,
+                OriginalEndUtc: null,
+                NewStartUtc: null,
+                NewEndUtc: null,
+                RecordedAtUtc: timeProvider.GetUtcNow()
+            ),
+            CancellationToken.None
+        );
+    }
 
     /// <summary>One parsed delta page: mapped messages, skipped removals, and links.</summary>
     private sealed record DeltaPage(

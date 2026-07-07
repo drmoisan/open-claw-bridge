@@ -170,19 +170,19 @@ subject-resource identifier) and decision 3's three named rejection reasons:
 
 ### Phase 5 — GraphDeltaReconciler Instrumentation
 
-- [ ] [P5-T1] Add an `IActionAuditLog actionAuditLog` constructor parameter (with null guard) to `GraphDeltaReconciler` in `src/OpenClaw.Core/CloudSync/GraphDeltaReconciler.cs`.
+- [x] [P5-T1] Add an `IActionAuditLog actionAuditLog` constructor parameter (with null guard) to `GraphDeltaReconciler` in `src/OpenClaw.Core/CloudSync/GraphDeltaReconciler.cs`.
   - Acceptance: the file compiles; the constructor throws `ArgumentNullException` when `actionAuditLog` is null.
-- [ ] [P5-T2] Add a `mailbox` parameter to the private `RecordRunAsync` method and update its three existing call sites within `RunAsync` (the two failure returns and the final success call) to pass the enclosing `mailbox` argument.
+- [x] [P5-T2] Add a `mailbox` parameter to the private `RecordRunAsync` method and update its three existing call sites within `RunAsync` (the two failure returns and the final success call) to pass the enclosing `mailbox` argument.
   - Acceptance: `RecordRunAsync`'s signature includes `mailbox`; all three call sites compile with the new argument.
-- [ ] [P5-T3] Inside `RecordRunAsync`, alongside the existing `repository.AddIngestRunAsync(...)` call, emit an audit record via `actionAuditLog.RecordAsync` with `ActionType = CloudSyncActivityType.DeltaReconciliationRun`, `MessageId = requestId`, `CorrelationId = requestId`, `Mailbox = mailbox`, `ActingFlags = CloudSyncActingFlags.NotApplicable`, `ResultCode` mapped from the `outcome` string (`"success"` → `CloudSyncActivityResultCode.Success`, `"failed"` → `CloudSyncActivityResultCode.Failure`), `ErrorDetail = errorMessage`.
+- [x] [P5-T3] Inside `RecordRunAsync`, alongside the existing `repository.AddIngestRunAsync(...)` call, emit an audit record via `actionAuditLog.RecordAsync` with `ActionType = CloudSyncActivityType.DeltaReconciliationRun`, `MessageId = requestId`, `CorrelationId = requestId`, `Mailbox = mailbox`, `ActingFlags = CloudSyncActingFlags.NotApplicable`, `ResultCode` mapped from the `outcome` string (`"success"` → `CloudSyncActivityResultCode.Success`, `"failed"` → `CloudSyncActivityResultCode.Failure`), `ErrorDetail = errorMessage`.
   - Acceptance: every call to `RecordRunAsync` (success and both failure paths) results in exactly one `RecordAsync` call with the fields above.
-- [ ] [P5-T4] Update the shared `Reconciler(...)` test factory in `tests/OpenClaw.Core.Tests/CloudSync/GraphDeltaReconcilerTests.cs` to accept an optional `IActionAuditLog? actionAuditLog = null` parameter, defaulting to a new `FakeActionAuditLog` instance when null, and pass it to the `GraphDeltaReconciler` constructor.
+- [x] [P5-T4] Update the shared `Reconciler(...)` test factory in `tests/OpenClaw.Core.Tests/CloudSync/GraphDeltaReconcilerTests.cs` to accept an optional `IActionAuditLog? actionAuditLog = null` parameter, defaulting to a new `FakeActionAuditLog` instance when null, and pass it to the `GraphDeltaReconciler` constructor.
   - Acceptance: `GraphDeltaReconcilerTests.cs` and `GraphDeltaReconcilerRecoveryTests.cs` compile unchanged (no call-site edits required in either file).
-- [ ] [P5-T5] Create `tests/OpenClaw.Core.Tests/CloudSync/GraphDeltaReconcilerAuditTests.cs` (MSTest + Moq + FluentAssertions) verifying a successful `RunAsync` emits exactly one `DeltaReconciliationRun` audit record with `ResultCode.Success` and `CorrelationId == MessageId == requestId`.
+- [x] [P5-T5] Create `tests/OpenClaw.Core.Tests/CloudSync/GraphDeltaReconcilerAuditTests.cs` (MSTest + Moq + FluentAssertions) verifying a successful `RunAsync` emits exactly one `DeltaReconciliationRun` audit record with `ResultCode.Success` and `CorrelationId == MessageId == requestId`.
   - Acceptance: the test file exists under `tests/OpenClaw.Core.Tests/CloudSync/` and the test method passes.
-- [ ] [P5-T6] Add a test method to `GraphDeltaReconcilerAuditTests.cs` verifying a failed `RunAsync` (Graph error on page 1) emits exactly one `DeltaReconciliationRun` audit record with `ResultCode.Failure` and a populated `ErrorDetail`.
+- [x] [P5-T6] Add a test method to `GraphDeltaReconcilerAuditTests.cs` verifying a failed `RunAsync` (Graph error on page 1) emits exactly one `DeltaReconciliationRun` audit record with `ResultCode.Failure` and a populated `ErrorDetail`.
   - Acceptance: the new test method passes.
-- [ ] [P5-T7] Run `dotnet test --filter "FullyQualifiedName~GraphDeltaReconciler"` and confirm exit code 0.
+- [x] [P5-T7] Run `dotnet test --filter "FullyQualifiedName~GraphDeltaReconciler"` and confirm exit code 0.
   - Acceptance: command exits 0 with all pre-existing and new `GraphDeltaReconciler`-related tests passing.
 
 ### Phase 6 — Shared Test Double and Regression Verification
