@@ -39,16 +39,19 @@ public sealed class CloudGraphContractParityTests
             .Setup(p => p.GetTokenAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(new AppAccessToken("tok-parity", Start.AddHours(1)));
 
+        var options = new GraphAdapterOptions
+        {
+            Enabled = true,
+            PrincipalMailboxUpn = "paula@contoso.com",
+            AssistantMailboxUpn = "amy@contoso.com",
+        };
+        // F15: the assistant sends on behalf of the principal, so the principal must be
+        // allowlisted for the send path to reach Graph (fail-closed gate, issue #119).
+        options.AllowedPrincipalMailboxUpns.Add("paula@contoso.com");
+
         var graphClient = new GraphHostAdapterClient(
             new HttpClient(handler) { BaseAddress = new Uri("https://graph.example.test/v1.0/") },
-            Options.Create(
-                new GraphAdapterOptions
-                {
-                    Enabled = true,
-                    PrincipalMailboxUpn = "paula@contoso.com",
-                    AssistantMailboxUpn = "amy@contoso.com",
-                }
-            ),
+            Options.Create(options),
             tokenProvider.Object,
             new FakeTimeProvider(Start),
             NullLogger<GraphHostAdapterClient>.Instance

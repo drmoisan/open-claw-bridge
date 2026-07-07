@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using CsCheck;
 using FluentAssertions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.Core.CloudGraph;
@@ -282,5 +285,129 @@ public sealed class GraphAdapterOptionsValidatorTests
         options.AvailabilityViewIntervalMinutes = minutes;
 
         GraphAdapterOptionsValidator.Validate(options).Should().BeEmpty();
+    }
+
+    private const string AllowlistViolation =
+        "AllowedPrincipalMailboxUpns entries must each be non-whitespace; "
+        + "an empty allowlist is valid.";
+
+    [DataTestMethod]
+    [DataRow("", DisplayName = "empty string entry")]
+    [DataRow(" ", DisplayName = "single-space entry")]
+    [DataRow("\t", DisplayName = "tab entry")]
+    public void Validate_EnabledWithWhitespaceOnlyAllowlistEntry_ProducesExactlyOneNamedViolation(
+        string entry
+    )
+    {
+        // The shape-only rule flags whitespace-only entries; the message names the key.
+        var options = ValidEnabledOptions();
+        options.AllowedPrincipalMailboxUpns.Add("principal@contoso.com");
+        options.AllowedPrincipalMailboxUpns.Add(entry);
+
+        var violations = GraphAdapterOptionsValidator.Validate(options);
+
+        violations
+            .Should()
+            .ContainSingle("a whitespace-only allowlist entry is the only violation")
+            .Which.Should()
+            .Be(AllowlistViolation);
+        violations[0]
+            .Should()
+            .Contain("AllowedPrincipalMailboxUpns")
+            .And.NotContain("@contoso.com");
+    }
+
+    [TestMethod]
+    public void Validate_EnabledWithEmptyAllowlist_IsValid()
+    {
+        // Fail-closed-empty is a runtime deny decision, not a validation error.
+        var options = ValidEnabledOptions();
+
+        var violations = GraphAdapterOptionsValidator.Validate(options);
+
+        violations.Should().BeEmpty("an empty allowlist is a valid configuration");
+    }
+
+    [TestMethod]
+    public void Validate_EnabledWithNonWhitespaceAllowlist_IsValid()
+    {
+        var options = ValidEnabledOptions();
+        options.AllowedPrincipalMailboxUpns.Add("exec-one@contoso.com");
+        options.AllowedPrincipalMailboxUpns.Add("exec-two@contoso.com");
+
+        GraphAdapterOptionsValidator
+            .Validate(options)
+            .Should()
+            .BeEmpty("non-whitespace allowlist entries are valid");
+    }
+
+    [TestMethod]
+    public void Validate_DisabledWithWhitespaceAllowlistEntries_IsValid()
+    {
+        // Enabled-only-rule parity: a disabled adapter ignores allowlist contents.
+        var options = new GraphAdapterOptions { Enabled = false };
+        options.AllowedPrincipalMailboxUpns.Add("  ");
+        options.AllowedPrincipalMailboxUpns.Add("");
+
+        GraphAdapterOptionsValidator
+            .Validate(options)
+            .Should()
+            .BeEmpty("allowlist rules apply only when Enabled is true");
+    }
+
+    private static readonly Gen<string> GenNonWhitespaceEntry = Gen.Char[
+            "abcdefghijklmnopqrstuvwxyz0123456789@.-"
+        ]
+        .Array[1, 12]
+        .Select(chars => new string(chars));
+
+    private static readonly Gen<string> GenWhitespaceEntry = Gen.OneOfConst(
+        "",
+        " ",
+        "  ",
+        "\t",
+        "\n"
+    );
+
+    [TestMethod]
+    public void Validate_AllowlistEntryProperty_WhitespacePresenceDrivesTheViolation()
+    {
+        var gen =
+            from clean in GenNonWhitespaceEntry.Array[0, 5]
+            from whitespace in GenWhitespaceEntry
+            from position in Gen.Int[0, clean.Length]
+            select (clean, whitespace, position);
+
+        gen.Sample(
+            t =>
+            {
+                // Non-whitespace-only list never yields the violation.
+                var cleanOptions = ValidEnabledOptions();
+                foreach (var entry in t.clean)
+                {
+                    cleanOptions.AllowedPrincipalMailboxUpns.Add(entry);
+                }
+
+                GraphAdapterOptionsValidator
+                    .Validate(cleanOptions)
+                    .Should()
+                    .NotContain(AllowlistViolation);
+
+                // Inserting a whitespace-only entry anywhere always yields the violation.
+                var dirtyEntries = t.clean.ToList();
+                dirtyEntries.Insert(t.position, t.whitespace);
+                var dirtyOptions = ValidEnabledOptions();
+                foreach (var entry in dirtyEntries)
+                {
+                    dirtyOptions.AllowedPrincipalMailboxUpns.Add(entry);
+                }
+
+                GraphAdapterOptionsValidator
+                    .Validate(dirtyOptions)
+                    .Should()
+                    .Contain(AllowlistViolation);
+            },
+            iter: 1000
+        );
     }
 }
