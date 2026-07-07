@@ -105,6 +105,19 @@ audit). Also on #115: a new file (GraphHostAdapterClient.cs) landed at EXACTLY 7
 throws, graded Minor with one-case test recommendations. Exact-gate files deserve a named margin
 warning in the review.
 
+New variant on #117 (2026-07-03, CloudSync): the instrumented SYNC-subset branch coverage of two
+NEW files was itself below the 75% gate — GraphSubscriptionManager.cs 2/4 = 50% (ParseSubscription
+null-body + missing-id throw arms untested) and CoreCacheRepository.Subscriptions.cs 1/2 = 50%
+(ReadSubscription `?? MinValue` fallback untested) — while both files showed 100% instrumented line.
+Distinction that decided the verdict: these arms are MEASURED-and-uncovered (no test anywhere),
+not excluded-and-behaviorally-verified, so the #99-#115 async-exclusion disposition does NOT apply;
+graded Blocking per the #18 precedent and remediation triggered (3-4 directed tests). The executor's
+coverage-comparison DISCLOSED the async exclusion this time (improvement over #113/#115) but graded
+the 50% subsets PASS via 100%-line + package-aggregate reasoning — that grading was rejected. Also:
+executor per-file raw counts were exactly 2x the deduped values (duplicate class entries), ratios
+identical — dedupe before comparing. GraphDeltaReconciler landed at exactly 75.00% (12/16) —
+zero-margin file, named-arm Minor per the #115 pattern.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden
