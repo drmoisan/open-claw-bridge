@@ -363,6 +363,40 @@ Describe 'scripts/Publish.ps1' {
             $versionLines.Count | Should -Be 1
             $versionLines[0] | Should -Be 'OPENCLAW_PACKAGE_VERSION=1.0.2.1'
         }
+        It 'preserves a blank line in the .env verbatim through the stage 0c path without a parameter-binding error (regression: issue #135 AC-9)' {
+            # Regression fixture: a comment line, the target key, a blank line,
+            # and another key line. The mocked Write-EnvFileContent in this
+            # file's BeforeEach binds against the real function's parameter
+            # metadata, so a blank-line element previously caused a
+            # parameter-binding error before [AllowEmptyString()] was added to
+            # -Content. This test fails under that regression and passes once
+            # the fix is applied.
+            $global:PublishTestEnvContent = @(
+                '# leading comment',
+                'OPENCLAW_PACKAGE_VERSION=1.0.2.0',
+                '',
+                'OTHER_KEY=unchanged'
+            )
+            { & $script:ScriptPath -SkipSign -OutputDir 'D:\out' | Out-Null } | Should -Not -Throw
+
+            $global:PublishTestEnvWrites.Count | Should -Be 1
+            $written = @($global:PublishTestEnvWrites[0].Content)
+
+            # Not collapsed and the blank line is not dropped: line count
+            # matches the original fixture's line count.
+            $written.Count | Should -Be 4
+
+            # Every original line is preserved verbatim except the updated
+            # key, including the blank line.
+            ($written -contains '# leading comment') | Should -BeTrue
+            ($written -contains '') | Should -BeTrue
+            ($written -contains 'OTHER_KEY=unchanged') | Should -BeTrue
+
+            # The target key is updated in place with no duplicate.
+            $versionLines = @($written | Where-Object { $_ -like 'OPENCLAW_PACKAGE_VERSION=*' })
+            $versionLines.Count | Should -Be 1
+            $versionLines[0] | Should -Be 'OPENCLAW_PACKAGE_VERSION=1.0.2.1'
+        }
     }
 
     Context 'Stage 0a .env thumbprint resolution (AC-4, D7)' {

@@ -226,6 +226,7 @@ function Write-EnvFileContent {
 
         [Parameter(Mandatory = $true)]
         [AllowEmptyCollection()]
+        [AllowEmptyString()]
         [string[]]$Content
     )
 
