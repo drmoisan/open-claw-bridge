@@ -218,13 +218,13 @@ if ($MyInvocation.InvocationName -ne '.') {
     Invoke-LayoutAssembly -BridgePublishDir $BridgeDir -ClientPublishDir $ClientDir -AssetsDir $AssetsDir -StagingDir $StagingDir
 
     Write-Information '[msix] Stamping AppxManifest.xml' -InformationAction Continue
-    Invoke-VersionStamp -ManifestSourcePath $ManifestSource -StagingDir $StagingDir -Version $Version
+    $null = Invoke-VersionStamp -ManifestSourcePath $ManifestSource -StagingDir $StagingDir -Version $Version
 
     Write-Information '[msix] Generating PRI resource index' -InformationAction Continue
     Invoke-MakePri -StagingDir $StagingDir
 
     Write-Information "[msix] Packing $MsixPath" -InformationAction Continue
-    Invoke-MakeAppx -StagingDir $StagingDir -OutputMsixPath $MsixPath
+    $null = Invoke-MakeAppx -StagingDir $StagingDir -OutputMsixPath $MsixPath
 
     if (-not $SkipSign) {
         Write-Information '[msix] Signing MSIX' -InformationAction Continue
@@ -242,7 +242,7 @@ if ($MyInvocation.InvocationName -ne '.') {
     # Stage 6: manifest (runs AFTER install-script staging so the manifest
     # lists the staged install scripts).
     Write-Information "[manifest] Writing manifest.json under $BundleRoot" -InformationAction Continue
-    Write-PublishManifest -BundleRoot $BundleRoot -Version $Version
+    $null = Write-PublishManifest -BundleRoot $BundleRoot -Version $Version
 
     Write-Information "[publish] Bundle written to $BundleRoot" -InformationAction Continue
     return $BundleRoot
