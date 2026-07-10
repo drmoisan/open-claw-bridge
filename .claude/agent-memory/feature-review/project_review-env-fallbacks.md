@@ -139,3 +139,49 @@ counters and per-line `nr`/`mi` attrs to find missed commands). `run_poshqc_form
 `run_poshqc_analyze` work fine. Reviewer-side independent signal when MCP tools are absent
 from the toolset: PSScriptAnalyzer 1.24.0 + `Invoke-Formatter -ScriptDefinition` idempotency
 check with defaults, plus a plain `Invoke-Pester` re-run (all clean on #111).
+
+#135 (2026-07-07, PowerShell-only, `$OFS`-collapse `.env` corruption bug fix, minor-audit):
+no MCP tools at all were available to this reviewer (not `run_poshqc_*`, not
+`resolve_policy_audit_template_asset`, not `validate_orchestration_artifacts`, not
+`collect_pr_context`) — a step up from prior "some tools missing" cases. PR-context artifacts
+were present and already fresh (head SHA matched exactly); no regen needed. Full independent
+verification was still possible with only `pwsh`/`PSScriptAnalyzer`/`Pester` installed locally:
+`Invoke-Formatter` idempotency (0 diffs), `Invoke-ScriptAnalyzer` default rules (0 findings),
+and a real `Invoke-Pester` re-run of the targeted scope reproduced the executor's exact pass
+count (54/54). Confirmed the executor's committed `artifacts/pester/powershell-coverage.xml`
+(JaCoCo) directly: root `<counter type="INSTRUCTION">` covered/missed reproduces the reported
+repo-wide command-coverage % arithmetically, and `<line nr="N" mi="0" ci="1">` on each changed
+line proves no regression — do this instead of trusting the executor's coverage-comparison
+prose. Gotcha reproduced firsthand: `tests/scripts/Publish.Tests.ps1` only resolves
+`Invoke-VersionStamp` (from `Publish.Msix.psm1`) if `Publish.Msix.Tests.ps1` discovers first in
+`Pester.Run.Path`; an arbitrary/alphabetical-by-intuition file array order (not sorted) gave 25
+false failures until the array was reordered to put the Msix file first — Pester does NOT sort
+`Run.Path` when it's an explicit array. First review where the caller's delegation prompt
+contained a positive, explicit statement rejecting scope narrowing ("Determine review scope
+yourself... per your scope invariant") rather than attempting narrowing — `## Rejected Scope
+Narrowing` correctly recorded "none" rather than being left out. Newest validator-shaped
+PowerShell-only artifact template (all-PASS, zero MCP tools, three-file audit set):
+`2026-07-07-env-array-wrap-corruption-135/*.2026-07-07T16-05.md`.
+
+#135 re-audit cycle 2 (2026-07-09): same branch, second work cycle after PR #136 opened
+(AC-7..AC-10, `[AllowEmptyString()]` fix for a `Write-EnvFileContent` parameter-binding defect
+on blank-line `.env` fixtures). Still zero MCP tools available. Caller prompt this time
+explicitly instructed the OPPOSITE of narrowing ("review the full branch diff... do not narrow
+scope to only the new commit's files") — comply by diffing the full merge-base..HEAD range, not
+just the newest commit. Fail-before/pass-after was independently reproduced by importing
+`git show <pre-fix-sha>:<module>.psm1` directly (no need to `git stash`/checkout the working
+tree) and invoking the isolated repro against that in-memory module object; the executor's own
+stash-based per-file coverage isolation technique (`git stash push -- <file>`, rerun coverage,
+`git stash pop`) is also independently checkable by parsing the resulting JaCoCo XML for the
+per-class `<counter>` blocks and cross-checking the exact covered/missed figures the executor
+reported. A declarative parameter-validation attribute (e.g. `[AllowEmptyString()]`) is NOT
+instrumented as an executable `<line>` by Pester's command-coverage plugin — confirmed by
+finding zero `<line>` entries in the attribute's line range — so identical pre/post coverage
+percentages after adding one are expected, not a red flag. New pattern: a docs-only commit
+landing between two review cycles (`b7bb0cd`, bundling an unrelated README addition + agent-
+memory files) had been an *uncommitted working-tree* item at cycle-1 review time (correctly
+recorded there as out-of-scope) but became part of the committed branch diff by cycle-2 review
+time — re-audits must re-check every "out of scope, uncommitted" observation from a prior cycle,
+since it may have been committed since. Newest validator-shaped PowerShell-only re-audit
+template (all-PASS, zero MCP tools, ten-AC two-cycle audit set):
+`2026-07-07-env-array-wrap-corruption-135/*.2026-07-09T20-15.md`.

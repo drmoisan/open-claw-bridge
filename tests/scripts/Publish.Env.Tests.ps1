@@ -177,5 +177,10 @@ Describe 'Publish.Env.psm1' {
             Write-EnvFileContent -Path 'C:\fake\.env' -Content @('A=1') -WhatIf
             Assert-MockCalled -ModuleName Publish.Env Set-Content -Times 0 -Scope It
         }
+        It 'accepts a -Content array containing an empty-string element without a parameter-binding error (regression: issue #135 AC-7/AC-8)' {
+            Mock -ModuleName Publish.Env Set-Content { }
+            { Write-EnvFileContent -Path 'C:\fake\.env' -Content @('A=1', '', 'B=2') -WhatIf } | Should -Not -Throw
+            Assert-MockCalled -ModuleName Publish.Env Set-Content -Times 0 -Scope It
+        }
     }
 }

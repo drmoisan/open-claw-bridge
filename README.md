@@ -248,6 +248,90 @@ Set-Location (Join-Path $repoRoot ("artifacts\publish\{0}" -f $versionNum))
 destination folder, and removes the install record. User configuration under
 `%LOCALAPPDATA%\OpenClaw\MailBridge\` is preserved.
 
+If `Uninstall.ps1` fails, you can reconstruct the install artifact with the following:
+
+```pwsh
+$pkg  = (Get-AppxPackage -Name 'OpenClaw.MailBridge').PackageFullName
+$dest = (Get-ChildItem "$env:LOCALAPPDATA\OpenClaw" -Directory |
+          Where-Object Name -ne 'MailBridge' | Select-Object -First 1).FullName
+
+[pscustomobject]@{
+    installedAt        = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+    version            = 'unknown'
+    sourcePath         = 'unknown'
+    destinationPath    = $dest
+    packageFullName    = $pkg
+    composeProjectName = 'openclaw'          # hard-coded in Install.ps1:437
+    composeFilePath    = "$dest\docker\docker-compose.yml"
+    skipDocker         = $false              # $true if you never ran Docker
+    allowUnsigned      = $false
+} | ConvertTo-Json | Set-Content "$env:LOCALAPPDATA\OpenClaw\install-record.json" -Encoding utf8
+
+.\scripts\Uninstall.ps1
+```
+
+If uninstall still does not work, components can be removed individually:
+
+```powershell
+# ============================================================================
+# OpenClaw forced manual uninstall (no install-record.json required)
+# Mirrors scripts/Uninstall.ps1 stages; each step tolerates missing components.
+# Run in PowerShell 7 (pwsh). Elevation not required unless MSIX removal
+# demands it for your account.
+# ============================================================================
+
+# --- Stage 1: stop the docker compose stack (project name is hard-coded
+#     'openclaw' in Install.ps1). First try compose down; if the compose file
+#     or project is gone, force-remove any containers labeled with the project.
+docker compose -p openclaw down 2>$null
+docker ps -aq --filter "label=com.docker.compose.project=openclaw" |
+    ForEach-Object { docker rm -f $_ }
+
+# Remove any leftover compose networks for the project (ignore errors).
+docker network ls -q --filter "label=com.docker.compose.project=openclaw" |
+    ForEach-Object { docker network rm $_ 2>$null }
+
+# --- Stage 2: stop the HostAdapter process if it is still running
+#     (Install.ps1 Stage 7a launches it from the bundle folder).
+Get-Process -Name 'OpenClaw.HostAdapter' -ErrorAction SilentlyContinue |
+    Stop-Process -Force -Confirm:$false
+
+# --- Stage 3: remove the MSIX package (no-op if not installed).
+$pkg = Get-AppxPackage -Name 'OpenClaw.MailBridge' -ErrorAction SilentlyContinue
+if ($pkg) {
+    Write-Host "Removing MSIX $($pkg.PackageFullName)"
+    Remove-AppxPackage -Package $pkg.PackageFullName
+} else {
+    Write-Host 'MSIX OpenClaw.MailBridge not installed; skipping.'
+}
+
+# --- Stage 4: remove the per-version bundle folder(s) under
+#     %LOCALAPPDATA%\OpenClaw. The 'MailBridge' sibling holds user config,
+#     cache, and logs and is intentionally preserved (same as Uninstall.ps1).
+Get-ChildItem "$env:LOCALAPPDATA\OpenClaw" -Directory -ErrorAction SilentlyContinue |
+    Where-Object Name -ne 'MailBridge' |
+    ForEach-Object {
+        Write-Host "Removing bundle folder $($_.FullName)"
+        Remove-Item -LiteralPath $_.FullName -Recurse -Force -Confirm:$false
+    }
+
+# --- Stage 5: remove a stale install record if one exists.
+Remove-Item "$env:LOCALAPPDATA\OpenClaw\install-record.json" -Force -Confirm:$false -ErrorAction SilentlyContinue
+
+# --- Stage 6 (legacy only): remove the old 'OpenClaw MailBridge' scheduled
+#     task if it was ever registered (register-mailbridge-task.ps1 era).
+schtasks /end /tn 'OpenClaw MailBridge' 2>$null | Out-Null
+schtasks /delete /tn 'OpenClaw MailBridge' /f 2>$null | Out-Null
+
+# --- Verification: everything below should come back empty/absent.
+Write-Host "`n=== Verification ==="
+docker ps -a --filter "label=com.docker.compose.project=openclaw"
+Get-AppxPackage -Name 'OpenClaw.MailBridge' -ErrorAction SilentlyContinue
+Get-Process -Name 'OpenClaw.HostAdapter' -ErrorAction SilentlyContinue
+Get-ChildItem "$env:LOCALAPPDATA\OpenClaw" -ErrorAction SilentlyContinue |
+    Select-Object Name   # only 'MailBridge' (user config) should remain
+```
+
 ## Update An Installed Package After Development Work
 
 After changing code, rebuild a new bundle and reinstall it over the existing
@@ -425,7 +509,7 @@ Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert |
 $thumb = '<paste-the-thumbprint>'
 Import-Module .\scripts\Publish.Env.psm1 -Force
 $envPath = Join-Path (Get-Location).Path '.env'
-$content = @(Read-EnvFileContent -Path $envPath)
+$content = Read-EnvFileContent -Path $envPath
 Write-EnvFileContent -Path $envPath -Content (Set-EnvFileValue -Content $content -Key 'OPENCLAW_CERT_THUMBPRINT' -Value $thumb)
 ```
 
