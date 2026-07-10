@@ -162,3 +162,26 @@ yourself... per your scope invariant") rather than attempting narrowing — `## 
 Narrowing` correctly recorded "none" rather than being left out. Newest validator-shaped
 PowerShell-only artifact template (all-PASS, zero MCP tools, three-file audit set):
 `2026-07-07-env-array-wrap-corruption-135/*.2026-07-07T16-05.md`.
+
+#135 re-audit cycle 2 (2026-07-09): same branch, second work cycle after PR #136 opened
+(AC-7..AC-10, `[AllowEmptyString()]` fix for a `Write-EnvFileContent` parameter-binding defect
+on blank-line `.env` fixtures). Still zero MCP tools available. Caller prompt this time
+explicitly instructed the OPPOSITE of narrowing ("review the full branch diff... do not narrow
+scope to only the new commit's files") — comply by diffing the full merge-base..HEAD range, not
+just the newest commit. Fail-before/pass-after was independently reproduced by importing
+`git show <pre-fix-sha>:<module>.psm1` directly (no need to `git stash`/checkout the working
+tree) and invoking the isolated repro against that in-memory module object; the executor's own
+stash-based per-file coverage isolation technique (`git stash push -- <file>`, rerun coverage,
+`git stash pop`) is also independently checkable by parsing the resulting JaCoCo XML for the
+per-class `<counter>` blocks and cross-checking the exact covered/missed figures the executor
+reported. A declarative parameter-validation attribute (e.g. `[AllowEmptyString()]`) is NOT
+instrumented as an executable `<line>` by Pester's command-coverage plugin — confirmed by
+finding zero `<line>` entries in the attribute's line range — so identical pre/post coverage
+percentages after adding one are expected, not a red flag. New pattern: a docs-only commit
+landing between two review cycles (`b7bb0cd`, bundling an unrelated README addition + agent-
+memory files) had been an *uncommitted working-tree* item at cycle-1 review time (correctly
+recorded there as out-of-scope) but became part of the committed branch diff by cycle-2 review
+time — re-audits must re-check every "out of scope, uncommitted" observation from a prior cycle,
+since it may have been committed since. Newest validator-shaped PowerShell-only re-audit
+template (all-PASS, zero MCP tools, ten-AC two-cycle audit set):
+`2026-07-07-env-array-wrap-corruption-135/*.2026-07-09T20-15.md`.
