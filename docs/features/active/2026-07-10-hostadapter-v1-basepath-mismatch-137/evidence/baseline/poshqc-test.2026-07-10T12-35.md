@@ -1,0 +1,9 @@
+Timestamp: 2026-07-10T12-35
+
+Command (1, failing MCP invocation): mcp__drm-copilot__run_poshqc_test (workspace_root=C:\Users\DanMoisan\repos\open-claw-bridge)
+EXIT_CODE: non-zero (tool returned `{"ok":false,"tool":"run_poshqc_test","summary":"Command exited with code 4294967295."}`)
+
+Command (2, corrected-runsettings workaround invocation): `pwsh -NoProfile -File <scratchpad>\run-poshqc-test-135.ps1 -SettingsPath <scratchpad>\pester.runsettings.corrected.psd1`, which imports `C:\Users\DanMoisan\.vscode-insiders\extensions\danmoisan.drm-copilot-1.0.12\resources\powershell\PoshQC\PoshQC.psd1` and calls `Invoke-PoshQCTest -Root C:\Users\DanMoisan\repos\open-claw-bridge -SettingsPath <corrected>`. The corrected runsettings rewrites `CodeCoverage.Path` from the bundled extension's `drm-copilot`-repo-specific hook/script paths to this repository's actual production PowerShell files enumerated under `scripts/**` (23 `.ps1` + 7 `.psm1` files), with an empty `ExcludedPath` per the Coverage Exclusion Policy.
+EXIT_CODE: 0
+
+Output Summary: Reproduced known defect (F11 #111, F16 #125, confirmed again #135): the bundled MCP `run_poshqc_test` invocation fails on every invocation in this repository (bundled settings reference `drm-copilot`-repo-only paths). Corrected-runsettings workaround invocation: `Tests Passed: 369, Failed: 0, Skipped: 0, Inconclusive: 0, NotRun: 0`. Coverage result: `Covered 89.93% / 0%. 2,015 analyzed Commands in 30 Files.` Numeric repo-wide baseline command/line-coverage percentage: **89.93%** (line/command-coverage proxy; Pester's engine does not report a separate branch metric, hence the `/0%` placeholder in its own output — the `89.93%` figure is the coverage percentage tracked against this plan's thresholds). All 30 production PowerShell files under `scripts/**` were measured (none excluded).

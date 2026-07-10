@@ -24,7 +24,7 @@ services:
       ASPNETCORE_URLS: http://0.0.0.0:8081
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
       OpenClaw__Storage__DbPath: /data/openclaw.db
-      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319/v1}
+      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319}
       OpenClaw__HostAdapter__TokenFile: /run/openclaw/hostadapter.token
       OpenClaw__Polling__MessagesIntervalSeconds: ${OpenClaw__Polling__MessagesIntervalSeconds:-60}
       OpenClaw__Polling__MeetingRequestsIntervalSeconds: ${OpenClaw__Polling__MeetingRequestsIntervalSeconds:-60}
@@ -70,7 +70,7 @@ services:
       - /tmp:size=64m,noexec,nosuid,nodev
       - /.openclaw:size=64m,noexec,nosuid,nodev,uid=1654,gid=1654,mode=0755
     environment:
-      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319/v1}
+      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319}
       OpenClaw__HostAdapter__TokenFile: /run/openclaw/hostadapter.token
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
       TZ: "America/New_York"

@@ -11,7 +11,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       OpenClaw__Storage__DbPath: /data/openclaw.db
-      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319/v1}
+      OpenClaw__HostAdapter__BaseUrl: ${OpenClaw__HostAdapter__BaseUrl:-http://host.docker.internal:4319}
       OpenClaw__HostAdapter__TokenFile: /run/openclaw/hostadapter.token
     volumes:
       - .:/workspace

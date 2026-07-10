@@ -70,7 +70,7 @@ function Get-HostAdapterPreflightUri {
     [CmdletBinding()]
     [OutputType([uri])]
     param([hashtable]$EnvMap)
-    $baseUrl = 'http://host.docker.internal:4319/v1'
+    $baseUrl = 'http://host.docker.internal:4319'
     if ($EnvMap -and $EnvMap.ContainsKey('OpenClaw__HostAdapter__BaseUrl') -and -not [string]::IsNullOrWhiteSpace([string]$EnvMap['OpenClaw__HostAdapter__BaseUrl'])) {
         $baseUrl = [string]$EnvMap['OpenClaw__HostAdapter__BaseUrl']
     }
