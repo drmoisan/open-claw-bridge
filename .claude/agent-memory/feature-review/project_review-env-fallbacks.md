@@ -185,3 +185,31 @@ time — re-audits must re-check every "out of scope, uncommitted" observation f
 since it may have been committed since. Newest validator-shaped PowerShell-only re-audit
 template (all-PASS, zero MCP tools, ten-AC two-cycle audit set):
 `2026-07-07-env-array-wrap-corruption-135/*.2026-07-09T20-15.md`.
+
+#137 (2026-07-10, hostadapter-v1-basepath-mismatch, full-bug, PowerShell + C# mixed): zero MCP
+tools available. First mixed-language review to independently re-parse both a JaCoCo (PowerShell)
+and Cobertura (C#) artifact in the same pass. `CLAUDE.md` absent at repo root (recorded as
+checked/absent, not skipped) — this repo state persists across reviews; do not re-investigate it
+each time, just note absence and cite this precedent. Newest validator-shaped mixed-language
+artifact template (all-PASS): `2026-07-10-hostadapter-v1-basepath-mismatch-137/*.2026-07-10T15-10.md`.
+
+#139 (2026-07-10, deploy-wrapper-entry-point, full-feature, PowerShell-only, direct-mode 2-file
+budget): zero MCP tools available; PR-context artifacts absent again (caller claimed "refreshed",
+was not — never trust the claim, `ls artifacts/pr_context.*` first every time). New gotcha:
+`Invoke-ScriptAnalyzer -Path <array>` throws `Cannot convert 'System.Object[]' to type 'System.String'`
+in this PSScriptAnalyzer version — pass one file at a time in a loop, not a batched `-Path` array.
+Independent JaCoCo cross-check technique refined: parse `//report/counter[@type='INSTRUCTION']`
+for the repo-wide command-coverage percentage (the branch-coverage proxy), `//class/counter[@type='LINE']`
+for per-file line coverage, and `//sourcefile/line[@nr='N']` (`mi`/`ci` attrs) for exact changed-line
+coverage — all three independently reproduced the executor's numbers exactly (repo-wide 89.94%,
+`Deploy.ps1` 87.10%, `Publish.ps1` 97.47%, changed lines 221/227/245 all `mi=0 ci=1`). A repo-wide
+`Invoke-Pester` re-run over all `tests/scripts/*.Tests.ps1` (no coverage flag) reproduced the exact
+380/380 pass count without needing the corrected-runsettings coverage workaround at all — when only
+confirming pass/fail counts (not coverage), a plain repo-wide Pester run is simpler than reconstructing
+the corrected runsettings, and the already-committed `artifacts/pester/powershell-coverage.xml` (gitignored,
+left on disk from the executor's own run) is sufficient for independent coverage verification via direct
+XML parsing. Full-feature work mode with `spec.md` + `user-story.md` carrying an *identical* AC checklist
+(character-for-character) is a recurring pattern for this repo's small/medium feature docs — verify both
+files independently rather than assuming identity, but expect them to match. Newest validator-shaped
+PowerShell-only full-feature artifact template (all-PASS, zero MCP tools):
+`2026-07-10-deploy-wrapper-entry-point-139/*.2026-07-10T16-30.md`.
