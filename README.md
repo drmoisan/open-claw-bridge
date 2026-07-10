@@ -130,7 +130,7 @@ back to `.env`. With this in place you do not pass `-Version` on each publish:
 
 ```powershell
 # Publishes the next revision after OPENCLAW_PACKAGE_VERSION in .env, signed.
-.\scripts\Publish.ps1 -CertThumbprint 'THUMBPRINT'
+.\scripts\Publish.ps1
 ```
 
 For a local development bundle without signing:
@@ -175,10 +175,10 @@ New-Item -ItemType Directory -Force -Path (Join-Path $operatorConfig 'secrets') 
 Copy-Item (Join-Path $repoRoot ("artifacts\publish\{0}\docker\.env.example" -f $versionNum)) (Join-Path $operatorConfig '.env') -Force
 ```
 
-Add your Anthropic API key to the secrets env file:
+Copy your Anthropic API key into the secrets env file:
 
 ```powershell
-Set-Content -Path (Join-Path $operatorConfig 'secrets\.env.anthropic') -Value 'ANTHROPIC_API_KEY=replace-with-your-real-key'
+Copy-Item (Join-Path $repoRoot 'secrets\.env.anthropic') (Join-Path $operatorConfig 'secrets\.env.anthropic') -Force
 ```
 
 Generate the gateway token the `openclaw-agent` container requires and write it
@@ -541,7 +541,7 @@ Dev (unsigned) build:
 Pin a specific version and/or thumbprint explicitly when needed:
 
 ```powershell
-.\scripts\Publish.ps1 -Version '1.0.0.0' -CertThumbprint 'THUMBPRINT'
+.\scripts\Publish.ps1 -Version #.0.0.0' -CertThumbprint 'THUMBPRINT'
 ```
 
 Supported parameters:
@@ -559,10 +559,12 @@ Supported parameters:
   A resolvable thumbprint or `-SkipSign` is required.
 - `-SkipSign` — switch; when present the MSIX is packed without signing.
 
+
+
 Install or upgrade the generated package:
 
 ```powershell
-Add-AppxPackage -Path .\artifacts\publish\1.0.0.0\msix\OpenClaw.MailBridge_1.0.0.0_x64.msix
+Add-AppxPackage -Path .\artifacts\publish\1.0.0.0\msix\OpenClaw.MailBridge_#.0.0.0_x64.msix
 ```
 
 Remove it:
