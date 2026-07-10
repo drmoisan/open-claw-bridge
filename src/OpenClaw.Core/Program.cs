@@ -14,7 +14,7 @@ builder
     .PostConfigure(options =>
     {
         options.HostAdapter.BaseUrl = string.IsNullOrWhiteSpace(options.HostAdapter.BaseUrl)
-            ? "http://host.docker.internal:4319/v1/"
+            ? "http://host.docker.internal:4319/"
             : EnsureTrailingSlash(options.HostAdapter.BaseUrl);
         options.HostAdapter.TokenFile = string.IsNullOrWhiteSpace(options.HostAdapter.TokenFile)
             ? "/run/openclaw/hostadapter.token"

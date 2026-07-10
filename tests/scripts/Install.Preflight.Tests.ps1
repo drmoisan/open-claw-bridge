@@ -141,6 +141,18 @@ Describe 'Format-HostAdapterPreflightFailure' {
     }
 }
 
+Describe 'Get-HostAdapterPreflightUri default base URL' {
+    BeforeAll {
+        $script:PreflightPath = Join-Path $PSScriptRoot '..\..\scripts\Install.Preflight.psm1'
+        Import-Module $script:PreflightPath -Force
+    }
+
+    It 'resolves the default (no OpenClaw__HostAdapter__BaseUrl key in EnvMap) to a URI with no /v1 segment (issue #137)' {
+        $uri = Get-HostAdapterPreflightUri -EnvMap @{}
+        $uri.AbsolutePath | Should -Not -Match '/v1'
+    }
+}
+
 Describe 'Assert-HostAdapterRespondingPreflight and Assert-HostAdapterBridgeReadyPreflight' {
     BeforeAll {
         $script:PreflightPath = Join-Path $PSScriptRoot '..\..\scripts\Install.Preflight.psm1'
