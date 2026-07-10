@@ -399,6 +399,24 @@ Describe 'scripts/Publish.ps1' {
         }
     }
 
+    Context 'output contract' {
+        It 'emits exactly one pipeline object (the bundle root) when captured (regression: issue #139 AC-1)' {
+            # Regression fixture: default -OutputDir ('artifacts/publish') with
+            # -Version '1.2.3.0' resolves BundleRoot to
+            # 'artifacts/publish/1.2.3.0'. Prior to the fix, three helper call
+            # sites (Invoke-VersionStamp, Invoke-MakeAppx, Write-PublishManifest)
+            # did not suppress their return value, so any mock returning a
+            # non-null value (here, this file's Invoke-MakeAppx mock, which
+            # returns $OutputMsixPath) leaked an extra pipeline object ahead of
+            # the script's own 'return $BundleRoot' statement. This test fails
+            # before the $null = fix and passes after it.
+            $script:ExpectedBundleRoot = Join-Path 'artifacts/publish' '1.2.3.0'
+            $result = & $script:ScriptPath -Version '1.2.3.0' -SkipSign
+            @($result).Count | Should -Be 1
+            $result | Should -Be $script:ExpectedBundleRoot
+        }
+    }
+
     Context 'Stage 0a .env thumbprint resolution (AC-4, D7)' {
         It 'passes the .env OPENCLAW_CERT_THUMBPRINT to the new -DotEnvThumbprint precedence parameter' {
             $global:PublishTestEnvContent = @(
