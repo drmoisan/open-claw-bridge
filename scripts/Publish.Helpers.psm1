@@ -66,10 +66,13 @@ function Copy-DockerArtifact {
     .SYNOPSIS
         Copies the docker artifact set into the bundle, enforcing the secrets/ exclusion.
     .DESCRIPTION
-        Copies docker-compose.yml and docker-compose.dev.yml (always), .env.example
-        (when present, silent skip otherwise), and the recursive deploy/docker/** tree.
-        Emits Write-Warning and skips any secrets/ directory detected under a source
-        root. Never copies secrets/.env.anthropic.
+        Copies docker-compose.yml (always), .env.example (when present, silent skip
+        otherwise), and the recursive deploy/docker/** tree. Does NOT copy
+        docker-compose.dev.yml: it builds from .devcontainer/Dockerfile, whose build
+        context is not shipped in the bundle, so it is dead at install time and
+        Install.ps1 never references it (issue #142). Emits Write-Warning and skips
+        any secrets/ directory detected under a source root. Never copies
+        secrets/.env.anthropic.
     #>
     [CmdletBinding(SupportsShouldProcess = $true)]
     param(
@@ -86,7 +89,6 @@ function Copy-DockerArtifact {
         }
 
         $composeRoot = Join-Path $RepoRoot 'docker-compose.yml'
-        $composeDev = Join-Path $RepoRoot 'docker-compose.dev.yml'
         $envExample = Join-Path $RepoRoot '.env.example'
         $deployDocker = Join-Path $RepoRoot 'deploy/docker'
         $secretsDir = Join-Path $RepoRoot 'secrets'
@@ -102,7 +104,6 @@ function Copy-DockerArtifact {
         }
 
         Copy-Item -Path $composeRoot -Destination (Join-Path $DockerBundleDir 'docker-compose.yml') -Force
-        Copy-Item -Path $composeDev -Destination (Join-Path $DockerBundleDir 'docker-compose.dev.yml') -Force
 
         if (Test-Path $envExample) {
             Copy-Item -Path $envExample -Destination (Join-Path $DockerBundleDir '.env.example') -Force
@@ -124,7 +125,7 @@ function New-ManifestEntry {
         Produces a single manifest entry for a file.
     .DESCRIPTION
         Pure helper. Given a file path and the bundle root, returns a pscustomobject
-        with path (forward-slash relative), size (int), and sha256 (lowercase hex).
+        with path (forward-slash relative), size (long), and sha256 (lowercase hex).
         The "New-" verb is used intentionally (constructs a new entry object); this
         function has no side effects, so ShouldProcess does not apply.
     #>
@@ -152,7 +153,7 @@ function New-ManifestEntry {
 
     return [pscustomobject]@{
         path   = $relative
-        size   = [int]$fileInfo.Length
+        size   = [long]$fileInfo.Length
         sha256 = $hash
     }
 }
@@ -162,8 +163,8 @@ function Copy-InstallScriptsIntoBundle {
     .SYNOPSIS
         Copies the install-related scripts from the repo into the bundle root.
     .DESCRIPTION
-        The four files Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and
-        Install.Preflight.psm1
+        The five files Install.ps1, Uninstall.ps1, Install.Helpers.psm1,
+        Install.Preflight.psm1, and Install.Docker.psm1
         must ship inside every bundle so operators can `cd` into the bundle
         directory and invoke .\Install.ps1 directly (the script self-locates
         via $PSScriptRoot). This helper resolves <RepoRoot>/scripts/<name> for
@@ -185,7 +186,7 @@ function Copy-InstallScriptsIntoBundle {
     )
 
     $srcScriptsDir = Join-Path $RepoRoot 'scripts'
-    $names = @('Install.ps1', 'Uninstall.ps1', 'Install.Helpers.psm1', 'Install.Preflight.psm1')
+    $names = @('Install.ps1', 'Uninstall.ps1', 'Install.Helpers.psm1', 'Install.Preflight.psm1', 'Install.Docker.psm1')
 
     foreach ($name in $names) {
         $srcPath = Join-Path $srcScriptsDir $name

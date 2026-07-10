@@ -101,6 +101,7 @@ $ErrorActionPreference = 'Stop'
 Import-Module (Join-Path $PSScriptRoot 'Publish.Helpers.psm1') -Force -ErrorAction Stop
 Import-Module (Join-Path $PSScriptRoot 'Publish.Msix.psm1') -Force -ErrorAction Stop
 Import-Module (Join-Path $PSScriptRoot 'Publish.Env.psm1') -Force -ErrorAction Stop
+Import-Module (Join-Path $PSScriptRoot 'Publish.Docker.psm1') -Force -ErrorAction Stop
 
 # --- Main (only runs when executed directly, not when dot-sourced for tests) ---
 if ($MyInvocation.InvocationName -ne '.') {
@@ -205,6 +206,13 @@ if ($MyInvocation.InvocationName -ne '.') {
     Write-Information "[docker] Copying docker artifacts to $DockerBundleDir" -InformationAction Continue
     Copy-DockerArtifact -RepoRoot $RepoRoot -DockerBundleDir $DockerBundleDir
 
+    # Stage 3b: build the container images, save the combined tar, and write the
+    # transformed offline bundle compose (issue #142). Runs before Stage 6
+    # Write-PublishManifest so the tar and transformed compose are manifested
+    # automatically (path + [long] size + SHA-256).
+    Write-Information "[docker-images] Building images and writing openclaw-images.tar into $DockerBundleDir" -InformationAction Continue
+    Invoke-PublishDockerStage -RepoRoot $RepoRoot -BundleDockerDir $DockerBundleDir -Version $Version -Configuration $Configuration -EnvMap (Get-EnvFileMap -Content $envContent)
+
     # Stage 4: MSIX pipeline.
     $StagingDir = Join-Path $RepoRoot 'installer/staging'
     $ManifestSource = Join-Path $RepoRoot 'installer/Package.appxmanifest'
@@ -236,7 +244,7 @@ if ($MyInvocation.InvocationName -ne '.') {
 
     # Stage 5: stage install scripts into the bundle root so the bundle is
     # self-installing (operator cd's into the bundle and runs .\Install.ps1).
-    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and Install.Preflight.psm1 into $BundleRoot" -InformationAction Continue
+    Write-Information "[install-scripts] Staging Install.ps1, Uninstall.ps1, Install.Helpers.psm1, Install.Preflight.psm1, and Install.Docker.psm1 into $BundleRoot" -InformationAction Continue
     Copy-InstallScriptsIntoBundle -RepoRoot $RepoRoot -BundleRoot $BundleRoot
 
     # Stage 6: manifest (runs AFTER install-script staging so the manifest

@@ -90,6 +90,7 @@ param(
 
 $helperModulePath = Join-Path $PSScriptRoot 'Install.Helpers.psm1'
 $preflightModulePath = Join-Path $PSScriptRoot 'Install.Preflight.psm1'
+$dockerModulePath = Join-Path $PSScriptRoot 'Install.Docker.psm1'
 
 try {
     Import-Module $helperModulePath -Force -Global -ErrorAction Stop
@@ -103,6 +104,13 @@ try {
 }
 catch {
     throw "Failed to load bundled install preflight module '$preflightModulePath'. Ensure Install.ps1 is being run from a bundle produced by Publish.ps1 and that the bundle contents are intact. Original error: $($_.Exception.Message)"
+}
+
+try {
+    Import-Module $dockerModulePath -Force -Global -ErrorAction Stop
+}
+catch {
+    throw "Failed to load bundled install docker module '$dockerModulePath'. Ensure Install.ps1 is being run from a bundle produced by Publish.ps1 and that the bundle contents are intact. Original error: $($_.Exception.Message)"
 }
 
 Set-StrictMode -Version Latest
@@ -421,6 +429,9 @@ if ($MyInvocation.InvocationName -ne '.') {
     # Stage 9: compose up + health poll (skipped when -SkipDocker).
     $ComposeFilePath = Join-Path $DestDockerDir 'docker-compose.yml'
     if (-not $SkipDocker) {
+        $ImageTarPath = Join-Path $DestDockerDir 'openclaw-images.tar'
+        Write-Information "[install:docker] Loading bundled container images from $ImageTarPath" -InformationAction Continue
+        Invoke-DockerImageLoad -ImageTarPath $ImageTarPath
         Write-Information '[install:docker] Starting compose stack' -InformationAction Continue
         Invoke-ComposeUp -DestDockerDir $DestDockerDir -ComposeFilePath $ComposeFilePath
         Wait-ComposeHealthy -ComposeFilePath $ComposeFilePath
