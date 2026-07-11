@@ -442,7 +442,7 @@ Validation:
 
 ```powershell
 $token = (Get-Content 'C:\ProgramData\OpenClaw\HostAdapter\adapter.token' -Raw).Trim()
-curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/v1/status
+curl.exe -H "Authorization: Bearer $token" http://127.0.0.1:4319/status
 ```
 
 Expected result:
@@ -454,7 +454,7 @@ Expected result:
 
 Copy `.env.example` to `.env` and confirm these values:
 
-- `OpenClaw__HostAdapter__BaseUrl=http://host.docker.internal:4319/v1`
+- `OpenClaw__HostAdapter__BaseUrl=http://host.docker.internal:4319`
 - `HOSTADAPTER_TOKEN_FILE=C:\ProgramData\OpenClaw\HostAdapter\adapter.token`
 - `OPENCLAW_HTTP_PORT=8081`
 
