@@ -163,6 +163,6 @@
   },
   "model_budget": {
     "description": "Session-level model budget. fable_policy is a three-way switch controlling whether the fable tier is disabled (removed and clamped to opus), available (used as-is), or preferred (applies the preferred_overlay).",
-    "fable_policy": "preferred"
+    "fable_policy": "available"
   }
 }

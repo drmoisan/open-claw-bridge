@@ -2,9 +2,16 @@
 name: epic-orchestrate
 description: Route a multi-feature epic through the deterministic wave-scheduling, integration-branch, and fan-in workflow for the epic-orchestrator agent.
 argument-hint: "[epic-manifest-path]"
+context: fork
+agent: epic-orchestrator
 ---
 
 # Epic Orchestrate Skill
+
+A user invocation (`/epic-orchestrate <epic-manifest-path>`) forks the `epic-orchestrator`
+agent with this procedure in context. The epic manifest path (or epic slug) for this run is:
+
+$ARGUMENTS
 
 This skill frames work for the `epic-orchestrator` agent, parallel to how
 `.claude/skills/orchestrate/SKILL.md` frames work for `orchestrator`. It documents the epic
@@ -22,10 +29,12 @@ Before proceeding, `epic-orchestrator` must:
 
 ## Epic Dependency Manifest
 
-The epic manifest is Markdown with YAML frontmatter, at
-`docs/features/epics/<epic-slug>/epic-plan.md`. The frontmatter carries the fields that must be
-parsed deterministically; the Markdown body below the frontmatter carries free-text epic
-narrative (goal, scope, non-goals) that is not machine-parsed.
+The epic manifest is the YAML frontmatter of the single epic home
+`docs/features/epics/<epic-slug>/epic.md`. `epic.md` is the merged source of truth: its
+frontmatter carries the fields that must be parsed deterministically, and the Markdown body
+below the frontmatter carries the single free-text epic narrative (goal, scope, non-goals,
+shared design, decomposition) that is not machine-parsed. `epic.md` is also the source from
+which the epic GitHub issue body is generated.
 
 Frontmatter schema:
 
@@ -34,19 +43,37 @@ Frontmatter schema:
 epic: <epic-slug>
 integration_branch: epic/<epic-slug>-integration
 created_at: <iso8601>
+# Optional additive SAFe-style intent block. Omit the whole block when unused; when
+# present, epic_type and business_outcome_hypothesis are required and
+# leading_indicators / nfrs are optional lists of strings.
+intent:
+  epic_type: <business | enabler>
+  business_outcome_hypothesis: <measurable outcome the epic is expected to move>
+  leading_indicators: [<early validation signal>, ...]
+  nfrs: [<non-functional requirement>, ...]
 features:
-  - feature_folder: <feature-folder-basename>
-    issue_num: <int>
-    depends_on: [<feature-folder-basename>, ...]
+  - issue_num: <int>
+    feature_folder: <resolvable-hint-basename>
+    depends_on: [<upstream-issue_num>, ...]
 ---
 ```
 
-- `feature_folder` is the canonical identifier: the exact active-feature-folder basename,
-  matching the vocabulary already used by the per-feature checkpoint's `feature-folder` field.
-- `depends_on` is an array of `feature_folder` values that must each already exist as another
-  entry in `features[]`. A `depends_on` entry that does not resolve to a defined `feature_folder`,
-  or a duplicate `feature_folder` value, is a malformed manifest and is rejected before epic
-  kickoff as a synthetic Blocking finding — `epic-orchestrator` does not guess.
+- `issue_num` is the primary key: the stable GitHub issue number for the child feature. The
+  DAG is keyed by `issue_num`, so it does not drift when a child is promoted from `active/` to
+  `completed/`.
+- `feature_folder` is a resolvable hint, not a stable identifier. It may resolve to a concrete
+  path under `docs/features/active/<basename>` or `docs/features/completed/<basename>`; a
+  lifecycle prefix is stripped to the basename during resolution.
+- `depends_on` is an array of `issue_num` values (legacy manifests may still use
+  `feature_folder` basenames). Each entry must resolve — via the union index of the
+  `issue_num` set plus the `feature_folder` set — to another entry in `features[]`. A
+  `depends_on` entry that does not resolve, or a duplicate `feature_folder` value, is a
+  malformed manifest and is rejected before epic kickoff as a synthetic Blocking finding —
+  `epic-orchestrator` does not guess.
+- The optional `intent` block is additive and presence-gated: when present it is validated
+  (`epic_type` in {business, enabler}, non-empty `business_outcome_hypothesis`, string-list
+  `leading_indicators` / `nfrs`); when absent, validation is byte-identical to a manifest
+  without it.
 
 ## Wave Assignment
 
@@ -137,10 +164,14 @@ When `epic-orchestrator` kicks off a feature with a non-empty `depends_on`, the 
 includes one literal citation line per dependency, appended after the epic-mode kickoff line
 above:
 
-> `Upstream context for <feature_folder>: depends on <dep_feature_folder> (spec: docs/features/active/<dep_feature_folder>/spec.md — or docs/features/completed/<dep_feature_folder>/spec.md if already promoted to completed; plan: docs/features/active/<dep_feature_folder>/plan.<ts>.md; merged as PR #<dep_pr_number>, commit <dep_merge_commit_sha>, into <integration_branch>).`
+> `Upstream context for <issue_num>: depends on <dep_issue_num> (spec: <dep_resolved_folder>/spec.md; plan: <dep_resolved_folder>/plan.<ts>.md; merged as PR #<dep_pr_number>, commit <dep_merge_commit_sha>, into <integration_branch>).`
 
-`epic-orchestrator` resolves the concrete `<dep_...>` values from its own checkpoint's
-`features[]` records for each dependency before emitting the line, so the dependent feature's own
+`epic-orchestrator` resolves each dependency by its stable `issue_num` against its own
+checkpoint's `features[]` records, and resolves `<dep_resolved_folder>` to the dependency's
+concrete `feature_folder` path — under `docs/features/active/` or `docs/features/completed/`
+depending on the dependency's current lifecycle state at emit time — before emitting the line.
+Because the DAG is keyed by `issue_num`, no active→completed path-drift workaround is needed: the
+concrete path is resolved from the checkpoint's current state, so the dependent feature's own
 `orchestrator`/`atomic-planner` is told exactly which upstream artifacts are relevant rather than
 being expected to rediscover prior design decisions from the diff alone.
 
@@ -207,12 +238,13 @@ child worktree) issues `git worktree remove <worktree_path>`, gated by
 
 ## Documentation Maintenance Boundaries
 
-`epic-plan.md` (the manifest) and `epic-status.md` (a separate, epic-orchestrator-maintained
-status document) are kept distinct. `epic-plan.md`'s frontmatter is the human-authored, largely
-static input; automatic epic decomposition is out of scope, so this file is not repeatedly
-rewritten. `epic-orchestrator` instead maintains
-`docs/features/epics/<epic-slug>/epic-status.md`, regenerated (not hand-edited) from the epic
-checkpoint at each of the following boundaries, not only at final completion:
+`epic.md` (the merged manifest + narrative source of truth) and `epic-status.md` (a separate,
+epic-orchestrator-maintained status document) are kept distinct. `epic.md`'s frontmatter is the
+human-authored, largely static input; automatic epic decomposition is out of scope, so this
+file is not repeatedly rewritten. `epic-status.md` is a generated projection only: it is
+regenerated (never hand-authored) from the epic checkpoint and is never the source of the DAG.
+`epic-orchestrator` maintains `docs/features/epics/<epic-slug>/epic-status.md`, regenerated from
+the epic checkpoint at each of the following boundaries, not only at final completion:
 
 - Epic kickoff — initial status table seeded from the manifest (one row per feature: wave,
   status `not_started`).
@@ -229,12 +261,14 @@ checkpoint JSON remains the durable, machine-authoritative source.
 ## Epic-Level Checkpoint
 
 `artifacts/orchestration/epic-orchestrator-state.json` carries `objective`, `route_id: "epic"`,
-`epic_feature_folder`, `epic_manifest_path`, `epic_status_doc_path`, `integration_branch`,
+`epic_feature_folder`, `epic_manifest_path` (which points at
+`docs/features/epics/<epic-slug>/epic.md`), `epic_status_doc_path`, `integration_branch`,
 `completed_steps`, `next_step`, `last_updated`, `current_wave`, `waves[]`, `features[]`,
 `epic_merge_pr`, and the three receipt arrays (`delegation_receipts[]`, `skill_receipts[]`,
 `mcp_call_receipts[]`) — the full schema is defined in `spec.md` §6 of this feature. The
 `merge_status` enum is: `not_started`, `worktree_created`, `pr_open`, `ci_green`,
-`merge_conflict`, `blocked_conflict_loop_limit`, `merged`, `worktree_removed`.
+`merge_conflict`, `blocked_conflict_loop_limit`, `merged`, `worktree_removed`. The optional
+`intent` object (projection of the `epic.md` intent block) is validated presence-gated.
 
 Every field needed to re-derive state durably on resume (`worktree_path`, `branch_name`,
 `pr_number`, `merge_status`) is re-derivable from `git worktree list --porcelain`, `git branch`,
