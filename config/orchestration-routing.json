@@ -72,6 +72,29 @@
         "validate_orchestration_artifacts"
       ]
     },
+    "preparation": {
+      "description": "Epic-child preparation path: promotion, research, feature documents, atomic planning, and preflight clearance only. Atomic execution, PR authoring, CI monitoring, and feature review are out of scope and are executed later by epic-orchestrator.",
+      "requires_ci_gate": false,
+      "requires_pr_gate": false,
+      "required_agents": [
+        "task-researcher",
+        "prd-feature",
+        "atomic-planner",
+        "atomic-executor"
+      ],
+      "required_skills": [
+        "orchestrate",
+        "feature-promotion-lifecycle",
+        "atomic-plan-contract"
+      ],
+      "required_mcp_tools": [
+        "new_potential_entry",
+        "new_potential_bug_entry",
+        "potential_to_issue",
+        "new_active_feature_folder",
+        "validate_orchestration_artifacts"
+      ]
+    },
     "epic": {
       "description": "Epic path for scheduling a dependency graph of child features across parallel worktrees with fan-in via a shared integration branch.",
       "requires_pr_gate": true,
