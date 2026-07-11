@@ -20,8 +20,10 @@ Describe 'scripts/Install.ps1' {
         $script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Install.ps1'
         $script:HelpersPath = Join-Path $PSScriptRoot '..\..\scripts\Install.Helpers.psm1'
         $script:PreflightPath = Join-Path $PSScriptRoot '..\..\scripts\Install.Preflight.psm1'
+        $script:DockerModulePath = Join-Path $PSScriptRoot '..\..\scripts\Install.Docker.psm1'
         Import-Module $script:HelpersPath -Force
         Import-Module $script:PreflightPath -Force
+        Import-Module $script:DockerModulePath -Force
         $global:InstallTestCalls = [System.Collections.ArrayList]::new()
 
         # Override LOCALAPPDATA so the script resolves stable test paths.
@@ -58,6 +60,7 @@ Describe 'scripts/Install.ps1' {
         Mock Invoke-MsixRemove { [void]$global:InstallTestCalls.Add('Invoke-MsixRemove') }
         Mock Invoke-ComposeUp { [void]$global:InstallTestCalls.Add('Invoke-ComposeUp') }
         Mock Wait-ComposeHealthy { [void]$global:InstallTestCalls.Add('Wait-ComposeHealthy') }
+        Mock Invoke-DockerImageLoad { [void]$global:InstallTestCalls.Add('Invoke-DockerImageLoad') }
         Mock Invoke-ComposeDown { [void]$global:InstallTestCalls.Add('Invoke-ComposeDown') }
         Mock Write-InstallRecord { [void]$global:InstallTestCalls.Add('Write-InstallRecord') }
         function global:Invoke-HostAdapterStart { [void]$global:InstallTestCalls.Add('Invoke-HostAdapterStart') }
@@ -207,6 +210,7 @@ Describe 'scripts/Install.ps1' {
                 'Invoke-MsixCapture',
                 'Invoke-MsixAppActivate',
                 'Assert-HostAdapterBridgeReadyPreflight',
+                'Invoke-DockerImageLoad',
                 'Invoke-ComposeUp',
                 'Wait-ComposeHealthy',
                 'Write-InstallRecord'
@@ -349,30 +353,6 @@ Describe 'scripts/Install.ps1' {
 
             Should -Invoke Assert-HostAdapterRespondingPreflight -Times 1
             $global:InstallTestCalls -contains 'Assert-HostAdapterRespondingPreflight' | Should -BeTrue
-        }
-    }
-
-    Context '-SkipDocker path' {
-        It 'does NOT invoke Test-DockerAvailable' {
-            & $script:ScriptPath -SkipDocker | Out-Null
-            $global:InstallTestCalls -contains 'Test-DockerAvailable' | Should -BeFalse
-        }
-
-        It 'does NOT invoke Invoke-ComposeUp or Wait-ComposeHealthy' {
-            & $script:ScriptPath -SkipDocker | Out-Null
-            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
-            $global:InstallTestCalls -contains 'Wait-ComposeHealthy' | Should -BeFalse
-        }
-
-        It 'records skipDocker = $true in the install record' {
-            $global:capturedRecord = $null
-            Mock Write-InstallRecord {
-                param($Record)
-                $global:capturedRecord = $Record
-                [void]$global:InstallTestCalls.Add('Write-InstallRecord')
-            }
-            & $script:ScriptPath -SkipDocker | Out-Null
-            $global:capturedRecord.skipDocker | Should -BeTrue
         }
     }
 

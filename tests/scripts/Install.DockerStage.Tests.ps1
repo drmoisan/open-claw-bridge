@@ -1,12 +1,15 @@
-﻿#Requires -Version 7.0
+#Requires -Version 7.0
 <#
 .SYNOPSIS
-    Pester v5 tests for scripts/Install.ps1 — Force reinstall scenarios.
+    Pester v5 stage-sequence tests for the scripts/Install.ps1 Docker image-load
+    stage (issue #142).
 
 .DESCRIPTION
-    Covers the -Force parameter paths: reinstall over existing install,
-    guard throwing when -Force is absent and a prior install exists,
-    tolerance of uninstall-sequence failures, and destination-only cleanup.
+    Uses the Install-orchestrator harness (mirrors tests/scripts/Install.Force.Tests.ps1)
+    to invoke Install.ps1 via '& $ScriptPath' with a full helper-mock set, plus a
+    recording mock for Invoke-DockerImageLoad. Asserts that Stage 9 loads the
+    bundled image tar before compose up, the tar path is correct, the load runs on
+    a -Force reinstall, and the load is skipped under -SkipDocker.
 #>
 [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
     'PSAvoidGlobalVars', '',
@@ -14,7 +17,7 @@
 )]
 param()
 
-Describe 'scripts/Install.ps1 — Force reinstall' {
+Describe 'scripts/Install.ps1 - Docker image-load stage' {
 
     BeforeAll {
         $script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Install.ps1'
@@ -42,6 +45,7 @@ Describe 'scripts/Install.ps1 — Force reinstall' {
     BeforeEach {
         $global:InstallTestCalls.Clear()
         $global:LastGetManifestVersionBundleRoot = $null
+        $global:LastImageTarPath = $null
 
         # Helper mocks (module-exported functions intercepted at the caller's scope).
         Mock Get-ManifestVersion {
@@ -61,8 +65,12 @@ Describe 'scripts/Install.ps1 — Force reinstall' {
         Mock Invoke-ComposeUp { [void]$global:InstallTestCalls.Add('Invoke-ComposeUp') }
         Mock Wait-ComposeHealthy { [void]$global:InstallTestCalls.Add('Wait-ComposeHealthy') }
         Mock Invoke-ComposeDown { [void]$global:InstallTestCalls.Add('Invoke-ComposeDown') }
-        Mock Invoke-DockerImageLoad { [void]$global:InstallTestCalls.Add('Invoke-DockerImageLoad') }
         Mock Write-InstallRecord { [void]$global:InstallTestCalls.Add('Write-InstallRecord') }
+        Mock Invoke-DockerImageLoad {
+            param($ImageTarPath)
+            $global:LastImageTarPath = $ImageTarPath
+            [void]$global:InstallTestCalls.Add('Invoke-DockerImageLoad')
+        }
         function global:Invoke-HostAdapterStart { [void]$global:InstallTestCalls.Add('Invoke-HostAdapterStart') }
         Mock Read-InstallRecord {
             [void]$global:InstallTestCalls.Add('Read-InstallRecord')
@@ -114,8 +122,6 @@ Describe 'scripts/Install.ps1 — Force reinstall' {
             if ($LiteralPath -like '*TestAppData*OpenClaw*docker*secrets*.env.anthropic') { return $true }
             if ($LiteralPath -like '*TestAppData*OpenClaw*docker*.env') { return $true }
             if ($LiteralPath -like '*TestAppData*OpenClaw*docker/.env') { return $true }
-            # Any destination under LOCALAPPDATA\OpenClaw\<leaf> must default to absent so
-            # tests that supply -SourcePath or -Version do not trip the prior-install guard.
             if ($LiteralPath -like '*TestAppData*OpenClaw\*') { return $false }
             if ($LiteralPath -like '*TestAppData*OpenClaw/*') { return $false }
             $true
@@ -123,47 +129,33 @@ Describe 'scripts/Install.ps1 — Force reinstall' {
         Mock Test-Path $script:TestPathMock
         Mock Test-Path $script:TestPathMock -ModuleName Install.Preflight
 
-        # Elevation-probe default: treat test host as elevated so -AllowUnsigned paths
-        # proceed through the precheck. Individual It blocks can override.
         function global:Test-IsElevatedAdmin { $true }
     }
 
     AfterEach {
         Remove-Item -Path 'Function:\Test-IsElevatedAdmin' -Force -ErrorAction SilentlyContinue
         Remove-Item -Path 'Function:\Invoke-HostAdapterStart' -Force -ErrorAction SilentlyContinue
-        Remove-Variable -Name CapturedHostAdapterPreflightUri -Scope Global -ErrorAction SilentlyContinue
-        Remove-Variable -Name CapturedHostAdapterPreflightAuthorization -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name LastImageTarPath -Scope Global -ErrorAction SilentlyContinue
+        Remove-Variable -Name capturedRecord -Scope Global -ErrorAction SilentlyContinue
     }
 
-    Context '-Force over existing install' {
-        It 'runs uninstall sequence before install when -Force and prior install exist' {
-            $forceTestPath = {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            Mock Test-Path $forceTestPath
-            Mock Test-Path $forceTestPath -ModuleName Install.Preflight
-            & $script:ScriptPath -Force | Out-Null
-            # Uninstall sequence runs before the install sequence; -Force no longer removes MSIX.
-            $idxComposeDown = $global:InstallTestCalls.IndexOf('Invoke-ComposeDown')
+    Context 'image load stage' {
+        It 'loads the tar at <DestDockerDir>\openclaw-images.tar' {
+            & $script:ScriptPath | Out-Null
+            $global:LastImageTarPath | Should -Be 'C:\TestAppData\Local\OpenClaw\1.2.3.0\docker\openclaw-images.tar'
+        }
+
+        It 'loads the image after copying bundle contents and before compose up' {
+            & $script:ScriptPath | Out-Null
             $idxCopy = $global:InstallTestCalls.IndexOf('Copy-BundleContents')
-            $idxComposeDown | Should -BeGreaterOrEqual 0
-            $idxCopy | Should -BeGreaterThan $idxComposeDown
+            $idxLoad = $global:InstallTestCalls.IndexOf('Invoke-DockerImageLoad')
+            $idxUp = $global:InstallTestCalls.IndexOf('Invoke-ComposeUp')
+            $idxCopy | Should -BeGreaterOrEqual 0
+            $idxLoad | Should -BeGreaterThan $idxCopy
+            $idxUp | Should -BeGreaterThan $idxLoad
         }
 
-        It 'throws when prior install exists and -Force is NOT supplied' {
-            $priorInstallTestPath = {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            Mock Test-Path $priorInstallTestPath
-            Mock Test-Path $priorInstallTestPath -ModuleName Install.Preflight
-            { & $script:ScriptPath } | Should -Throw -ExpectedMessage '*-Force*Uninstall.ps1*'
-        }
-
-        It '-Force tolerates compose-down failure in the prior-install uninstall sequence' {
+        It 'still loads the image before compose up on a -Force reinstall' {
             $forceTestPath = {
                 param($LiteralPath)
                 if ($LiteralPath -like '*install-record.json') { return $true }
@@ -171,79 +163,40 @@ Describe 'scripts/Install.ps1 — Force reinstall' {
             }
             Mock Test-Path $forceTestPath
             Mock Test-Path $forceTestPath -ModuleName Install.Preflight
-            Mock Invoke-ComposeDown { [void]$global:InstallTestCalls.Add('Invoke-ComposeDown'); throw 'compose down boom' }
-            & $script:ScriptPath -Force *>&1 | Out-Null
-            $global:InstallTestCalls -contains 'Copy-BundleContents' | Should -BeTrue
-        }
-
-        It '-Force with destination-only (no record file) removes destination but does not remove MSIX' {
-            $destOnlyTestPath = {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $false }
-                $true
-            }
-            Mock Test-Path $destOnlyTestPath
-            Mock Test-Path $destOnlyTestPath -ModuleName Install.Preflight
             & $script:ScriptPath -Force | Out-Null
-            $global:InstallTestCalls -contains 'Invoke-MsixRemove' | Should -BeFalse
-            $global:InstallTestCalls -contains 'Remove-Item' | Should -BeTrue
+            $idxLoad = $global:InstallTestCalls.IndexOf('Invoke-DockerImageLoad')
+            $idxUp = $global:InstallTestCalls.IndexOf('Invoke-ComposeUp')
+            $idxLoad | Should -BeGreaterOrEqual 0
+            $idxUp | Should -BeGreaterThan $idxLoad
         }
     }
 
-    Context '-Force does not remove MSIX' {
-        It 'does not invoke Invoke-MsixRemove during a -Force reinstall (record path)' {
-            $forceTestPath = {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            Mock Test-Path $forceTestPath
-            Mock Test-Path $forceTestPath -ModuleName Install.Preflight
-            & $script:ScriptPath -Force | Out-Null
-            Should -Invoke Invoke-MsixRemove -Times 0
+    Context '-SkipDocker path' {
+        It 'does NOT invoke Test-DockerAvailable' {
+            & $script:ScriptPath -SkipDocker | Out-Null
+            $global:InstallTestCalls -contains 'Test-DockerAvailable' | Should -BeFalse
         }
 
-        It 'does not invoke Invoke-MsixRemove during a -Force reinstall (destination-only path)' {
-            $destOnlyTestPath = {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $false }
-                $true
-            }
-            Mock Test-Path $destOnlyTestPath
-            Mock Test-Path $destOnlyTestPath -ModuleName Install.Preflight
-            & $script:ScriptPath -Force | Out-Null
-            Should -Invoke Invoke-MsixRemove -Times 0
+        It 'does NOT invoke Invoke-ComposeUp or Wait-ComposeHealthy' {
+            & $script:ScriptPath -SkipDocker | Out-Null
+            $global:InstallTestCalls -contains 'Invoke-ComposeUp' | Should -BeFalse
+            $global:InstallTestCalls -contains 'Wait-ComposeHealthy' | Should -BeFalse
         }
 
-        It "emits the [install:force-uninstall] Retaining installed MSIX log line exactly once in the -Force prior-install block" {
-            # The Write-Information call in this branch is hard-coded in scripts/Install.ps1 inside
-            # the `if ($priorExists)` block. Stream-redirection capture proved fragile across the
-            # PoshQC test harness, so this assertion verifies the static text is present exactly
-            # once in the prior-install block. Combined with the `Should -Invoke Invoke-MsixRemove
-            # -Times 0` assertions in the sibling It blocks, this proves AC-08 / AC-10 wiring.
-            $scriptText = [System.IO.File]::ReadAllText($script:ScriptPath)
-            $occurrences = ([regex]::Matches($scriptText, [regex]::Escape("[install:force-uninstall] Retaining installed MSIX"))).Count
-            $occurrences | Should -Be 1
-        }
-
-        It 'reports the captured PackageFullName from Invoke-MsixCapture after -Force reinstall' {
-            $forceTestPath = {
-                param($LiteralPath)
-                if ($LiteralPath -like '*install-record.json') { return $true }
-                $true
-            }
-            Mock Test-Path $forceTestPath
-            Mock Test-Path $forceTestPath -ModuleName Install.Preflight
-            Mock Invoke-MsixCapture { [void]$global:InstallTestCalls.Add('Invoke-MsixCapture'); 'OpenClaw.MailBridge_1.2.3.0_x64__abc' }
+        It 'records skipDocker = $true in the install record' {
             $global:capturedRecord = $null
             Mock Write-InstallRecord {
-                param($Record, $RecordPath)
-                $null = $RecordPath
+                param($Record)
                 $global:capturedRecord = $Record
                 [void]$global:InstallTestCalls.Add('Write-InstallRecord')
             }
-            & $script:ScriptPath -Force | Out-Null
-            $global:capturedRecord.packageFullName | Should -Be 'OpenClaw.MailBridge_1.2.3.0_x64__abc'
+            & $script:ScriptPath -SkipDocker | Out-Null
+            $global:capturedRecord.skipDocker | Should -BeTrue
+        }
+
+        It 'does NOT invoke Invoke-DockerImageLoad under -SkipDocker' {
+            & $script:ScriptPath -SkipDocker | Out-Null
+            $global:InstallTestCalls -contains 'Invoke-DockerImageLoad' | Should -BeFalse
         }
     }
 }

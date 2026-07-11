@@ -166,6 +166,14 @@ Reviewer only needed to run plain mode (executor's committed final was settings)
 executor's final settings cobertura for per-file instrumented LINE RANGES (47-115 vs full) is the
 fast tell that the async body is excluded before spending a plain-mode rerun.
 
+PowerShell changed-line variant (#142, 2026-07-10): the executor's per-file table (all files PASS,
+figures exact) did not surface that one ADDED executable line was uncovered — Install.ps1:113, the new
+module-import catch-throw arm. Detection: parse `git diff` hunk headers for added-line numbers, then
+check each against `//sourcefile/line[@nr]` mi/ci. Grading: the two pre-existing sibling import-catch
+arms (lines 99/106) were equally `mi=2 ci=0` at head, so the new line exactly replicates an accepted
+pattern in a file passing all gates → Minor non-gating (the #128 pattern-replication disposition
+extended to PowerShell). Per-file aggregates can hide single-line changed-code gaps even when honest.
+
 Masking also happens at the BRANCH level, not just line level: on issue #18 (2026-07-02) the
 executor's coverage-comparison reported per-file LINE only; the new OutlookScanner.Redaction.cs
 was 100% line but 71.43% branch (10/14) — a Blocking FAIL against the 75% new-file gate — hidden

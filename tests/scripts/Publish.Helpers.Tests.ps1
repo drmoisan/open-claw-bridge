@@ -101,13 +101,13 @@ Describe 'Publish.Helpers.psm1' {
             }
             Mock -ModuleName Publish.Helpers Write-Warning { $script:Warns++ }
         }
-        It 'copies both compose files when present' {
+        It 'copies docker-compose.yml and never copies docker-compose.dev.yml' {
             Mock -ModuleName Publish.Helpers Test-Path {
                 if ($Path -like '*secrets*') { return $false } else { return $true }
             }
             Copy-DockerArtifact -RepoRoot 'C:\fake\repo' -DockerBundleDir 'C:\fake\bundle\docker'
-            ($script:Copies.Source -join ',') | Should -Match 'docker-compose.yml'
-            ($script:Copies.Source -join ',') | Should -Match 'docker-compose.dev.yml'
+            ($script:Copies.Source -join ',') | Should -Match 'docker-compose\.yml'
+            ($script:Copies.Source -join ',') | Should -Not -Match 'docker-compose\.dev\.yml'
         }
         It 'copies .env.example when present' {
             Mock -ModuleName Publish.Helpers Test-Path {
@@ -155,13 +155,12 @@ Describe 'Publish.Helpers.psm1' {
             (New-ManifestEntry -FilePath 'C:\bundle\executables\X\file.dll' -BundleRoot 'C:\bundle').path |
                 Should -Be 'executables/X/file.dll'
         }
-        It 'returns size as non-negative integer' {
-            Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\a.bin'; Length = 1024 } }
+        It 'returns size as long and supports lengths above [int]::MaxValue' {
+            Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\a.bin'; Length = 3000000000 } }
             Mock -ModuleName Publish.Helpers Get-FileHash { [pscustomobject]@{ Hash = $script:FakeHashLower } }
             $e = New-ManifestEntry -FilePath 'C:\bundle\a.bin' -BundleRoot 'C:\bundle'
-            $e.size | Should -BeOfType [int]
-            $e.size | Should -BeGreaterOrEqual 0
-            $e.size | Should -Be 1024
+            $e.size | Should -BeOfType [long]
+            $e.size | Should -Be 3000000000
         }
         It 'returns sha256 as 64-character lowercase hex string' {
             Mock -ModuleName Publish.Helpers Get-Item { [pscustomobject]@{ FullName = 'C:\bundle\b.bin'; Length = 7 } }
@@ -250,9 +249,9 @@ Describe 'Publish.Helpers.psm1' {
             }
             Mock -ModuleName Publish.Helpers Test-Path { $true }
         }
-        It 'copies Install.ps1, Uninstall.ps1, Install.Helpers.psm1, and Install.Preflight.psm1 in order' {
+        It 'copies Install.ps1, Uninstall.ps1, Install.Helpers.psm1, Install.Preflight.psm1, and Install.Docker.psm1 in order' {
             Copy-InstallScriptsIntoBundle -RepoRoot 'C:\repo' -BundleRoot 'C:\bundle'
-            $script:CopyCalls.Count | Should -Be 4
+            $script:CopyCalls.Count | Should -Be 5
             $script:CopyCalls[0].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.ps1')
             $script:CopyCalls[0].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.ps1')
             $script:CopyCalls[1].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Uninstall.ps1')
@@ -261,6 +260,8 @@ Describe 'Publish.Helpers.psm1' {
             $script:CopyCalls[2].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Helpers.psm1')
             $script:CopyCalls[3].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Preflight.psm1')
             $script:CopyCalls[3].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Preflight.psm1')
+            $script:CopyCalls[4].Src | Should -Be (Join-Path 'C:\repo\scripts' 'Install.Docker.psm1')
+            $script:CopyCalls[4].Dst | Should -Be (Join-Path 'C:\bundle' 'Install.Docker.psm1')
         }
         It 'throws with the missing path when a source file is absent' {
             $missing = Join-Path 'C:\repo\scripts' 'Uninstall.ps1'

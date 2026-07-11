@@ -27,8 +27,10 @@ Describe 'scripts/Publish.ps1' {
         $script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Publish.ps1'
         $script:HelpersPath = Join-Path $PSScriptRoot '..\..\scripts\Publish.Helpers.psm1'
         $script:EnvModulePath = Join-Path $PSScriptRoot '..\..\scripts\Publish.Env.psm1'
+        $script:DockerModulePath = Join-Path $PSScriptRoot '..\..\scripts\Publish.Docker.psm1'
         Import-Module $script:HelpersPath -Force
         Import-Module $script:EnvModulePath -Force
+        Import-Module $script:DockerModulePath -Force
         # Shared call log. Use a mutable collection so Mock script blocks can
         # append via the same object reference without rebinding a local.
         $global:PublishTestCalls = [System.Collections.ArrayList]::new()
@@ -86,6 +88,7 @@ Describe 'scripts/Publish.ps1' {
             $entry = [pscustomobject]@{ Name = 'Copy-DockerArtifact'; Args = [pscustomobject]@{ RepoRoot = $RepoRoot; DockerBundleDir = $DockerBundleDir } }
             [void]$global:PublishTestCalls.Add($entry)
         }
+        Mock Invoke-PublishDockerStage { [void]$global:PublishTestCalls.Add([pscustomobject]@{ Name = 'Invoke-PublishDockerStage'; Args = [pscustomobject]@{ Version = $Version; BundleDockerDir = $BundleDockerDir } }) }
         Mock Invoke-VersionStamp {
             $entry = [pscustomobject]@{ Name = 'Invoke-VersionStamp'; Args = [pscustomobject]@{ Version = $Version } }
             [void]$global:PublishTestCalls.Add($entry)
@@ -185,6 +188,7 @@ Describe 'scripts/Publish.ps1' {
             $expectedPrefix = @(
                 'Invoke-DotnetPublish', 'Invoke-DotnetPublish', 'Invoke-DotnetPublish', 'Invoke-DotnetPublish',
                 'Copy-DockerArtifact',
+                'Invoke-PublishDockerStage',
                 'Invoke-LayoutAssembly', 'Invoke-VersionStamp', 'Invoke-MakePri', 'Invoke-MakeAppx',
                 'Copy-InstallScriptsIntoBundle',
                 'Write-PublishManifest'
