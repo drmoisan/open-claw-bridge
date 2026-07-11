@@ -67,3 +67,16 @@ comparison rather than a Terminal-vs-Test-Explorer one.
 Newest artifact set demonstrating this quirk (FAIL-verdict, Blocking + remediation-inputs,
 PowerShell-only minor-audit): `2026-07-10-container-validation-stray-v1-and-env-target-144/
 *.2026-07-11T00-45.md`.
+
+**Update (2026-07-11, re-audit R4, PASS-verdict artifacts `*.2026-07-11T09-15.md`):** after the
+`-Global` fix landed, re-running `Invoke-PoshQCTest` against the fixed HEAD produced a THIRD
+distinct result: 409 passed / 7 failed (reproduced twice), a different symptom and a different
+set of failing tests than either the pre-fix wrapper run (416/0) or the pre-fix standard-invocation
+run (414/2). A standard `Invoke-Pester -Configuration $config` call with identical effective
+settings against the same HEAD still passed 416/0. This confirms the wrapper's own invocation path
+is not a stable oracle for this test suite in either direction (it can both hide AND introduce
+apparent failures relative to a standard run) and reinforces the conclusion below: treat
+`.claude/rules/powershell.md`'s "Terminal and VS Code Test Explorer" parity requirement as the
+actual acceptance bar, and CI's literal command (`.github/workflows/ci.yml` — currently
+`Invoke-Pester -Path tests/scripts -Output Detailed -CI`) as the ground truth to reproduce
+independently, rather than accepting or rejecting based on the wrapper's count in either direction.
