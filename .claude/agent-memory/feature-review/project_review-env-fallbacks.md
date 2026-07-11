@@ -213,3 +213,16 @@ XML parsing. Full-feature work mode with `spec.md` + `user-story.md` carrying an
 files independently rather than assuming identity, but expect them to match. Newest validator-shaped
 PowerShell-only full-feature artifact template (all-PASS, zero MCP tools):
 `2026-07-10-deploy-wrapper-entry-point-139/*.2026-07-10T16-30.md`.
+
+#142 (2026-07-10, installer-docker-images-not-bundled, full-bug, PowerShell-only, 5 prod files via
+powershell-orchestrator): zero MCP tools again, but PR-context artifacts were PRESENT, fresh (head SHA
+matched), and correctly categorized (2nd correct PowerShell categorization; docs-only misclass remains
+C#-branch-specific). Executor's on-disk `artifacts/pester/powershell-coverage.xml` was fresh (mtime
+minutes before pr_context generation) and already included the new modules — no coverage re-run needed;
+all repo-wide/per-file/changed-line figures reproduced exactly via the #139 three-level JaCoCo parse.
+Changed-line technique: derive added-line numbers by parsing `git diff` hunk headers, then look up
+`//sourcefile/line[@nr]` — found one uncovered new line the executor's per-file prose did not surface
+(Install.ps1:113 import-catch arm; sibling pre-existing arms 99/106 equally uncovered → Minor per #128
+pattern-replication precedent). Autoclose noise recurred (`#SHA-256`/`#ISO-8601` + precedent numbers).
+Newest validator-shaped full-bug PowerShell template (all-PASS):
+`2026-07-10-installer-docker-images-not-bundled-142/*.2026-07-10T20-01.md`.
