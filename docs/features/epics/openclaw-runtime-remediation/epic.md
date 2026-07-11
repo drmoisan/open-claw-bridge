@@ -24,8 +24,8 @@ features:
   # issue_num values are placeholders authored before promotion and are back-filled
   # from each child's promotion receipt during fan-in. depends_on uses stable
   # feature_folder basenames.
-  - feature_folder: message-to-event-linkage
-    issue_num: 901
+  - feature_folder: 2026-07-11-message-to-event-linkage-146
+    issue_num: 146
     depends_on: []
   - feature_folder: installer-image-version-alignment
     issue_num: 902
