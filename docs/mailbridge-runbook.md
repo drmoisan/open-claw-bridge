@@ -19,7 +19,7 @@ Release builds now use `scripts/Publish.ps1` as the supported package-build entr
 - `OpenClaw.MailBridge.Client.exe` connects over the configured named pipe and returns JSON responses.
 - `OpenClaw.HostAdapter` exposes authenticated HTTP routes on the Windows host by shelling out to the client CLI. It is a required peer of the agent container path.
 - `OpenClaw.Core` runs in Docker Desktop, polls the HostAdapter, stores its own SQLite cache at `/data/openclaw.db`, and serves a local UI plus internal API on loopback only.
-- `openclaw-agent` is a required peer service when the container stack is deployed. It provides the operator dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` and the onboarding-produced gateway token is the only credential the dashboard accepts.
+- `openclaw-agent` is a required peer service when the container stack is deployed. It provides the operator dashboard (Control UI) at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/`. Operator authentication uses the onboarding-produced gateway token supplied via the `#token=` URL fragment or pasted in the Control UI settings; loading the root URL alone confirms only that the Control UI is served.
 
 ## Prerequisites
 
@@ -489,9 +489,9 @@ Expected behavior:
 - `Live` is expected when `/health/live` returns `200` with JSON status `live`.
 - `Ready` is expected when `/health/ready` returns `200` with JSON status `ready`, `sqliteReady=true`, and `hostAdapterReachable=true`.
 - `CoreStatus` is expected when `/api/status` returns `200`, reports ready dependencies, and includes cache count and bridge freshness diagnostics.
-- `AgentDashboard` is expected when `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` returns `200` with a response body.
+- `AgentDashboard` is expected when `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` returns `200` with a response body. This confirms the Control UI is served; it does not verify operator authentication, which requires the `#token=` URL fragment plus device pairing.
 - `AgentReadyz` is expected when `/readyz` returns `200`.
-- `HostAdapterInContainer` is expected when `docker compose exec openclaw-agent` returns HTTP `200` from `http://host.docker.internal:4319/v1/status` with the bind-mounted bearer token.
+- `HostAdapterInContainer` is expected when `docker compose exec openclaw-agent` returns HTTP `200` from `http://host.docker.internal:4319/status` with the bind-mounted bearer token.
 - `GatewayTokenPresence` is expected when `OPENCLAW_GATEWAY_TOKEN` is present and non-empty in the target `.env`.
 - If `OverallResult` is `Unexpected`, inspect the diagnostics table. For structured details, rerun the script with `-PassThru` and inspect `SupportingDiagnostics`.
 
@@ -619,7 +619,7 @@ The assistant configuration workspace is no longer bind-mounted from the host. T
 
 ### Connectivity verification
 
-Run the aggregated validation script. It performs container inspection, `/health/live`, `/health/ready`, `/api/status`, agent dashboard root reachability, `/readyz`, in-container HostAdapter reachability, `.env` token presence, and a live dashboard auth probe in a single pass and reports a single `OverallResult`.
+Run the aggregated validation script. It performs container inspection, `/health/live`, `/health/ready`, `/api/status`, agent dashboard root reachability (Control UI served, not an authentication check), `/readyz`, in-container HostAdapter reachability, `.env` token presence, and an in-container gateway-token presence check in a single pass and reports a single `OverallResult`.
 
 ```powershell
 pwsh -NoProfile -File scripts/Invoke-OpenClawContainerPathValidation.ps1 -PassThru
@@ -633,7 +633,11 @@ resolves to `http://127.0.0.1:8081`.
 
 ### Dashboard access
 
-The page served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` is the OpenClaw Gateway Dashboard. For this loopback-only deployment, `deploy/docker/openclaw-assistant/openclaw.json` sets `gateway.auth.mode` to `token` and references `${OPENCLAW_GATEWAY_TOKEN}` from `.env`. The token is produced by `scripts/Invoke-OpenClawAgentOnboarding.ps1` and written to the repository-root `.env`. The HostAdapter bearer token remains separate and is still used only for the agent's HTTP calls to `OpenClaw.HostAdapter`.
+The page served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` is the OpenClaw Control UI. For this loopback-only deployment, `deploy/docker/openclaw-assistant/openclaw.json` sets `gateway.auth.mode` to `token` and references `${OPENCLAW_GATEWAY_TOKEN}` from `.env`. The token is produced by `scripts/Invoke-OpenClawAgentOnboarding.ps1` and written to the repository-root `.env`. The HostAdapter bearer token remains separate and is still used only for the agent's HTTP calls to `OpenClaw.HostAdapter`.
+
+To authenticate as operator against the upstream OpenClaw 2026.6.11 build, either open `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/#token=<OPENCLAW_GATEWAY_TOKEN>` (token supplied in the URL fragment) or open the dashboard root and paste the token into the Control UI settings. Loading the root URL without the fragment or a pasted token confirms only that the Control UI is served; it does not complete operator authentication.
+
+**Device re-pair reset.** Operator sessions are bound to the agent via device pairing. When the `openclaw-agent` container is recreated (for example after an `OPENCLAW_AGENT_IMAGE` upgrade), the prior pairing no longer matches and the dashboard rejects the old session. To re-pair: run `openclaw devices clear` inside the agent container, clear the browser site data for the dashboard origin, then reopen the `#token=` fragment URL to establish a new pairing. Because `OPENCLAW_AGENT_IMAGE` tracks a floating upstream tag, the authentication flow can change across upgrades; re-check this procedure against the deployed image version after pulling a new upstream build.
 
 #### Onboarding parameter overrides
 

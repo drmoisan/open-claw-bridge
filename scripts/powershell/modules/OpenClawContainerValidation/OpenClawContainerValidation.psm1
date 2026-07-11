@@ -236,6 +236,46 @@ function Get-OpenClawEnvFileMap {
 
 <#
 .SYNOPSIS
+Compose the version-neutral deployed operator `.env` path
+(`%LOCALAPPDATA%\OpenClaw\operator-config\.env`) from a LocalAppData base.
+
+.DESCRIPTION
+Pure path composition. Performs no `Test-Path`/`Get-Content` call and touches
+no filesystem. Returns `$null` when `-LocalAppDataPath` is null or whitespace
+so callers can fall back without an ambiguous empty-path join.
+#>
+function Get-OpenClawOperatorEnvFilePath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param([string]$LocalAppDataPath = $env:LOCALAPPDATA)
+    if ([string]::IsNullOrWhiteSpace($LocalAppDataPath)) { return $null }
+    return Join-Path $LocalAppDataPath 'OpenClaw/operator-config/.env'
+}
+
+<#
+.SYNOPSIS
+Resolve the default `.env` path, preferring the deployed operator env file when
+it exists and falling back to the supplied fallback path otherwise.
+
+.DESCRIPTION
+When `-OperatorEnvFilePath` is null or whitespace, returns the fallback without
+probing the filesystem. Otherwise returns the operator path when it exists on
+disk and the fallback when it does not.
+#>
+function Resolve-OpenClawDefaultEnvFilePath {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [string]$OperatorEnvFilePath,
+        [Parameter(Mandatory = $true)][string]$FallbackEnvFilePath
+    )
+    if ([string]::IsNullOrWhiteSpace($OperatorEnvFilePath)) { return $FallbackEnvFilePath }
+    if (Test-Path -LiteralPath $OperatorEnvFilePath) { return $OperatorEnvFilePath }
+    return $FallbackEnvFilePath
+}
+
+<#
+.SYNOPSIS
 Probe GET `{AgentBaseUrl}/readyz` and return a probe result named `AgentReadyz`.
 #>
 function Invoke-OpenClawReadyzProbe {
@@ -279,7 +319,7 @@ function Invoke-OpenClawHostAdapterInContainerProbe {
         [Parameter(Mandatory = $true)][string]$DockerExecutablePath,
         [Parameter(Mandatory = $true)][string]$AgentContainerName
     )
-    $shellCommand = 'TOKEN=$(tr -d "\r\n" < /run/openclaw/hostadapter.token); curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://host.docker.internal:4319/v1/status'
+    $shellCommand = 'TOKEN=$(tr -d "\r\n" < /run/openclaw/hostadapter.token); curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $TOKEN" http://host.docker.internal:4319/status'
     $command = Invoke-OpenClawDockerCommand -ExecutablePath $DockerExecutablePath -CommandArguments @(
         'compose', 'exec', '-T', $AgentContainerName, 'sh', '-c', $shellCommand
     )
@@ -300,7 +340,7 @@ function Invoke-OpenClawHostAdapterInContainerProbe {
         -Category 'Container' `
         -Name 'HostAdapterInContainer' `
         -Target $AgentContainerName `
-        -ExpectedCondition 'docker compose exec against the agent container reports HTTP 200 for /v1/status with bearer token' `
+        -ExpectedCondition 'docker compose exec against the agent container reports HTTP 200 for /status with bearer token' `
         -IsExpected $isExpected `
         -Summary $summary `
         -Details @{
@@ -346,6 +386,54 @@ function Test-OpenClawGatewayTokenPresence {
     }
 }
 
+<#
+.SYNOPSIS
+Confirm `OPENCLAW_GATEWAY_TOKEN` is present and non-empty inside the running
+agent container by running `docker compose exec`. Returns a probe result named
+`GatewayTokenInContainer`.
+
+.DESCRIPTION
+This is distinct from the `.env`-file presence check (`Test-OpenClawGatewayTokenPresence`):
+it verifies the environment variable is actually populated inside the container,
+not just written to the operator `.env`. Routes through the same docker seam
+(`Invoke-OpenClawDockerCommand`) as the HostAdapter in-container probe. No
+WebSocket or device-pairing handshake is performed.
+#>
+function Test-OpenClawGatewayTokenInContainer {
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $true)][string]$DockerExecutablePath,
+        [Parameter(Mandatory = $true)][string]$AgentContainerName
+    )
+    $shellCommand = 'if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then echo present; else echo absent; fi'
+    $command = Invoke-OpenClawDockerCommand -ExecutablePath $DockerExecutablePath -CommandArguments @(
+        'compose', 'exec', '-T', $AgentContainerName, 'sh', '-c', $shellCommand
+    )
+    $output = ([string](@($command.Output) -join ' ')).Trim()
+    $isExpected = $command.Succeeded -and $output -eq 'present'
+    $summary = if ($isExpected) {
+        'Expected: OPENCLAW_GATEWAY_TOKEN is present and non-empty inside the agent container.'
+    }
+    elseif (-not $command.Succeeded) {
+        "Unexpected: docker exec failed with exit code $($command.ExitCode) while probing the in-container gateway token."
+    }
+    else {
+        'Unexpected: OPENCLAW_GATEWAY_TOKEN is missing or empty inside the agent container.'
+    }
+    return Get-OpenClawValidationResult `
+        -Category 'Container' `
+        -Name 'GatewayTokenInContainer' `
+        -Target $AgentContainerName `
+        -ExpectedCondition 'OPENCLAW_GATEWAY_TOKEN is present and non-empty inside the running agent container (checked via docker exec), distinct from the .env-file presence check' `
+        -IsExpected $isExpected `
+        -Summary $summary `
+        -Details @{
+        dockerExitCode = $command.ExitCode
+        probeResult    = $output
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-OpenClawEndpointUri',
     'Get-OpenClawPropertyValue',
@@ -355,7 +443,10 @@ Export-ModuleMember -Function @(
     'Get-OpenClawValidationResult',
     'Invoke-OpenClawDockerCommand',
     'Get-OpenClawEnvFileMap',
+    'Get-OpenClawOperatorEnvFilePath',
+    'Resolve-OpenClawDefaultEnvFilePath',
     'Invoke-OpenClawReadyzProbe',
     'Invoke-OpenClawHostAdapterInContainerProbe',
-    'Test-OpenClawGatewayTokenPresence'
+    'Test-OpenClawGatewayTokenPresence',
+    'Test-OpenClawGatewayTokenInContainer'
 )

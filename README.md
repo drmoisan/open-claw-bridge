@@ -663,7 +663,7 @@ The container stack includes `openclaw-agent`, a required peer service that prov
 
 The agent image is built locally from the upstream `ghcr.io/openclaw/openclaw:latest` runtime (published at the [GitHub Container Registry](https://github.com/openclaw/openclaw/pkgs/container/openclaw)). Set `OPENCLAW_AGENT_IMAGE` in your `.env` file if you wish to pin the upstream base image to a specific version tag.
 
-**First-run onboarding.** Before starting the stack the first time, run `scripts/Invoke-OpenClawAgentOnboarding.ps1`. The script executes the upstream `openclaw onboard` command inside a throwaway container, captures the generated `OPENCLAW_GATEWAY_TOKEN`, and writes it to the repository-root `.env`. The dashboard will not accept any other credential; no placeholder default is shipped.
+**First-run onboarding.** Before starting the stack the first time, run `scripts/Invoke-OpenClawAgentOnboarding.ps1`. The script executes the upstream `openclaw onboard` command inside a throwaway container, captures the generated `OPENCLAW_GATEWAY_TOKEN`, and writes it to the repository-root `.env`. No placeholder default is shipped, so you must complete onboarding before the dashboard can be reached with a valid token.
 
 ```powershell
 pwsh -NoProfile -File scripts/Invoke-OpenClawAgentOnboarding.ps1
@@ -703,9 +703,16 @@ When `-CoreBaseUrl` is omitted, the validation script reads
 `OPENCLAW_HTTP_PORT` from `-EnvFilePath` (default `./.env`). For example,
 `OPENCLAW_HTTP_PORT=8081` validates Core at `http://127.0.0.1:8081`.
 
-The dashboard at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` authenticates against the `OPENCLAW_GATEWAY_TOKEN` in `.env` produced by the onboarding script. Open the URL after the container is healthy; the dashboard reads the token without an operator paste step.
+The dashboard (OpenClaw Control UI) is served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/`. Operator authentication uses the onboarding-produced `OPENCLAW_GATEWAY_TOKEN`. To authenticate against the upstream OpenClaw 2026.6.11 build, either:
 
-Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`. Pin to a specific version tag in `.env` for reproducible deployments of the local wrapper image.
+- open `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/#token=<OPENCLAW_GATEWAY_TOKEN>` (the token is supplied in the URL fragment), or
+- open the dashboard root and paste the token into the Control UI settings.
+
+Loading the root URL without the `#token=` fragment or a pasted token confirms only that the Control UI is served; it does not complete operator authentication.
+
+**Device re-pair reset.** Operator sessions are bound to the agent via device pairing. When the `openclaw-agent` container is recreated (for example after an image upgrade), the previous pairing no longer matches and the dashboard rejects the old session. To re-pair: run `openclaw devices clear` inside the agent container, clear the browser site data for the dashboard origin, then reopen the `#token=` fragment URL to establish a new pairing.
+
+Note: `OPENCLAW_AGENT_IMAGE` defaults to `ghcr.io/openclaw/openclaw:latest`, a floating upstream tag. Pin to a specific version tag in `.env` for reproducible deployments of the local wrapper image. Because the tag floats, the dashboard authentication flow can change across upgrades; re-check this procedure against the deployed image version after pulling a new upstream build.
 
 ## Start, Stop, And Restart OpenClaw Services
 

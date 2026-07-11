@@ -75,6 +75,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                         '[{"Name":"/openclaw-agent","Config":{"Image":"openclaw/agent:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'
                         return
                     }
+                    'OPENCLAW_GATEWAY_TOKEN' { $global:LASTEXITCODE = 0; 'present'; return }
                     'compose exec' { '200'; return }
                     default {
                         $global:LASTEXITCODE = 1
@@ -96,8 +97,9 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         $result.AgentDashboard.IsExpected | Should -BeTrue
         $result.AgentReadyz.IsExpected | Should -BeTrue
         $result.HostAdapterInContainer.IsExpected | Should -BeTrue
+        $result.GatewayTokenInContainer.IsExpected | Should -BeTrue
         $result.GatewayTokenPresence.IsExpected | Should -BeTrue
-        @($result.SupportingDiagnostics).Count | Should -Be 14
+        @($result.SupportingDiagnostics).Count | Should -Be 15
         @($script:DockerRequests) | Should -Contain 'container inspect openclaw-core'
         @($script:DockerRequests) | Should -Contain 'container inspect openclaw-agent'
     }
@@ -145,6 +147,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                     '^version --format' { '25.0.0'; return }
                     'container inspect openclaw-core' { '[{"Name":"/openclaw-core","Config":{"Image":"openclaw/core:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'; return }
                     'container inspect openclaw-agent' { '[{"Name":"/openclaw-agent","Config":{"Image":"openclaw/agent:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'; return }
+                    'OPENCLAW_GATEWAY_TOKEN' { $global:LASTEXITCODE = 0; 'present'; return }
                     'compose exec' { '200'; return }
                     default { $global:LASTEXITCODE = 1; "Unexpected: $commandLine" }
                 }
@@ -348,6 +351,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
                     '^version --format' { '25.0.0'; return }
                     'container inspect openclaw-core' { '[{"Name":"/openclaw-core","Config":{"Image":"openclaw/core:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'; return }
                     'container inspect openclaw-agent' { '[{"Name":"/openclaw-agent","Config":{"Image":"openclaw/agent:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'; return }
+                    'OPENCLAW_GATEWAY_TOKEN' { $global:LASTEXITCODE = 0; 'present'; return }
                     'compose exec' { '200'; return }
                     default { $global:LASTEXITCODE = 1; "Unexpected: $commandLine" }
                 }
@@ -357,6 +361,6 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1' {
         $result = $json | ConvertFrom-Json
 
         $result.OverallResult | Should -Be 'Expected'
-        $result.SupportingDiagnostics.Count | Should -Be 14
+        $result.SupportingDiagnostics.Count | Should -Be 15
     }
 }
