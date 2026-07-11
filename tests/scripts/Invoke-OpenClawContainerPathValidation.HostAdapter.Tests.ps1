@@ -57,7 +57,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                         '[{"Name":"/openclaw-agent","Config":{"Image":"openclaw/agent:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'
                         return
                     }
-                    'exec.*openclaw-agent.*v1/status' {
+                    'exec.*openclaw-agent.*[^v]status' {
                         '200'
                         return
                     }
@@ -74,6 +74,10 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
         $execRequest = @($script:DockerRequests | Where-Object { $_ -like '*compose exec*' })[0]
         $execRequest | Should -Match 'tr -d'
         $execRequest | Should -Match 'hostadapter\.token'
+        $execRequest | Should -Not -Match '/v1/'
+        $execRequest | Should -Match '/status'
+        $probe.ExpectedCondition | Should -Match '/status'
+        $probe.ExpectedCondition | Should -Not -Match '/v1'
     }
 
     It 'HostAdapterInContainer probe reports Unexpected when docker exec returns non-200' -Tag 'ExpectFail-Phase5' {
@@ -109,7 +113,7 @@ Describe 'Invoke-OpenClawContainerPathValidation.ps1 (HostAdapterInContainer pro
                         '[{"Name":"/openclaw-agent","Config":{"Image":"openclaw/agent:pre-mvp"},"State":{"Status":"running","Running":true,"Health":{"Status":"healthy"}}}]'
                         return
                     }
-                    'exec.*openclaw-agent.*v1/status' { '500'; return }
+                    'exec.*openclaw-agent.*[^v]status' { '500'; return }
                     default {
                         $global:LASTEXITCODE = 1
                         "Unexpected docker command: $commandLine"

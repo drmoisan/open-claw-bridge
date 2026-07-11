@@ -226,3 +226,17 @@ Changed-line technique: derive added-line numbers by parsing `git diff` hunk hea
 pattern-replication precedent). Autoclose noise recurred (`#SHA-256`/`#ISO-8601` + precedent numbers).
 Newest validator-shaped full-bug PowerShell template (all-PASS):
 `2026-07-10-installer-docker-images-not-bundled-142/*.2026-07-10T20-01.md`.
+
+#144 (2026-07-10/11, container-validation-stray-v1-and-env-target, minor-audit, PowerShell-only):
+zero MCP tools available (same as #135/#137/#139); PR-context artifacts present and fresh (head SHA
+matched). First review to discover that `Invoke-PoshQCTest`'s own invocation path can mask a REAL,
+deterministic test failure distinct from the already-known bundled-runsettings coverage defect —
+see [[poshqc-test-wrapper-masks-mock-scope-bugs]] for the full mechanism (nested Import-Module
+missing `-Global` in a shared test fixture, combined with an unscoped `Mock` against a
+different-module's exported function). This is the FIRST review to independently re-run new test
+files via a completely plain `Invoke-Pester` (no coverage, no wrapper) specifically to
+cross-validate the MCP-wrapper's pass/fail claim rather than only its coverage numbers — do this
+going forward whenever a new test file introduces an unscoped `Mock <FunctionName>` pattern.
+First FAIL-verdict (Blocking + remediation-inputs) artifact set for a `minor-audit` work mode in
+this repo. Newest validator-shaped PowerShell-only minor-audit template (FAIL-verdict):
+`2026-07-10-container-validation-stray-v1-and-env-target-144/*.2026-07-11T00-45.md`.

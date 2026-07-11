@@ -3,3 +3,4 @@
 - [Review env fallbacks](project_review-env-fallbacks.md) — MCP template/validator tools and `dotnet tool restore` unavailable; latest artifact template #120; global csharpier; git-based PR-context regen when artifacts absent
 - [T1/T2 property-test gate](project_t2-property-test-gate.md) — CsCheck present in OpenClaw.Core.Tests (expect real property tests there); elsewhere closable via directed deterministic invariant tests + dated decision record (#18 precedent)
 - [CloudSync/Agent boundary seam](project_cloudsync-agent-boundary-seam.md) — CloudSync must never depend on OpenClaw.Core.Agent; #124 precedent is a bare-OpenClaw.Core port + composition-root adapter
+- [PoshQC test-wrapper masks Mock-scope bugs](project_poshqc-test-wrapper-masks-mock-scope-bugs.md) — Invoke-PoshQCTest's own invocation path can hide a real, deterministic unscoped-Mock/nested-import failure (#144); always cross-check new tests with plain Invoke-Pester

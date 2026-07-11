@@ -35,7 +35,7 @@ function Import-OpenClawContainerValidationModule {
     )
 
     $modulePath = Join-Path (Resolve-Path (Join-Path $TestsRoot '..\..')).Path 'scripts\powershell\modules\OpenClawContainerValidation\OpenClawContainerValidation.psd1'
-    Import-Module -Name $modulePath -Force -ErrorAction Stop
+    Import-Module -Name $modulePath -Force -Global -ErrorAction Stop
 }
 
 function Get-ContainerValidationScriptPath {

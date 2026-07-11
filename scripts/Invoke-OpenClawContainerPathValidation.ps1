@@ -30,7 +30,7 @@ param(
     [string]$DockerPath = 'docker',
     [ValidateRange(1, 300)]
     [int]$TimeoutSeconds = 10,
-    [string]$EnvFilePath = './.env',
+    [string]$EnvFilePath,
     [switch]$PassThru,
     [switch]$AsJson
 )
@@ -233,11 +233,21 @@ function Invoke-OpenClawAgentDashboardEndpointValidation {
     $request = Invoke-OpenClawEndpointRequest -Uri $Uri -TimeoutSeconds $TimeoutSeconds
     $hasBody = -not [string]::IsNullOrWhiteSpace($request.BodyPreview)
     $isExpected = $request.RequestSucceeded -and $request.HttpStatusCode -eq 200 -and $hasBody
-    $summary = if ($isExpected) { 'Expected: agent dashboard root returned HTTP 200 with a response body.' } else { 'Unexpected: agent dashboard root did not return HTTP 200 with a response body.' }
+    $summary = if ($isExpected) {
+        'Expected: agent dashboard root returned HTTP 200 with a response body, confirming the Control UI is served. This does not verify that an operator is signed in (which requires the #token= URL fragment plus device pairing).'
+    }
+    else {
+        'Unexpected: agent dashboard root did not return HTTP 200 with a response body, so the Control UI could not be confirmed as served.'
+    }
     return Get-OpenClawValidationResult -Name 'AgentDashboard' -Uri $Uri `
-        -ExpectedCondition 'HTTP 200 with a non-empty response body' `
+        -ExpectedCondition 'HTTP 200 with a non-empty response body confirms the Control UI is served; it does not verify that an operator is signed in (which requires the #token= URL fragment plus device pairing)' `
         -Request $request -IsExpected $isExpected -Summary $summary `
         -Details @{ hasBody = $hasBody }
+}
+
+if ([string]::IsNullOrWhiteSpace($EnvFilePath)) {
+    $operatorEnvFilePath = Get-OpenClawOperatorEnvFilePath
+    $EnvFilePath = Resolve-OpenClawDefaultEnvFilePath -OperatorEnvFilePath $operatorEnvFilePath -FallbackEnvFilePath './.env'
 }
 
 if ($null -eq $CoreBaseUrl) {
@@ -257,29 +267,31 @@ $containerDiagnostics = @(
     Invoke-OpenClawContainerValidation -DockerExecutablePath $DockerPath -ContainerName $AgentContainerName -DisplayName 'Agent'
 )
 $hostAdapterProbe = Invoke-OpenClawHostAdapterInContainerProbe -DockerExecutablePath $DockerPath -AgentContainerName $AgentContainerName
+$gatewayTokenInContainer = Test-OpenClawGatewayTokenInContainer -DockerExecutablePath $DockerPath -AgentContainerName $AgentContainerName
 $endpointDiagnostics = @($live, $ready, $coreStatus, $agentDashboard, $agentReadyz, $tokenPresence)
-$supportingDiagnostics = @($dockerEngine) + $containerDiagnostics + @($hostAdapterProbe) + $endpointDiagnostics
+$supportingDiagnostics = @($dockerEngine) + $containerDiagnostics + @($hostAdapterProbe, $gatewayTokenInContainer) + $endpointDiagnostics
 $isExpected = -not [bool]($supportingDiagnostics | Where-Object { -not $_.IsExpected })
 $result = [pscustomobject]@{
-    OverallResult          = if ($isExpected) { 'Expected' } else { 'Unexpected' }
-    IsExpected             = $isExpected
-    CheckedAtUtc           = (Get-Date).ToUniversalTime().ToString('o')
-    CoreBaseUrl            = [string]$CoreBaseUrl
-    AgentBaseUrl           = [string]$AgentBaseUrl
-    CoreContainerName      = $CoreContainerName
-    AgentContainerName     = $AgentContainerName
-    EnvFilePath            = $EnvFilePath
-    DockerEngine           = $dockerEngine
-    ContainerDiagnostics   = $containerDiagnostics
-    EndpointDiagnostics    = $endpointDiagnostics
-    Live                   = $live
-    Ready                  = $ready
-    CoreStatus             = $coreStatus
-    AgentDashboard         = $agentDashboard
-    AgentReadyz            = $agentReadyz
-    HostAdapterInContainer = $hostAdapterProbe
-    GatewayTokenPresence   = $tokenPresence
-    SupportingDiagnostics  = $supportingDiagnostics
+    OverallResult           = if ($isExpected) { 'Expected' } else { 'Unexpected' }
+    IsExpected              = $isExpected
+    CheckedAtUtc            = (Get-Date).ToUniversalTime().ToString('o')
+    CoreBaseUrl             = [string]$CoreBaseUrl
+    AgentBaseUrl            = [string]$AgentBaseUrl
+    CoreContainerName       = $CoreContainerName
+    AgentContainerName      = $AgentContainerName
+    EnvFilePath             = $EnvFilePath
+    DockerEngine            = $dockerEngine
+    ContainerDiagnostics    = $containerDiagnostics
+    EndpointDiagnostics     = $endpointDiagnostics
+    Live                    = $live
+    Ready                   = $ready
+    CoreStatus              = $coreStatus
+    AgentDashboard          = $agentDashboard
+    AgentReadyz             = $agentReadyz
+    HostAdapterInContainer  = $hostAdapterProbe
+    GatewayTokenInContainer = $gatewayTokenInContainer
+    GatewayTokenPresence    = $tokenPresence
+    SupportingDiagnostics   = $supportingDiagnostics
 }
 
 if ($AsJson) {
@@ -296,5 +308,6 @@ else {
         Select-Object Category, Name, IsExpected, HttpStatusCode, Summary |
             Format-Table -AutoSize
 }
+
 
 

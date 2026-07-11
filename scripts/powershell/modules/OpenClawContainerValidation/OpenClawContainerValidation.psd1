@@ -16,9 +16,12 @@
         'Get-OpenClawValidationResult',
         'Invoke-OpenClawDockerCommand',
         'Get-OpenClawEnvFileMap',
+        'Get-OpenClawOperatorEnvFilePath',
+        'Resolve-OpenClawDefaultEnvFilePath',
         'Invoke-OpenClawReadyzProbe',
         'Invoke-OpenClawHostAdapterInContainerProbe',
-        'Test-OpenClawGatewayTokenPresence'
+        'Test-OpenClawGatewayTokenPresence',
+        'Test-OpenClawGatewayTokenInContainer'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()
