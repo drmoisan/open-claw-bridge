@@ -27,12 +27,12 @@ features:
   - feature_folder: 2026-07-11-message-to-event-linkage-146
     issue_num: 146
     depends_on: []
-  - feature_folder: installer-image-version-alignment
-    issue_num: 902
+  - feature_folder: 2026-07-11-installer-image-version-alignment-147
+    issue_num: 147
     depends_on: []
   - feature_folder: 2026-07-11-admin-access-automation-148
     issue_num: 148
-    depends_on: [installer-image-version-alignment]
+    depends_on: [147]
 ---
 
 # Epic: OpenClaw Runtime Remediation
