@@ -30,8 +30,8 @@ features:
   - feature_folder: installer-image-version-alignment
     issue_num: 902
     depends_on: []
-  - feature_folder: admin-access-automation
-    issue_num: 903
+  - feature_folder: 2026-07-11-admin-access-automation-148
+    issue_num: 148
     depends_on: [installer-image-version-alignment]
 ---
 
