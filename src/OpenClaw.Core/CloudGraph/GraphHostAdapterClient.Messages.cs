@@ -50,6 +50,34 @@ internal sealed partial class GraphHostAdapterClient
     }
 
     /// <summary>
+    /// Resolves the calendar event linked to a message (issue #146). Message-to-event linkage is a
+    /// bridge-cache concept (a stored <c>GlobalAppointmentID</c> joined to the cached events) with no
+    /// equivalent single Graph round-trip on this read path. To preserve the graceful-degradation
+    /// contract shared with <see cref="HostAdapterHttpClient"/> — an unlinked message must resolve to
+    /// a clean <see langword="null"/>, never an error — the cloud client returns a structurally valid
+    /// <c>ok:true</c> / <c>data:null</c> envelope rather than a <c>NOT_SUPPORTED</c> error, so the
+    /// scheduling pipeline degrades to its calendar-view fallback exactly as it does today.
+    /// </summary>
+    public Task<ApiEnvelope<EventDto>> GetEventForMessageAsync(
+        string bridgeId,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        _ = bridgeId;
+        _ = cancellationToken;
+        var resolvedRequestId = ResolveRequestId(requestId);
+        return Task.FromResult(
+            new ApiEnvelope<EventDto>(
+                true,
+                null,
+                new ApiMeta(resolvedRequestId, GraphRequestExecutor.AdapterVersion, null),
+                null
+            )
+        );
+    }
+
+    /// <summary>
     /// Lists meeting-request messages: the same server query as
     /// <see cref="ListMessagesAsync"/> (Graph has no dedicated meeting-requests
     /// collection) with the D10 client-side filter

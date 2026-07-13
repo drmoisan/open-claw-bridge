@@ -21,6 +21,7 @@
       "mcp__drm-copilot__new_active_feature_folder",
       "mcp__drm-copilot__validate_orchestration_artifacts",
       "mcp__drm-copilot__resolve_atomic_plan_prompt",
+      "mcp__drm-copilot__render_subagent_tree",
       "Agent(atomic-planner)",
       "Agent(atomic-executor)",
       "Agent(feature-review)",
@@ -37,7 +38,11 @@
       "Agent(csharp-typed-engineer)",
       "Agent(typescript-engineer)",
       "Agent(epic-orchestrator)",
+      "Agent(epic-planner)",
       "Skill(orchestrate *)",
+      "Skill(epic-plan *)",
+      "Skill(epic-orchestrate *)",
+      "Skill(epic-run *)",
       "Skill(commit-message *)",
       "Skill(pr-author *)",
       "Skill(research-issue *)",
@@ -54,6 +59,8 @@
       "Skill(invoke-powershell-engineer *)",
       "Skill(translate-copilot-to-claude *)",
       "Skill(execute-hard-lock *)",
+      "Skill(identify-session-id *)",
+      "Skill(show-my-agent-tree *)",
       "Edit(/.claude/skills/execute-hard-lock/**)",
       "Edit(/.claude/skills/feature-review-workflow/**)",
       "Edit(/.claude/skills/csharp-qa-gate/**)"
@@ -70,6 +77,16 @@
     ]
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/persist-session-id.ps1"
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Bash",
@@ -159,13 +176,17 @@
           {
             "type": "command",
             "command": "pwsh -NoProfile -File .claude/hooks/enforce-model-routing-receipt.ps1"
+          },
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File .claude/hooks/enforce-epic-invocation-origin.ps1"
           }
         ]
       }
     ],
     "SubagentStop": [
       {
-        "matcher": "atomic-planner|atomic-executor|feature-review|task-researcher|prd-feature|staged-review|epic-review|status-updater|python-typed-engineer|powershell-typed-engineer|csharp-typed-engineer|typescript-engineer|orchestrator|epic-orchestrator",
+        "matcher": "atomic-planner|atomic-executor|feature-review|task-researcher|prd-feature|staged-review|epic-review|status-updater|python-typed-engineer|powershell-typed-engineer|csharp-typed-engineer|typescript-engineer|orchestrator|epic-orchestrator|epic-planner",
         "hooks": [
           {
             "type": "command",

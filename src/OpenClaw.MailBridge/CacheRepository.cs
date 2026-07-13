@@ -32,6 +32,14 @@ internal interface IBridgeRepository : IScanStateRepository
         int limit
     );
     Task<EventDto?> GetEventAsync(string bridgeId);
+
+    /// <summary>Resolves the calendar event linked to a message (issue #146); see the implementation
+    /// in <c>CacheRepository.EventForMessage.cs</c> for the full contract and null semantics.</summary>
+    Task<EventDto?> GetEventForMessageAsync(
+        string messageBridgeId,
+        CancellationToken cancellationToken = default
+    );
+
     Task<ScanStateSnapshot> GetScanStateSnapshotAsync();
 }
 
@@ -131,12 +139,14 @@ INSERT INTO messages(
     bridge_id, entry_id, store_id, item_kind, subject, received_utc, sent_utc, importance,
     sensitivity, unread, has_attachments, message_class, sender_name, sender_email, to_json,
     cc_json, body_preview, protected_fields_available, is_redacted, last_seen_utc,
-    sender_email_resolved, from_email_address, conversation_id, meeting_message_type
+    sender_email_resolved, from_email_address, conversation_id, meeting_message_type,
+    linked_global_appointment_id
 ) VALUES(
     $bridge_id, $entry_id, $store_id, $item_kind, $subject, $received_utc, $sent_utc, $importance,
     $sensitivity, $unread, $has_attachments, $message_class, $sender_name, $sender_email, $to_json,
     $cc_json, $body_preview, $protected_fields_available, $is_redacted, $last_seen_utc,
-    $sender_email_resolved, $from_email_address, $conversation_id, $meeting_message_type
+    $sender_email_resolved, $from_email_address, $conversation_id, $meeting_message_type,
+    $linked_global_appointment_id
 )
 ON CONFLICT(bridge_id) DO UPDATE SET
     entry_id = excluded.entry_id,
@@ -161,7 +171,8 @@ ON CONFLICT(bridge_id) DO UPDATE SET
     sender_email_resolved = excluded.sender_email_resolved,
     from_email_address = excluded.from_email_address,
     conversation_id = excluded.conversation_id,
-    meeting_message_type = excluded.meeting_message_type;";
+    meeting_message_type = excluded.meeting_message_type,
+    linked_global_appointment_id = excluded.linked_global_appointment_id;";
 
         AddMessageParameters(cmd, entryId, storeId, message);
         await cmd.ExecuteNonQueryAsync();
@@ -407,6 +418,10 @@ LIMIT $limit;";
             (object?)message.ConversationId ?? DBNull.Value
         );
         cmd.Parameters.AddWithValue("$meeting_message_type", ToDbValue(message.MeetingMessageType));
+        cmd.Parameters.AddWithValue(
+            "$linked_global_appointment_id",
+            (object?)message.LinkedGlobalAppointmentId ?? DBNull.Value
+        );
     }
 
     private static void AddEventParameters(

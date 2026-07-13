@@ -6,7 +6,17 @@ argument-hint: "[objective]"
 
 # Orchestrate Skill
 
-This skill frames work for the already-active main session, which serves as the orchestrator runtime for end-to-end feature or bug delivery.
+This skill frames work for the already-active main session, which serves as the orchestrator runtime for end-to-end feature or bug delivery. Orchestration deliberately stays in the main session on user invocation (`/orchestrate <objective>`); the same procedure governs a delegated `Agent(orchestrator)` run from `epic-planner` or `epic-orchestrator`.
+
+## Invocation Argument
+
+When invoked as `/orchestrate`, the orchestration objective is:
+
+$ARGUMENTS
+
+A delegated `Agent(orchestrator)` run receives its objective in the delegation prompt instead.
+
+Perform the scale assessment first: if the objective is epic-scale (names an epic manifest or requires multiple independently mergeable features), stop before any delegation and direct the user to `/epic-plan` (planning) or `/epic-run` (executing a prepared epic), per `## Change Budget Routing` in `.claude/agents/orchestrator.md`.
 
 ## Prerequisites
 
@@ -77,9 +87,18 @@ After reading `artifacts/orchestration/orchestrator-state.json`, the main sessio
 
 The orchestrator does not perform deep implementation itself. It coordinates, tracks state, and enforces completion.
 
+## Preparation Mode
+
+A delegation prompt carrying the literal marker `Preparation mode: true` (issued by `epic-planner` per the `.claude/skills/epic-plan/SKILL.md` kickoff line) scopes the run to planning only:
+
+- **Route.** Select `route_id: preparation`. The route's routing-matrix entry requires receipts for `task-researcher`, `prd-feature`, `atomic-planner`, and `atomic-executor`; the skills `orchestrate`, `feature-promotion-lifecycle`, and `atomic-plan-contract`; and the promotion plus validator MCP tools.
+- **Scope.** Run promotion (MCP surface), research, feature documents (`spec.md`, `user-story.md`), atomic planning, and the atomic-executor preflight (precondition validation only, R2 semantics: iterate plan revisions until `PREFLIGHT: ALL CLEAR`). Atomic execution, PR authoring, CI monitoring, and feature review are out of scope and are executed later by `epic-orchestrator`.
+- **Terminal checkpoint.** Stop with `completed_steps` containing `S3_promotion` and `S4_atomic_planning`, `next_step: "S5_atomic_execution"`, out-of-scope step statuses set to `not-applicable`, and `blocked_reason: "none"`. Do NOT assert completion (`next_step: "complete"`, `S12_complete`, or a `completed` step8/9/10 status): the run has no PR or CI evidence, and the route's `requires_ci_gate: false` exempts it from `ci_gate` at the completion validator instead.
+- **Commit.** Commit the prepared feature folder and plan to the current branch (the worktree branch created off the epic integration branch) before stopping, and report the `plan-path` and preflight status in the final output.
+
 ## Model Selection
 
-Model selection is a second axis, strictly separate from `route`. `route` (`small | large | remediation | epic`) is deterministic and file-count driven; it governs `required_agents`, `required_skills`, and `required_mcp_tools` only. `route` is NOT an input to model selection anywhere. The sole feature-level input to the delegation model tier is a judgment-based `complexity_band` (`C1 | C2 | C3 | C4`). The authoritative values live in the `model_policy` block of `config/orchestration-routing.json`.
+Model selection is a second axis, strictly separate from `route`. `route` (`small | large | remediation | preparation | epic`) is deterministic — file-count driven for `small`/`large`, marker-driven for `preparation` (the `Preparation mode: true` kickoff line) and `epic`; it governs `required_agents`, `required_skills`, and `required_mcp_tools` only. `route` is NOT an input to model selection anywhere. The sole feature-level input to the delegation model tier is a judgment-based `complexity_band` (`C1 | C2 | C3 | C4`). The authoritative values live in the `model_policy` block of `config/orchestration-routing.json`.
 
 The two canonical, tested reference implementations express the formulas the orchestrator applies by judgment:
 

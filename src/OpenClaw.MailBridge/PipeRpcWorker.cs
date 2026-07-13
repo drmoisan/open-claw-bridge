@@ -10,7 +10,7 @@ using OpenClaw.MailBridge.Contracts.Models;
 
 namespace OpenClaw.MailBridge;
 
-internal sealed class PipeRpcWorker(
+internal sealed partial class PipeRpcWorker(
     BridgeSettings settings,
     BridgeStateStore state,
     IBridgeRepository repo,
@@ -212,6 +212,7 @@ internal sealed class PipeRpcWorker(
                 BridgeMethods.GetMessage => await HandleGetMessageAsync(req),
                 BridgeMethods.ListCalendarWindow => await HandleListCalendarWindowAsync(req),
                 BridgeMethods.GetEvent => await HandleGetEventAsync(req),
+                BridgeMethods.GetEventForMessage => await HandleGetEventForMessageAsync(req),
                 BridgeMethods.SendMail => await HandleSendMailAsync(req),
                 _ => RpcResponse.Failure(
                     req.Id,

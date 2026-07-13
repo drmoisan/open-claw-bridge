@@ -32,5 +32,16 @@
         ]
       }
     ]
+  },
+  "plugins": {
+    "entries": {
+      "firecrawl": {
+        "config": {
+          "webSearch": {
+            "apiKey": "${WEB_SEARCH_API_KEY}"
+          }
+        }
+      }
+    }
   }
 }

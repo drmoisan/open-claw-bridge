@@ -172,6 +172,37 @@ public sealed class SchedulingWorkerFallbackTests
     }
 
     [TestMethod]
+    public async Task RunCycle_LinkedHit_SkipsCalendarViewWindowFallback()
+    {
+        // Arrange: the direct linkage lookup resolves the event (issue #146), so the calendar-view
+        // window fallback must be skipped entirely.
+        var linked = WindowEvent(subject: "Project sync planning");
+        var service = ServiceWithLookupMiss(Array.Empty<SchedulingEventDto>());
+        service
+            .Setup(s => s.GetEventForMessageAsync("msg-1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(linked);
+        var worker = Worker(service, Options());
+
+        // Act
+        await worker.RunSchedulingCycleAsync(CancellationToken.None);
+
+        // Assert: the linkage lookup ran and the window fallback was never consulted.
+        service.Verify(
+            s => s.GetEventForMessageAsync("msg-1", It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+        service.Verify(
+            s =>
+                s.GetCalendarViewAsync(
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<DateTimeOffset>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [TestMethod]
     public async Task RunCycle_LookupMiss_FetchesCalendarViewFromNowToNowPlusFourteenDays()
     {
         // Arrange: direct lookup misses; the default fallback window is 14 days.

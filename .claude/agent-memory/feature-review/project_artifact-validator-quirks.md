@@ -45,3 +45,49 @@ variants that the parser rejects.
 
 Validate each artifact immediately after writing per the [[feature-review-workflow]] contract so
 these are caught one at a time.
+
+**Ground-truth validator source (found 2026-07-12, issue #147 restructure):** the actual
+policy-audit contract lives in the sibling `drm-copilot` repo, not just in bundled templates or
+precedent artifacts:
+- `C:\Users\DanMoisan\repos\drm-copilot\scripts\dev_tools\validate_policy_audit_artifact.py`
+  (canonical Python implementation, plain functions, no dependencies — importable and runnable
+  directly with `python -c "import sys; sys.path.insert(0, r'...\drm-copilot\scripts\dev_tools');
+  import validate_policy_audit_artifact as v; print(v.validate_policy_audit_text(text))"`).
+- `C:\Users\DanMoisan\repos\drm-copilot\extensions\drm-copilot\src\lib\validate\policy-audit-artifact.ts`
+  is a byte-identical TS port of the above (same error strings).
+When the `mcp__drm-copilot__validate_orchestration_artifacts` tool is not exposed as a callable
+function in the current agent's tool list (as opposed to merely erroring at runtime), running the
+Python module directly against the artifact text is a reliable substitute for self-verification —
+it is the actual source of truth, not an approximation.
+
+**Exact required policy-audit headings (must appear as literal substrings, in any order):**
+`## Executive Summary`, `## 1. General Unit Test Policy Compliance`,
+`## 2. General Code Change Policy Compliance`,
+`## 3. Language-Specific Code Change Policy Compliance`,
+`## 4. Language-Specific Unit Test Policy Compliance`, `## 5. Test Coverage Detail`,
+`## 6. Test Execution Metrics`, `## 7. Code Quality Checks`, `## 8. Gaps and Exceptions`,
+`## 9. Summary of Changes`, `## 10. Compliance Verdict`, `## Appendix A: Test Inventory`,
+`## Appendix B: Toolchain Commands Reference`. Prior precedent artifacts in this repo (e.g.
+`2026-07-10-installer-docker-images-not-bundled-142`, `2026-07-10-container-validation-stray-v1-and-env-target-144`)
+do NOT contain this full numbered set and would themselves fail this validator if re-run — do not
+trust "most recent artifact in this feature family" as a structural template without checking it
+against the list above first.
+
+**Exact required checklist labels** (each must appear on its own line starting with `- ` — bullet
+form, not narrative prose): `TypeScript baseline coverage artifact:`,
+`TypeScript post-change coverage artifact:`, `PowerShell baseline coverage artifact:`,
+`PowerShell post-change coverage artifact:`, `Per-language comparison summary:`. N/A values are
+fine (`N/A (zero changed files)` etc.) but the bullet line itself must not contain the substrings
+`missing`, `unverified`, `tbd`, `[n]`, `[path`, `[artifact`, `[section reference`, or `[language]`
+(case-insensitive) — these are treated as unresolved-placeholder markers anywhere they appear in a
+checklist line or a per-language comparison bullet (not elsewhere in the document).
+
+**Coverage table + comparison section:** need >= 1 markdown table row with exactly 7 cells
+(Language | Files Changed | Tests | Test Result | Baseline Coverage | Post-Change Coverage |
+New Code Coverage) — header/separator rows are auto-skipped. Need the heading
+`### 1.2.1 Per-Language Coverage Comparison` as an exact standalone line (trimmed), followed by
+`- <Language>: ...` bullets. A language row only needs a matching comparison bullet with
+`Baseline:`, `Post-change:`, `Change:`, `Disposition: (PASS|FAIL|N/A|INCOMPLETE|BLOCKED)`,
+`New/changed-code coverage:` (each with a `N%` token), and `Evidence:` IF at least one of its
+Baseline/Post-Change/New-Code table cells is not N/A. All-N/A language rows (zero-changed-files
+languages) do not require a comparison bullet at all.

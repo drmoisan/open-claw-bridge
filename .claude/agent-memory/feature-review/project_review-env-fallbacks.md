@@ -227,6 +227,8 @@ pattern-replication precedent). Autoclose noise recurred (`#SHA-256`/`#ISO-8601`
 Newest validator-shaped full-bug PowerShell template (all-PASS):
 `2026-07-10-installer-docker-images-not-bundled-142/*.2026-07-10T20-01.md`.
 
+#147 (2026-07-12, installer-image-version-alignment, full-bug, PowerShell-only, epic-child base): zero MCP tools available (same recurring gap); PR-context artifacts absent again — regenerated from git per the #120 recipe (base resolved to `origin/epic/openclaw-runtime-remediation-integration`, not main). New gotcha, worth checking on any future AC that claims "`[System.Version]::TryParse` enforces a 4-part version format": .NET's `Version.TryParse` actually accepts 2-, 3-, or 4-component numeric strings — `TryParse("1.2.3")` returns `$true` even though the repo's stated format is `^\d+\.\d+\.\d+\.\d+$`. This means a `TryParse`-only well-formedness check (as used in both `Test-OpenClawImageVersionAligned` here and the pre-existing `Get-ManifestVersion`, `Install.Helpers.psm1:43`) will silently accept a 3-part string as "well-formed," producing a "mismatch" message rather than the intended "malformed" classification for that one input shape — functionally harmless (the separate exact-string-equality check against the trusted expected value still fails safely) but a real gap versus the documented spec claim. Graded Minor since it mirrors an existing, accepted codebase-wide convention rather than being newly introduced. Also independently confirmed a disclosed test-file-count scope deviation (plan scoped 2 test files, executor extended to 4 during a full-regression fixture-cascade fix) was fixture-only via direct `git diff`, non-masking via the guard's genuinely-new-behavior analysis, and adequately documented across 3 evidence files — but flagged as a policy Minor because `.claude/rules/powershell.md`'s 3-test-file-per-batch change-budget cap has no separate override record beyond the plan's in-task retry authorization. Newest validator-shaped full-bug PowerShell template (all-PASS, 2 Minor/2 Info code-review findings, 1 Minor policy finding): `2026-07-11-installer-image-version-alignment-147/*.2026-07-12T22-15.md`.
+
 #144 (2026-07-10/11, container-validation-stray-v1-and-env-target, minor-audit, PowerShell-only):
 zero MCP tools available (same as #135/#137/#139); PR-context artifacts present and fresh (head SHA
 matched). First review to discover that `Invoke-PoshQCTest`'s own invocation path can mask a REAL,
@@ -240,3 +242,19 @@ going forward whenever a new test file introduces an unscoped `Mock <FunctionNam
 First FAIL-verdict (Blocking + remediation-inputs) artifact set for a `minor-audit` work mode in
 this repo. Newest validator-shaped PowerShell-only minor-audit template (FAIL-verdict):
 `2026-07-10-container-validation-stray-v1-and-env-target-144/*.2026-07-11T00-45.md`.
+
+#146 (2026-07-12, message-to-event-linkage, full-feature, C#, epic-child): base resolves to
+`origin/epic/openclaw-runtime-remediation-integration` (a NEW epic branch, distinct from the
+openclaw-vision epic). PR-context artifacts ABSENT (regen from git per #120 recipe).
+`validate_evidence_locations.py` genuinely absent from the repo (searched; not in scripts/dev_tools)
+— did the evidence-location scan manually with `git diff --name-only <base>...HEAD | grep -iE
+'^artifacts/(baselines|qa|evidence|coverage)/'` (zero matches; executor evidence correctly under
+`<FEATURE>/evidence/{baseline,qa-gates}/`). C# coverage output landed as per-project cobertura
+(`artifacts/csharp/{baseline,final}-{core,mailbridge,hostadapter}.cobertura.xml`), not the single
+`artifacts/csharp/coverage.xml` the policy table names — accept and parse the per-project reports.
+Reusable ruling: a project-AGGREGATE branch floor below 75% that is pre-existing, unrelated to the
+feature, and improved by it is NOT a #-scoped FAIL when new/modified-file and C#-aggregate
+(repo-wide-per-language) coverage all pass — here HostAdapter project branch 67.45% (baseline 67.19%)
+recorded as informational, feature's own HostAdapter code at 100% branch. Verdict PASS, zero blocking.
+Newest validator-shaped PASS C# full-feature template:
+`2026-07-11-message-to-event-linkage-146/*.2026-07-12T22-25.md`.

@@ -58,6 +58,9 @@ internal sealed class ComMessageSource : IMessageSource
         _isMeeting ? OutlookComHelpers.GetOptionalInt(_item, "MeetingType") : null;
 
     /// <inheritdoc />
+    public string? LinkedGlobalAppointmentId => ResolveLinkedGlobalAppointmentId();
+
+    /// <inheritdoc />
     public IReadOnlyList<OutlookScanner.Attendee> ToRecipients
     {
         get
@@ -294,6 +297,45 @@ internal sealed class ComMessageSource : IMessageSource
         finally
         {
             _com.ReleaseAll(exchangeUser);
+        }
+    }
+
+    /// <summary>
+    /// Fail-soft resolution of the linked appointment's Clean Global Object ID (issue #146). For a
+    /// meeting item the associated appointment is obtained via <c>GetAssociatedAppointment(false)</c>
+    /// and its <c>GlobalAppointmentID</c> is read; the appointment wrapper is released in
+    /// <c>finally</c>. Returns <see langword="null"/> for ordinary (non-meeting) mail, when the
+    /// appointment cannot be obtained, or on any COM error. Never throws.
+    /// </summary>
+    private string? ResolveLinkedGlobalAppointmentId()
+    {
+        if (!_isMeeting)
+        {
+            return null;
+        }
+
+        object? appointment = null;
+        try
+        {
+            appointment = OutlookComHelpers.InvokeMember(_item, "GetAssociatedAppointment", false);
+            if (appointment is null)
+            {
+                return null;
+            }
+
+            return NormalizeAddress(
+                OutlookComHelpers.GetOptionalString(appointment, "GlobalAppointmentID")
+            );
+        }
+        catch
+        {
+            // Fail soft: a non-meeting item, a request without a stored appointment, or any COM
+            // fault yields the clean unlinked result.
+            return null;
+        }
+        finally
+        {
+            _com.ReleaseAll(appointment);
         }
     }
 

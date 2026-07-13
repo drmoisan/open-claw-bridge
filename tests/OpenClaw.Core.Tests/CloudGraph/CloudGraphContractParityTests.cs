@@ -13,6 +13,7 @@ using OpenClaw.Core.Agent;
 using OpenClaw.Core.Agent.Runtime;
 using OpenClaw.Core.CloudAuth;
 using OpenClaw.Core.CloudGraph;
+using IHostAdapterClient = OpenClaw.HostAdapter.Contracts.IHostAdapterClient;
 
 namespace OpenClaw.Core.Tests.CloudGraph;
 
@@ -32,7 +33,11 @@ public sealed class CloudGraphContractParityTests
     private static readonly DateTimeOffset WindowEnd = new(2026, 7, 10, 0, 0, 0, TimeSpan.Zero);
 
     /// <summary>Builds the Runtime service on top of the Graph-backed client.</summary>
-    private static HostAdapterSchedulingService Service(FakeHttpHandler handler)
+    private static HostAdapterSchedulingService Service(FakeHttpHandler handler) =>
+        new(GraphClient(handler), new SchedulingDtoMapper());
+
+    /// <summary>Builds the raw Graph-backed <see cref="GraphHostAdapterClient"/> for direct calls.</summary>
+    private static GraphHostAdapterClient GraphClient(FakeHttpHandler handler)
     {
         var tokenProvider = new Mock<IAppTokenProvider>(MockBehavior.Strict);
         tokenProvider
@@ -49,15 +54,13 @@ public sealed class CloudGraphContractParityTests
         // allowlisted for the send path to reach Graph (fail-closed gate, issue #119).
         options.AllowedPrincipalMailboxUpns.Add("paula@contoso.com");
 
-        var graphClient = new GraphHostAdapterClient(
+        return new GraphHostAdapterClient(
             new HttpClient(handler) { BaseAddress = new Uri("https://graph.example.test/v1.0/") },
             Options.Create(options),
             tokenProvider.Object,
             new FakeTimeProvider(Start),
             NullLogger<GraphHostAdapterClient>.Instance
         );
-
-        return new HostAdapterSchedulingService(graphClient, new SchedulingDtoMapper());
     }
 
     private static HttpResponseMessage Json(string body) =>
@@ -194,6 +197,58 @@ public sealed class CloudGraphContractParityTests
                 "*INVALID_REQUEST*",
                 "the Graph-mapped error code propagates through the Runtime failure path"
             );
+    }
+
+    [TestMethod]
+    public void ContractParity_BothImplementations_ExposeGetEventForMessageAsync()
+    {
+        // The message-to-event linkage read (issue #146) is part of the IHostAdapterClient contract,
+        // so both the local HTTP backend and the cloud Graph backend must implement it. This gate
+        // fails if either implementation drops the method.
+        var interfaceMethod = typeof(IHostAdapterClient).GetMethod(
+            nameof(IHostAdapterClient.GetEventForMessageAsync)
+        );
+        interfaceMethod.Should().NotBeNull("the linkage read is part of the client contract");
+
+        foreach (
+            var implementation in new[]
+            {
+                typeof(HostAdapterHttpClient),
+                typeof(GraphHostAdapterClient),
+            }
+        )
+        {
+            var map = implementation.GetInterfaceMap(typeof(IHostAdapterClient));
+            var index = Array.IndexOf(map.InterfaceMethods, interfaceMethod);
+            index
+                .Should()
+                .BeGreaterThanOrEqualTo(
+                    0,
+                    $"{implementation.Name} must implement GetEventForMessageAsync"
+                );
+            map.TargetMethods[index].Should().NotBeNull();
+        }
+    }
+
+    [TestMethod]
+    public async Task GetEventForMessageFlow_GraphBackend_HonorsTheNullContract()
+    {
+        // The Graph client resolves the linkage read to a clean ok:true/data:null envelope with no
+        // HTTP round-trip; the handler fails the test if invoked.
+        var invoked = false;
+        var handler = new FakeHttpHandler(_ =>
+        {
+            invoked = true;
+            return Task.FromResult(Json("{}"));
+        });
+        var graphClient = GraphClient(handler);
+
+        var result = await graphClient.GetEventForMessageAsync("mtg:abc", requestId: "req-link");
+
+        result.Ok.Should().BeTrue("an unlinked message is a clean success, not an error");
+        result.Data.Should().BeNull();
+        result.Error.Should().BeNull();
+        invoked.Should().BeFalse("the cloud linkage read performs no Graph HTTP call");
     }
 
     [TestMethod]

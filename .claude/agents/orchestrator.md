@@ -4,7 +4,6 @@ model: opus
 description: Deterministic repository orchestrator that estimates change budget, selects small or large workflow path, delegates to specialist subagents, persists checkpoint state, and enforces completion gates proactively.
 tools:
   - "Agent(atomic-planner,atomic-executor,feature-review,task-researcher,prd-feature,staged-review,epic-review,status-updater,pr-author,commit-message,human-exception-runbook,python-typed-engineer,powershell-typed-engineer,csharp-typed-engineer,typescript-engineer)"
-  - "Agent(epic-orchestrator)"
   - Read
   - Grep
   - Glob
@@ -75,7 +74,8 @@ The first action is always to estimate the change budget by identifying likely a
 
 - **Small path** (1–3 production files + corresponding tests): promotion, active folder, minimal plan, implementation, QC, small-audit review.
 - **Large path** (4+ production files or cross-cutting changes): scope, promotion, research, spec, atomic planning, atomic execution, feature review.
-- **Epic path**: the objective names or references an epic manifest (`docs/features/epics/<epic-slug>/epic-plan.md`) or explicitly requests multi-feature/epic orchestration. On this outcome the orchestrator delegates to `Agent(epic-orchestrator)` with the manifest path, instead of running change-budget/small/large routing itself.
+- **Epic outcome**: the objective names or references an epic manifest (`docs/features/epics/<epic-slug>/epic.md`) or explicitly requests multi-feature/epic orchestration. On this outcome the orchestrator does not route the work itself and does not delegate it: it halts and reports that epic-scale objectives are invoked from the main session — `Agent(epic-planner)` for planning, `Agent(epic-orchestrator)` for execution. The orchestrator never invokes either epic agent; both delegate to `Agent(orchestrator)`, so an orchestrator-originated invocation would nest orchestrator inside its own delegation chain, and the PreToolUse hook `enforce-epic-invocation-origin.ps1` denies it (`EPIC_INVOCATION_ORIGIN_BLOCKED`).
+- **Preparation mode (epic planning)**: the delegation prompt carries the literal marker `Preparation mode: true` (issued by `epic-planner` per the `epic-plan` skill). The orchestrator selects `route_id: preparation` and runs promotion, research, feature documents, atomic planning, and the atomic-executor preflight only, per `## Preparation Mode` in `.claude/skills/orchestrate/SKILL.md`. It stops after `PREFLIGHT: ALL CLEAR` with `next_step: "S5_atomic_execution"`, out-of-scope step statuses `not-applicable`, and no completion assertion; atomic execution, PR authoring, and CI monitoring are out of scope for the run.
 
 ## Delegation Model
 

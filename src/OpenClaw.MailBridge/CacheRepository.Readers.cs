@@ -33,7 +33,8 @@ internal sealed partial class CacheRepository
             SenderEmailResolved: GetString(reader, "sender_email_resolved"),
             FromEmailAddress: GetString(reader, "from_email_address"),
             ConversationId: GetString(reader, "conversation_id"),
-            MeetingMessageType: GetNullableInt(reader, "meeting_message_type")
+            MeetingMessageType: GetNullableInt(reader, "meeting_message_type"),
+            LinkedGlobalAppointmentId: GetString(reader, "linked_global_appointment_id")
         );
 
     private static EventDto ReadEvent(SqliteDataReader reader) =>

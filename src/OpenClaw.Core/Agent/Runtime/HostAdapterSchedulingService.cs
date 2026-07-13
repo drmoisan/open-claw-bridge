@@ -37,11 +37,13 @@ public sealed class HostAdapterSchedulingService(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(messageId);
 
-        // The message-to-event linkage is part of the deferred bridge work (#71-#76).
-        // Until then the adapter attempts a direct event lookup by the supplied id and
-        // returns null when no event is linked, so the deterministic pipeline degrades
-        // gracefully (ordinary-mail fallback in D1).
-        return await GetEventAsync(messageId, ct).ConfigureAwait(false);
+        // Resolve the event linked to the message via the dedicated linkage route (issue #146). A
+        // genuinely unlinked message yields an ok:true / data:null envelope, which maps to null so
+        // the deterministic pipeline degrades to its calendar-view fallback exactly as before.
+        var envelope = await hostAdapterClient
+            .GetEventForMessageAsync(messageId, cancellationToken: ct)
+            .ConfigureAwait(false);
+        return envelope is { Ok: true, Data: not null } ? mapper.MapEvent(envelope.Data) : null;
     }
 
     /// <inheritdoc />

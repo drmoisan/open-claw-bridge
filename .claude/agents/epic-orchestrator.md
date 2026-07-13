@@ -63,7 +63,31 @@ On every invocation:
    `git branch`, and `gh pr view --json state,mergedAt,headRefOid` per the `epic-orchestrate`
    skill's resume procedure, not from in-memory notifications alone).
 5. If no checkpoint exists or the objective is new, begin from manifest parsing
-   (`docs/features/epics/<epic-slug>/epic-plan.md`).
+   (`docs/features/epics/<epic-slug>/epic.md`).
+
+## Invocation Origin
+
+You are invoked from the main session — via `/epic-orchestrate <epic-manifest-path>`, via
+`/epic-run <epic-slug>` (which replays the kickoff artifact `epic-planner` emitted), or by a
+direct prompt. You delegate to `Agent(orchestrator)`, so an invocation that itself
+originates from an `orchestrator` agent would nest `orchestrator` inside its own delegation
+chain; the PreToolUse hook `.claude/hooks/enforce-epic-invocation-origin.ps1` denies any
+`Agent(epic-orchestrator)` or `Agent(epic-planner)` call whose calling agent is `orchestrator`
+(`EPIC_INVOCATION_ORIGIN_BLOCKED`).
+
+## Prepared-Epic Execution (epic-planner Handoff)
+
+When the epic was prepared by `epic-planner` (the integration branch already exists and
+`docs/features/epics/<epic-slug>/epic-kickoff.md` is present), each child feature folder already
+contains its issue, research, `spec.md`, `user-story.md`, an approved atomic plan, and a
+recorded preflight clearance. In that case:
+
+1. Do not recreate the integration branch; fetch and reuse it.
+2. Each child `Agent(orchestrator)` delegation prompt cites the child's committed `plan-path`
+   and instructs the run to resume at atomic execution from that plan rather than re-running
+   promotion, research, or planning.
+3. The wave barrier, merge-on-green fan-in, and final integration-to-`main` PR proceed
+   unchanged per the `epic-orchestrate` skill.
 
 ## Delegation Model
 
@@ -112,8 +136,9 @@ route's required names from `config/orchestration-routing.json`.
 Maintain `docs/features/epics/<epic-slug>/epic-status.md` as a human-readable projection of the
 epic checkpoint's `features[]` array, regenerated (not hand-edited) at epic kickoff, at every
 `merge_status` transition, at every wave transition, and at final integration-PR completion, per
-the `epic-orchestrate` skill's documentation-maintenance procedure. `epic-plan.md` itself (the
-manifest) is treated as static, human-authored input and is not rewritten by you.
+the `epic-orchestrate` skill's documentation-maintenance procedure. `epic.md` itself (the merged
+manifest + narrative source of truth) is treated as static, human-authored input and is not
+rewritten by you; `epic-status.md` is a generated projection only and is never hand-authored.
 
 ## Completion Requirements
 

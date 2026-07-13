@@ -635,7 +635,7 @@ resolves to `http://127.0.0.1:8081`.
 
 The page served at `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/` is the OpenClaw Control UI. For this loopback-only deployment, `deploy/docker/openclaw-assistant/openclaw.json` sets `gateway.auth.mode` to `token` and references `${OPENCLAW_GATEWAY_TOKEN}` from `.env`. The token is produced by `scripts/Invoke-OpenClawAgentOnboarding.ps1` and written to the repository-root `.env`. The HostAdapter bearer token remains separate and is still used only for the agent's HTTP calls to `OpenClaw.HostAdapter`.
 
-To authenticate as operator against the upstream OpenClaw 2026.6.11 build, either open `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/#token=<OPENCLAW_GATEWAY_TOKEN>` (token supplied in the URL fragment) or open the dashboard root and paste the token into the Control UI settings. Loading the root URL without the fragment or a pasted token confirms only that the Control UI is served; it does not complete operator authentication.
+To authenticate as operator against the upstream OpenClaw 2026.6.11 build, either open `http://127.0.0.1:${OPENCLAW_AGENT_PORT:-18789}/#token=<OPENCLAW_GATEWAY_TOKEN>` (token supplied in the URL fragment) or open the dashboard root and paste the token into the Control UI settings. Loading the root URL without the fragment or a pasted token confirms only that the Control UI is served; it does not complete operator authentication. To construct this URL automatically from the target `.env`, run `scripts/Get-OpenClawControlUiTokenUrl.ps1`; the human-interaction and human-held-secret steps for all admin-access capabilities are enumerated in the [Admin-Access Automation and Human-Held-Secret Runbook](#admin-access-automation-and-human-held-secret-runbook) below.
 
 **Device re-pair reset.** Operator sessions are bound to the agent via device pairing. When the `openclaw-agent` container is recreated (for example after an `OPENCLAW_AGENT_IMAGE` upgrade), the prior pairing no longer matches and the dashboard rejects the old session. To re-pair: run `openclaw devices clear` inside the agent container, clear the browser site data for the dashboard origin, then reopen the `#token=` fragment URL to establish a new pairing. Because `OPENCLAW_AGENT_IMAGE` tracks a floating upstream tag, the authentication flow can change across upgrades; re-check this procedure against the deployed image version after pulling a new upstream build.
 
@@ -650,6 +650,82 @@ To authenticate as operator against the upstream OpenClaw 2026.6.11 build, eithe
 | `401 Unauthorized` from HostAdapter | Token file missing, empty, or invalid inside the container | Verify `HOSTADAPTER_TOKEN_FILE` in `.env` points to the correct host path and the file is non-empty. Confirm the bind mount at `/run/openclaw/hostadapter.token` is present inside the container. |
 | Container exits immediately on startup | `OPENCLAW_AGENT_IMAGE` is unset or set to the placeholder value | Set `OPENCLAW_AGENT_IMAGE` in `.env` to a valid, verified image reference. |
 | `host.docker.internal` resolution failure | Docker Desktop networking not available or not using dev compose | Ensure you include `-f docker-compose.dev.yml` in the compose command, or verify Docker Desktop is running with host networking support enabled. |
+
+## Admin-Access Automation and Human-Held-Secret Runbook
+
+This section is the canonical operator reference for provisioning gateway admin
+access after an install. It covers the three admin-access capabilities and every
+step that requires human interaction or a human-held secret, so none is left as a
+silent manual blocker. It is reachable inline from this operator runbook and is
+cross-linked from the [Dashboard access](#dashboard-access) section above.
+
+### Automation entry points
+
+Three PowerShell 7+ scripts automate the scriptable parts of admin-access
+provisioning:
+
+- `scripts/Get-OpenClawControlUiTokenUrl.ps1` — capability 1 (gateway-token
+  delivery): reads the target `.env` and returns the Control UI `#token=` URL. Pure,
+  read-only; makes no state changes.
+- `scripts/Invoke-OpenClawDeviceTokenRotation.ps1` — capability 2 (device-token
+  rotation): writes a new random secret to the host token file, then restarts the
+  container consumers through the docker wrapper seam. State-changing; gated by
+  `ShouldProcess` (supports `-WhatIf`), idempotent unless `-Force` is supplied.
+- `scripts/Set-OpenClawWebSearchProvider.ps1` — capability 3 (`web_search` provider
+  provisioning): adds/validates the provider entry and SecretRef in the baked seed
+  `deploy/docker/openclaw-assistant/openclaw.json`. State-changing; gated by
+  `ShouldProcess`; idempotent.
+
+### Automatable vs. human-interaction-required (per capability)
+
+| Capability | Automatable (script does it) | Human-interaction-required (operator does it) |
+| --- | --- | --- |
+| 1. Gateway-token delivery | Read token + port from `.env` and emit the `#token=` URL (`Get-OpenClawControlUiTokenUrl.ps1`). Device clear via the docker exec seam (`openclaw devices clear`) is scriptable. | Open the emitted URL in a browser to complete Control UI authentication. After container recreation, clear browser site data for the dashboard origin and reopen the URL to re-pair. |
+| 2. Device-token rotation | Generate the new secret, overwrite the host token file, and restart `openclaw-core` and `openclaw-agent` via the docker seam (`Invoke-OpenClawDeviceTokenRotation.ps1`). | Provision the initial host token file value when absent. Restart the HostAdapter when it is launched interactively (`dotnet run`). |
+| 3. `web_search` provisioning | Add/validate the provider entry and SecretRef in the seed and validate the JSON (`Set-OpenClawWebSearchProvider.ps1`); rebuild the image so the seed change persists. | Supply the search-provider API key (external SaaS-issued) into `.env`/secrets. |
+
+### Human-interaction / human-held-secret steps (enumerated)
+
+Each step states what the operator supplies or does and where automation hands off to
+the operator.
+
+1. **Open the `#token=` URL to authenticate the Control UI (capability 1).**
+   Automation emits the URL via `scripts/Get-OpenClawControlUiTokenUrl.ps1`. Handoff:
+   the operator opens that URL in a browser and completes Control UI operator
+   authentication. The browser-side authentication is not scriptable through repo
+   seams.
+
+2. **Re-pair after container recreation (capability 1).** When `openclaw-agent` is
+   recreated (for example after an image upgrade), the prior device pairing no longer
+   matches. Automatable part: run `openclaw devices clear` inside the agent container
+   through the docker exec seam. Handoff: the operator clears the browser site data for
+   the dashboard origin and reopens the `#token=` URL to establish a new pairing.
+
+3. **Supply the search-provider API key (capability 3).** The seed references the key
+   via the SecretRef `${WEB_SEARCH_API_KEY}` (no literal key is stored). Handoff: the
+   operator obtains the search-provider API key (Firecrawl or equivalent, external
+   SaaS-issued) and supplies it into `.env`/secrets as `WEB_SEARCH_API_KEY` so compose
+   passes it into the container at runtime.
+
+4. **Supply the Anthropic API key (agent runtime).** Handoff: the operator provides
+   `ANTHROPIC_API_KEY=<real key>` in `secrets/.env.anthropic`. This key is human-held
+   and is not generated by automation. (See also Install Path D, which fails before
+   MSIX installation when the Docker directory lacks `secrets/.env.anthropic`.)
+
+5. **Provide/keep the initial HostAdapter device-token secret and restart an
+   interactively-run HostAdapter during rotation (capability 2).** Handoff: the
+   operator keeps the device-token secret value available and, where HostAdapter is
+   launched interactively via `dotnet run`, restarts it after rotation so the host and
+   container ends read the same rotated value. The container consumers
+   (`openclaw-core`, `openclaw-agent`) are restarted automatically by
+   `scripts/Invoke-OpenClawDeviceTokenRotation.ps1`.
+
+6. **Provision the initial host token file value when absent (capability 2).**
+   `scripts/Invoke-OpenClawDeviceTokenRotation.ps1` refuses to rotate and directs the
+   operator here when `C:\ProgramData\OpenClaw\HostAdapter\adapter.token` does not
+   exist (it never creates a silent placeholder). Handoff: the operator provisions the
+   initial token file per [Install Path C, step 1](#1-provision-hostadapter-configuration-on-windows),
+   then reruns rotation.
 
 ## Scripted Acceptance Evidence
 

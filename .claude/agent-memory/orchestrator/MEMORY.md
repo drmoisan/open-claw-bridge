@@ -10,6 +10,7 @@
 - [Child-session agent availability + PR fallback](feedback_child-session-agent-availability-and-pr-fallback.md) — pr-author/orchestrator agent types absent in child sessions; PR hook gates on receipt+preflight, so run pr-author skill inline + gh pr create.
 - [Epic child CI and merge](project_epic-child-ci-and-merge.md) — child PR targets integration branch; dispatch ci.yml via workflow_dispatch; gh pr merge --merge; issue stays open (Refs not Closes); write back epic checkpoint.
 - [Plan artifact CRLF fails validator](project_plan-artifact-crlf-fails-validator.md) — plan validator rejects CRLF line endings on every phase/task line; normalize plan/artifact files to LF before validating.
+- [Plan heading dash must be ASCII hyphen](project_plan-heading-dash-must-be-ascii-hyphen.md) — repo hook wants `### Phase N - <Title>` (ASCII `-`); em-dash headings fail every phase/task line despite the skill documenting `—`.
 - [csharpier local tool manifest broken](project_csharpier-local-tool-manifest-broken.md) — local dotnet-tools csharpier entry misconfigured; use global csharpier with format/check subcommands.
 - [HostAdapter scheduling = Design A](project_hostadapter-scheduling-design-a.md) — track #76->#74->#75 uses Graph-shaped HostAdapter endpoints (not Core-cache compute); #75 should follow the same pattern.
 - [Unify COM vs Modern behind adapter](feedback_unify-com-vs-modern-behind-adapter.md) — model-specific field resolution goes behind a unifying interface + data-type adapter so only the adapter swaps (COM->Modern).
@@ -23,3 +24,5 @@
 - [PoshQC coverage-path defect](project_poshqc-coverage-path-defect.md) — bundled run_poshqc_test coverage mode always fails here (foreign hardcoded CodeCoverage.Path); use F11 corrected-runsettings Invoke-PoshQCTest workaround for real numeric coverage.
 - [.gitignore blocks new workflows](project_gitignore-blocks-new-workflows.md) — `.github/workflows/*` is ignored except `!`-re-included files; a new `_<name>.yml` reusable workflow needs its own `!` line or it is silently not committed.
 - [Fable spend-limit forces opus fallback](feedback_fable-spend-limit-forces-opus-fallback.md) - fable delegate can die on a monthly spend limit; re-run same agent on opus, keep routing receipt at policy-resolved fable.
+- [Plan validator conflict](project_plan-validator-conflict.md) — MCP plan validator wants em-dash + reads stale content; repo hook wants ASCII hyphen; executor parser is dash-agnostic. Normalize to hyphen, validate via repo hook regex.
+- [PR hook epic_context field](project_pr-hook-epic-context-field.md) — epic-child PR-author hook reads nested epic_context.integration_branch (not top-level); missing it = EPIC_BASE_BRANCH_MISMATCH; generate pr_context.summary.txt from git if MCP omits it.

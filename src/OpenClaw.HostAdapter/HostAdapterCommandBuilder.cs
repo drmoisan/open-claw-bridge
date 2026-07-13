@@ -55,6 +55,13 @@ internal sealed class HostAdapterCommandBuilder(IOptions<HostAdapterOptions> opt
         return startInfo;
     }
 
+    public ProcessStartInfo BuildGetEventForMessage(string bridgeId)
+    {
+        var startInfo = CreateBaseStartInfo("get-event-for-message");
+        AddOption(startInfo, "id", bridgeId);
+        return startInfo;
+    }
+
     private static readonly JsonSerializerOptions RecipientJsonOptions = new(
         JsonSerializerDefaults.Web
     );

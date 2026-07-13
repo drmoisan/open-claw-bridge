@@ -208,6 +208,45 @@ function Assert-StagedGatewayTokenPresent {
     }
 }
 
+function Get-ComposeServiceImageTag {
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$ComposeContent,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ImageRepository
+    )
+
+    $pattern = '^\s{4}image:\s*' + [regex]::Escape($ImageRepository) + ':(.+)$'
+    foreach ($line in $ComposeContent) {
+        $match = [regex]::Match($line, $pattern)
+        if ($match.Success) {
+            return $match.Groups[1].Value.Trim()
+        }
+    }
+    throw "No matching 'image: ${ImageRepository}:<tag>' line found in the staged compose file for repository '$ImageRepository'. The bundle's docker-compose.yml may be malformed or drifted from the expected structure."
+}
+
+function Assert-ComposeImageVersionAligned {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ComposeFilePath,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ResolvedVersion
+    )
+
+    $composeContent = @(Get-Content -LiteralPath $ComposeFilePath)
+    $coreTag = Get-ComposeServiceImageTag -ComposeContent $composeContent -ImageRepository 'openclaw/core'
+    $agentTag = Get-ComposeServiceImageTag -ComposeContent $composeContent -ImageRepository 'openclaw/agent'
+    if ($coreTag -ne $ResolvedVersion -or $agentTag -ne $ResolvedVersion) {
+        throw "Cross-image version mismatch detected in '$ComposeFilePath': openclaw/core:$coreTag, openclaw/agent:$agentTag, resolved bundle version $ResolvedVersion. Both the Control UI (openclaw/core) and gateway (openclaw/agent) images must be pinned to the resolved bundle version before Install.ps1 will load and start them. Re-publish the bundle with scripts/Publish.ps1 or correct the staged docker-compose.yml before retrying."
+    }
+}
+
 if (-not (Get-Command -Name 'Test-TcpPortOpen' -ErrorAction SilentlyContinue)) {
     function Test-TcpPortOpen {
         [CmdletBinding()]
@@ -430,6 +469,8 @@ if ($MyInvocation.InvocationName -ne '.') {
     $ComposeFilePath = Join-Path $DestDockerDir 'docker-compose.yml'
     if (-not $SkipDocker) {
         $ImageTarPath = Join-Path $DestDockerDir 'openclaw-images.tar'
+        Write-Information '[install:docker-version-check] Verifying openclaw/core and openclaw/agent compose image tags match the resolved bundle version' -InformationAction Continue
+        Assert-ComposeImageVersionAligned -ComposeFilePath $ComposeFilePath -ResolvedVersion $ResolvedVersion
         Write-Information "[install:docker] Loading bundled container images from $ImageTarPath" -InformationAction Continue
         Invoke-DockerImageLoad -ImageTarPath $ImageTarPath
         Write-Information '[install:docker] Starting compose stack' -InformationAction Continue
