@@ -108,11 +108,11 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 
 ### Phase 5 - Core rewire: HostAdapterSchedulingService
 
-- [ ] [P5-T1] Rewire `GetEventForMessageAsync` in `src/OpenClaw.Core/Agent/Runtime/HostAdapterSchedulingService.cs` (lines 33-45) to call `hostAdapterClient.GetEventForMessageAsync(messageId, cancellationToken: ct)` and apply the existing `envelope is { Ok: true, Data: not null } ? mapper.MapEvent(envelope.Data) : null` guard, removing the `GetEventAsync` forward and the deferred-work comment.
+- [x] [P5-T1] Rewire `GetEventForMessageAsync` in `src/OpenClaw.Core/Agent/Runtime/HostAdapterSchedulingService.cs` (lines 33-45) to call `hostAdapterClient.GetEventForMessageAsync(messageId, cancellationToken: ct)` and apply the existing `envelope is { Ok: true, Data: not null } ? mapper.MapEvent(envelope.Data) : null` guard, removing the `GetEventAsync` forward and the deferred-work comment.
   - AC: The method invokes `GetEventForMessageAsync` (not `GetEventAsync`), returns the mapped `SchedulingEventDto` on a linked hit, and returns `null` on `ok:true`/`data:null`.
-- [ ] [P5-T2] Add/extend MSTest + Moq tests under `tests/OpenClaw.Core.Tests/`: `Agent/Runtime/HostAdapterSchedulingServiceTests.cs` (data:null -> null, data:event -> mapped DTO, and verification that `GetEventForMessageAsync` is the invoked method) and `Agent/Runtime/SchedulingWorkerFallbackTests.cs` (a linked hit skips the calendar-view window fallback; a null result uses it). Use `FakeTimeProvider` where a clock is needed.
+- [x] [P5-T2] Add/extend MSTest + Moq tests under `tests/OpenClaw.Core.Tests/`: `Agent/Runtime/HostAdapterSchedulingServiceTests.cs` (data:null -> null, data:event -> mapped DTO, and verification that `GetEventForMessageAsync` is the invoked method) and `Agent/Runtime/SchedulingWorkerFallbackTests.cs` (a linked hit skips the calendar-view window fallback; a null result uses it). Use `FakeTimeProvider` where a clock is needed.
   - AC: All added tests pass; the invoked-method assertion fails if the code calls `GetEventAsync`; no wall-clock reads or sleeps; each test file is under 500 lines.
-- [ ] [P5-T3] Run the C# toolchain loop for Phase 5: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
+- [x] [P5-T3] Run the C# toolchain loop for Phase 5: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
 ### Phase 6 - Final QC, Coverage Delta, and Acceptance-Criteria Checkoff
