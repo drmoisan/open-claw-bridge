@@ -350,6 +350,7 @@ app.MapGet(
     }
 );
 
+app.MapMessageEventRoute();
 app.MapSchedulingRoutes();
 app.MapMailRoutes();
 
