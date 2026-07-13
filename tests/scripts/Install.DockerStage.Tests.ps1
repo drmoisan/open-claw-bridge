@@ -94,6 +94,15 @@ Describe 'scripts/Install.ps1 - Docker image-load stage' {
             if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
                 return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
             }
+            if ($LiteralPath -like '*docker-compose.yml') {
+                return @(
+                    'services:'
+                    '  openclaw-core:'
+                    '    image: openclaw/core:1.2.3.0'
+                    '  openclaw-agent:'
+                    '    image: openclaw/agent:1.2.3.0'
+                )
+            }
             return 'test-hostadapter-token'
         }
         Mock Get-Content $script:GetContentMock
@@ -196,6 +205,99 @@ Describe 'scripts/Install.ps1 - Docker image-load stage' {
 
         It 'does NOT invoke Invoke-DockerImageLoad under -SkipDocker' {
             & $script:ScriptPath -SkipDocker | Out-Null
+            $global:InstallTestCalls -contains 'Invoke-DockerImageLoad' | Should -BeFalse
+        }
+    }
+
+    Context 'image version alignment guard' {
+        It 'proceeds to Invoke-DockerImageLoad then Invoke-ComposeUp when both compose tags match ResolvedVersion' {
+            & $script:ScriptPath | Out-Null
+            $idxLoad = $global:InstallTestCalls.IndexOf('Invoke-DockerImageLoad')
+            $idxUp = $global:InstallTestCalls.IndexOf('Invoke-ComposeUp')
+            $idxLoad | Should -BeGreaterOrEqual 0
+            $idxUp | Should -BeGreaterThan $idxLoad
+        }
+
+        It 'throws before Invoke-DockerImageLoad when the core and agent compose tags disagree with each other' {
+            $mismatchedContentMock = {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
+                }
+                if ($LiteralPath -like '*docker-compose.yml') {
+                    return @(
+                        '    image: openclaw/core:1.2.3.0'
+                        '    image: openclaw/agent:1.2.4.0'
+                    )
+                }
+                return 'test-hostadapter-token'
+            }
+            Mock Get-Content $mismatchedContentMock
+
+            { & $script:ScriptPath | Out-Null } | Should -Throw
+
+            $global:InstallTestCalls -notcontains 'Invoke-DockerImageLoad' | Should -BeTrue
+        }
+
+        It 'throws when both compose tags agree with each other but disagree with ResolvedVersion' {
+            $sameWrongContentMock = {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
+                }
+                if ($LiteralPath -like '*docker-compose.yml') {
+                    return @(
+                        '    image: openclaw/core:1.2.2.0'
+                        '    image: openclaw/agent:1.2.2.0'
+                    )
+                }
+                return 'test-hostadapter-token'
+            }
+            Mock Get-Content $sameWrongContentMock
+
+            { & $script:ScriptPath | Out-Null } | Should -Throw
+
+            $global:InstallTestCalls -notcontains 'Invoke-DockerImageLoad' | Should -BeTrue
+        }
+
+        It 'throws a distinct error when the compose file is missing an image: line for a service' {
+            $missingImageContentMock = {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
+                }
+                if ($LiteralPath -like '*docker-compose.yml') {
+                    return @(
+                        '    image: openclaw/core:1.2.3.0'
+                    )
+                }
+                return 'test-hostadapter-token'
+            }
+            Mock Get-Content $missingImageContentMock
+
+            { & $script:ScriptPath | Out-Null } | Should -Throw '*openclaw/agent*'
+
+            $global:InstallTestCalls -notcontains 'Invoke-DockerImageLoad' | Should -BeTrue
+        }
+
+        It 'skips the guard entirely under -SkipDocker even with mismatched compose tags' {
+            $mismatchedContentMock = {
+                param($LiteralPath)
+                if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
+                    return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
+                }
+                if ($LiteralPath -like '*docker-compose.yml') {
+                    return @(
+                        '    image: openclaw/core:1.2.3.0'
+                        '    image: openclaw/agent:1.2.4.0'
+                    )
+                }
+                return 'test-hostadapter-token'
+            }
+            Mock Get-Content $mismatchedContentMock
+
+            { & $script:ScriptPath -SkipDocker | Out-Null } | Should -Not -Throw
+
             $global:InstallTestCalls -contains 'Invoke-DockerImageLoad' | Should -BeFalse
         }
     }

@@ -21,7 +21,9 @@
         'Invoke-OpenClawReadyzProbe',
         'Invoke-OpenClawHostAdapterInContainerProbe',
         'Test-OpenClawGatewayTokenPresence',
-        'Test-OpenClawGatewayTokenInContainer'
+        'Test-OpenClawGatewayTokenInContainer',
+        'ConvertFrom-OpenClawImageReference',
+        'Test-OpenClawImageVersionAligned'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()

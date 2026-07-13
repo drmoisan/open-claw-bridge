@@ -86,6 +86,12 @@ Describe 'scripts/Install.ps1' {
             if ($LiteralPath -like '*docker*.env' -or $LiteralPath -like '*docker/.env') {
                 return @('OPENCLAW_GATEWAY_TOKEN=test-gateway-token')
             }
+            if ($LiteralPath -like '*docker-compose.yml') {
+                return @(
+                    '    image: openclaw/core:1.2.3.0'
+                    '    image: openclaw/agent:1.2.3.0'
+                )
+            }
             return 'test-hostadapter-token'
         }
         Mock Get-Content $script:GetContentMock
