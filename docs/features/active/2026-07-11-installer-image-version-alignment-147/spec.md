@@ -220,20 +220,20 @@ Seeded from issue:
 
 
 ## Acceptance Criteria
-- [ ] `Install.ps1` Stage 9 detects a cross-service compose tag mismatch (`openclaw/core` tag != `openclaw/agent` tag) before `Invoke-DockerImageLoad` runs, and aborts with an error naming both image references, both tags, `$ResolvedVersion`, and `$ComposeFilePath`.
-- [ ] `Install.ps1` Stage 9 detects the case where both compose tags agree with each other but disagree with `$ResolvedVersion`, and aborts with the same actionable error content.
-- [ ] `Install.ps1` Stage 9 proceeds to `Invoke-DockerImageLoad` and `Invoke-ComposeUp` (in that order) when both compose tags equal `$ResolvedVersion`.
-- [ ] The guard runs only inside the existing `-SkipDocker`-gated block, so `-SkipDocker` continues to bypass it exactly as it bypasses the rest of Stage 9's docker steps.
-- [ ] `ConvertFrom-OpenClawImageReference` and `Test-OpenClawImageVersionAligned` are added to `OpenClawContainerValidation.psm1`, exported via `Export-ModuleMember`, and listed in `OpenClawContainerValidation.psd1`'s `FunctionsToExport`.
-- [ ] `Test-OpenClawImageVersionAligned` correctly fails (with a distinguishing message) for each named edge case: `pre-mvp` floating tag, missing `:` separator, malformed 4-part version string, and same-wrong-version-on-both-sides.
-- [ ] Unit tests exist and pass at `tests/scripts/powershell/modules/OpenClawContainerValidation/OpenClawContainerValidation.ImageVersionAlignment.Tests.ps1` covering `ConvertFrom-OpenClawImageReference` and `Test-OpenClawImageVersionAligned`.
-- [ ] Guard tests exist and pass in `tests/scripts/Install.DockerStage.Tests.ps1` (or a sibling `tests/scripts/Install.ImageVersionAlignment.Tests.ps1` if split for line-count reasons), covering the matched, mismatched, and `-SkipDocker` scenarios.
-- [ ] All #142 invariants listed in Boundaries and invariants to preserve remain green (tracked repo `docker-compose.yml` unchanged; `Install.Docker.psm1` self-containment preserved; four direct `docker` call sites in `Install.Helpers.psm1` remain un-retrofitted; bundle-staging list in `Copy-InstallScriptsIntoBundle` unchanged).
-- [ ] All #144 invariants listed in Boundaries and invariants to preserve remain green (`/status` endpoint wording; default `-EnvFilePath` resolution chain; distinct `Test-OpenClawGatewayTokenInContainer`/`Test-OpenClawGatewayTokenPresence`; `AgentDashboard` auth-disclaimer wording; shared fixture's `-Global` `Import-Module` pattern).
-- [ ] `Install.ps1` contains no `Import-Module` reference to `OpenClawContainerValidation.psm1` or its `.psd1` (ratified design decision: the module is not staged into published bundles).
-- [ ] Full PowerShell toolchain passes in a single pass: PoshQC format, PoshQC analyze (lint), and Pester test with coverage, on `scripts/Install.ps1`, `OpenClawContainerValidation.psm1`/`.psd1`, and all new/updated test files.
-- [ ] Line coverage >= 85% and branch coverage >= 75% on changed lines in both production files, with no regression on previously-covered lines.
-- [ ] Full regression run of the test files named in Test Strategy (`Install.Tests.ps1`, `Install.Force.Tests.ps1`, `Install.Docker.Tests.ps1`, the six `Invoke-OpenClawContainerPathValidation.*.Tests.ps1` files, `Publish.Docker.Tests.ps1`, `Publish.Tests.ps1`, `Publish.Helpers.Tests.ps1`) passes with no new failures.
+- [x] `Install.ps1` Stage 9 detects a cross-service compose tag mismatch (`openclaw/core` tag != `openclaw/agent` tag) before `Invoke-DockerImageLoad` runs, and aborts with an error naming both image references, both tags, `$ResolvedVersion`, and `$ComposeFilePath`.
+- [x] `Install.ps1` Stage 9 detects the case where both compose tags agree with each other but disagree with `$ResolvedVersion`, and aborts with the same actionable error content.
+- [x] `Install.ps1` Stage 9 proceeds to `Invoke-DockerImageLoad` and `Invoke-ComposeUp` (in that order) when both compose tags equal `$ResolvedVersion`.
+- [x] The guard runs only inside the existing `-SkipDocker`-gated block, so `-SkipDocker` continues to bypass it exactly as it bypasses the rest of Stage 9's docker steps.
+- [x] `ConvertFrom-OpenClawImageReference` and `Test-OpenClawImageVersionAligned` are added to `OpenClawContainerValidation.psm1`, exported via `Export-ModuleMember`, and listed in `OpenClawContainerValidation.psd1`'s `FunctionsToExport`.
+- [x] `Test-OpenClawImageVersionAligned` correctly fails (with a distinguishing message) for each named edge case: `pre-mvp` floating tag, missing `:` separator, malformed 4-part version string, and same-wrong-version-on-both-sides.
+- [x] Unit tests exist and pass at `tests/scripts/powershell/modules/OpenClawContainerValidation/OpenClawContainerValidation.ImageVersionAlignment.Tests.ps1` covering `ConvertFrom-OpenClawImageReference` and `Test-OpenClawImageVersionAligned`.
+- [x] Guard tests exist and pass in `tests/scripts/Install.DockerStage.Tests.ps1` (or a sibling `tests/scripts/Install.ImageVersionAlignment.Tests.ps1` if split for line-count reasons), covering the matched, mismatched, and `-SkipDocker` scenarios.
+- [x] All #142 invariants listed in Boundaries and invariants to preserve remain green (tracked repo `docker-compose.yml` unchanged; `Install.Docker.psm1` self-containment preserved; four direct `docker` call sites in `Install.Helpers.psm1` remain un-retrofitted; bundle-staging list in `Copy-InstallScriptsIntoBundle` unchanged).
+- [x] All #144 invariants listed in Boundaries and invariants to preserve remain green (`/status` endpoint wording; default `-EnvFilePath` resolution chain; distinct `Test-OpenClawGatewayTokenInContainer`/`Test-OpenClawGatewayTokenPresence`; `AgentDashboard` auth-disclaimer wording; shared fixture's `-Global` `Import-Module` pattern).
+- [x] `Install.ps1` contains no `Import-Module` reference to `OpenClawContainerValidation.psm1` or its `.psd1` (ratified design decision: the module is not staged into published bundles).
+- [x] Full PowerShell toolchain passes in a single pass: PoshQC format, PoshQC analyze (lint), and Pester test with coverage, on `scripts/Install.ps1`, `OpenClawContainerValidation.psm1`/`.psd1`, and all new/updated test files.
+- [x] Line coverage >= 85% and branch coverage >= 75% on changed lines in both production files, with no regression on previously-covered lines.
+- [x] Full regression run of the test files named in Test Strategy (`Install.Tests.ps1`, `Install.Force.Tests.ps1`, `Install.Docker.Tests.ps1`, the six `Invoke-OpenClawContainerPathValidation.*.Tests.ps1` files, `Publish.Docker.Tests.ps1`, `Publish.Tests.ps1`, `Publish.Helpers.Tests.ps1`) passes with no new failures.
 
 ## Risks & Mitigations
 - Technical or operational risks:

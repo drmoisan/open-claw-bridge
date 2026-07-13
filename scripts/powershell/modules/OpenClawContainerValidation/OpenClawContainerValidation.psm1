@@ -236,13 +236,7 @@ function Get-OpenClawEnvFileMap {
 
 <#
 .SYNOPSIS
-Compose the version-neutral deployed operator `.env` path
-(`%LOCALAPPDATA%\OpenClaw\operator-config\.env`) from a LocalAppData base.
-
-.DESCRIPTION
-Pure path composition. Performs no `Test-Path`/`Get-Content` call and touches
-no filesystem. Returns `$null` when `-LocalAppDataPath` is null or whitespace
-so callers can fall back without an ambiguous empty-path join.
+Compose the version-neutral deployed operator `.env` path from a LocalAppData base (pure; returns `$null` for a null/whitespace base).
 #>
 function Get-OpenClawOperatorEnvFilePath {
     [CmdletBinding()]
@@ -254,13 +248,7 @@ function Get-OpenClawOperatorEnvFilePath {
 
 <#
 .SYNOPSIS
-Resolve the default `.env` path, preferring the deployed operator env file when
-it exists and falling back to the supplied fallback path otherwise.
-
-.DESCRIPTION
-When `-OperatorEnvFilePath` is null or whitespace, returns the fallback without
-probing the filesystem. Otherwise returns the operator path when it exists on
-disk and the fallback when it does not.
+Resolve the default `.env` path: fallback without probing when `-OperatorEnvFilePath` is null/whitespace, else the operator path if it exists on disk, else the fallback.
 #>
 function Resolve-OpenClawDefaultEnvFilePath {
     [CmdletBinding()]
@@ -388,16 +376,7 @@ function Test-OpenClawGatewayTokenPresence {
 
 <#
 .SYNOPSIS
-Confirm `OPENCLAW_GATEWAY_TOKEN` is present and non-empty inside the running
-agent container by running `docker compose exec`. Returns a probe result named
-`GatewayTokenInContainer`.
-
-.DESCRIPTION
-This is distinct from the `.env`-file presence check (`Test-OpenClawGatewayTokenPresence`):
-it verifies the environment variable is actually populated inside the container,
-not just written to the operator `.env`. Routes through the same docker seam
-(`Invoke-OpenClawDockerCommand`) as the HostAdapter in-container probe. No
-WebSocket or device-pairing handshake is performed.
+Confirm OPENCLAW_GATEWAY_TOKEN is present/non-empty inside the running agent container via `docker compose exec` (distinct from the `.env`-file presence check); returns a `GatewayTokenInContainer` probe result.
 #>
 function Test-OpenClawGatewayTokenInContainer {
     [CmdletBinding()]
@@ -434,6 +413,68 @@ function Test-OpenClawGatewayTokenInContainer {
     }
 }
 
+<#
+.SYNOPSIS
+Split an `<repo>:<tag>` image reference on the last `:`, returning `Tag = ''` (not a throw) when no `:` is present.
+#>
+function ConvertFrom-OpenClawImageReference {
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param([Parameter(Mandatory = $true)][string]$ImageReference)
+    $splitIndex = $ImageReference.LastIndexOf(':')
+    if ($splitIndex -lt 0) {
+        return [pscustomobject]@{ Repository = $ImageReference; Tag = '' }
+    }
+    return [pscustomobject]@{
+        Repository = $ImageReference.Substring(0, $splitIndex)
+        Tag        = $ImageReference.Substring($splitIndex + 1)
+    }
+}
+
+<#
+.SYNOPSIS
+Compare the Control UI (`openclaw/core`) and gateway (`openclaw/agent`) image tags against `-ExpectedVersion`; returns a `Get-OpenClawValidationResult`-shaped object.
+#>
+function Test-OpenClawImageVersionAligned {
+    [CmdletBinding()]
+    [OutputType([pscustomobject])]
+    param(
+        [Parameter(Mandatory = $true)][string]$CoreImageReference,
+        [Parameter(Mandatory = $true)][string]$AgentImageReference,
+        [Parameter(Mandatory = $true)][string]$ExpectedVersion
+    )
+    $core = ConvertFrom-OpenClawImageReference -ImageReference $CoreImageReference
+    $agent = ConvertFrom-OpenClawImageReference -ImageReference $AgentImageReference
+    $parsedVersion = $null
+    $coreWellFormed = [System.Version]::TryParse($core.Tag, [ref]$parsedVersion)
+    $agentWellFormed = [System.Version]::TryParse($agent.Tag, [ref]$parsedVersion)
+    $coreMatches = $coreWellFormed -and ($core.Tag -eq $ExpectedVersion)
+    $agentMatches = $agentWellFormed -and ($agent.Tag -eq $ExpectedVersion)
+    $isExpected = $coreMatches -and $agentMatches
+    $summary = if ($isExpected) {
+        "Expected: both '$CoreImageReference' and '$AgentImageReference' are pinned to version '$ExpectedVersion'."
+    }
+    elseif (-not $coreWellFormed -or -not $agentWellFormed) {
+        "Unexpected: malformed image tag(s) - core tag '$($core.Tag)' well-formed=$coreWellFormed, agent tag '$($agent.Tag)' well-formed=$agentWellFormed; expected 4-part version '$ExpectedVersion'."
+    }
+    else {
+        "Unexpected: version mismatch - core tag '$($core.Tag)', agent tag '$($agent.Tag)', expected version '$ExpectedVersion'."
+    }
+    return Get-OpenClawValidationResult `
+        -Category 'Container' `
+        -Name 'ImageVersionAlignment' `
+        -ExpectedCondition "Both core and agent image tags equal '$ExpectedVersion' and are well-formed 4-part versions" `
+        -IsExpected $isExpected `
+        -Summary $summary `
+        -Details @{
+        coreImageReference  = $CoreImageReference
+        agentImageReference = $AgentImageReference
+        coreTag             = $core.Tag
+        agentTag            = $agent.Tag
+        expectedVersion     = $ExpectedVersion
+    }
+}
+
 Export-ModuleMember -Function @(
     'Get-OpenClawEndpointUri',
     'Get-OpenClawPropertyValue',
@@ -448,5 +489,7 @@ Export-ModuleMember -Function @(
     'Invoke-OpenClawReadyzProbe',
     'Invoke-OpenClawHostAdapterInContainerProbe',
     'Test-OpenClawGatewayTokenPresence',
-    'Test-OpenClawGatewayTokenInContainer'
+    'Test-OpenClawGatewayTokenInContainer',
+    'ConvertFrom-OpenClawImageReference',
+    'Test-OpenClawImageVersionAligned'
 )
