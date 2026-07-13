@@ -8,14 +8,14 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 - Integration branch: `epic/openclaw-runtime-remediation-integration` (tip at kickoff: `5f6bab2`)
 - Manifest: [epic.md](epic.md)
 - Kickoff: [epic-kickoff.md](epic-kickoff.md)
-- Current wave: **1 (in progress)**
+- Current wave: **1 (complete)**
 - Session model budget: `fable_policy: available`
-- Last projected: 2026-07-13T02:54Z
-- Status: **IN PROGRESS.** Wave 0 is complete: #146 message-to-event-linkage merged (PR #149,
-  CI green, merge commit `62de335`) and #147 installer-image-version-alignment merged (PR #150,
-  CI green, merge commit `f35ee45`); both worktrees removed. Wave 1 launched after the barrier
-  cleared: #148 admin-access-automation is executing in an isolated worktree (opus), resuming at
-  atomic execution from its committed plan with upstream context from #147.
+- Last projected: 2026-07-13T04:15Z
+- Status: **ALL WAVES MERGED; final integration PR in progress.** Wave 0: #146
+  message-to-event-linkage merged (PR #149, CI green, `62de335`) and #147
+  installer-image-version-alignment merged (PR #150, CI green, `f35ee45`). Wave 1: #148
+  admin-access-automation merged (PR #151, CI green, `0008419`). All child worktrees removed.
+  Next: the integration-to-`main` PR (pr-author body, CI gate, merge on green).
 
 ## Feature status
 
@@ -23,7 +23,7 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 |---|---|---|---|---|---|---|
 | 2026-07-11-message-to-event-linkage-146 | #146 | 0 | C3 | worktree_removed | [#149](https://github.com/drmoisan/open-claw-bridge/pull/149) | `62de335` |
 | 2026-07-11-installer-image-version-alignment-147 | #147 | 0 | C2 | worktree_removed | [#150](https://github.com/drmoisan/open-claw-bridge/pull/150) | `f35ee45` |
-| 2026-07-11-admin-access-automation-148 | #148 | 1 | C3 | worktree_created | — | — |
+| 2026-07-11-admin-access-automation-148 | #148 | 1 | C3 | worktree_removed | [#151](https://github.com/drmoisan/open-claw-bridge/pull/151) | `0008419` |
 
 ## Lifecycle timestamps
 
@@ -31,4 +31,4 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 |---|---|---|---|---|
 | #146 | 2026-07-13T01:30Z | 2026-07-13T02:35Z | 2026-07-13T02:42Z | 2026-07-13T02:45Z |
 | #147 | 2026-07-13T01:30Z | 2026-07-13T02:45Z | 2026-07-13T02:51Z | 2026-07-13T02:53Z |
-| #148 | 2026-07-13T02:54Z | — | — | — |
+| #148 | 2026-07-13T02:54Z | 2026-07-13T04:06Z | 2026-07-13T04:12Z | 2026-07-13T04:13Z |
