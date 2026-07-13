@@ -82,7 +82,13 @@ internal sealed partial class OutlookScanner
             ConversationId: OutlookComHelpers.GetOptionalString(item, "ConversationID"),
             MeetingMessageType: isMeeting
                 ? OutlookComHelpers.GetOptionalInt(item, "MeetingType")
-                : null
+                : null,
+            // Issue #18 never-ingest ordering (spec Group A): the sensitive-message path reads only
+            // mechanical members and performs no protected-member access. The message-to-event
+            // linkage key (issue #146) would require obtaining the associated appointment, which is
+            // a protected read that must not run for a Private/Confidential item. The safer default
+            // is therefore null; a redacted item degrades to the calendar-view fallback in Core.
+            LinkedGlobalAppointmentId: null
         );
 
         var redacted = RedactMessage(dto);

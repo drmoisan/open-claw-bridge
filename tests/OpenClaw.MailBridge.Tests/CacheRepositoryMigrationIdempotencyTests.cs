@@ -105,12 +105,86 @@ public sealed class CacheRepositoryMigrationIdempotencyTests
             .Contain("response_status", "response_status column must be present after migration");
     }
 
-    private static async Task<List<string>> ReadEventsColumnNamesAsync(string connectionString)
+    [TestMethod]
+    public async Task InitializeAsync_should_add_linked_appointment_column_on_pre_146_messages_schema()
+    {
+        // Arrange — a legacy `messages` table that predates issue #146 (it carries the issue-#73
+        // resolved columns but not `linked_global_appointment_id`). This forces the messages
+        // migration to take the guarded-ALTER branch for the linkage column.
+        var connectionString =
+            $"Data Source=msg-link-alter-{Guid.NewGuid():N};Mode=Memory;Cache=Shared";
+        await using (var seed = new SqliteConnection(connectionString))
+        {
+            await seed.OpenAsync();
+            var ddl = seed.CreateCommand();
+            ddl.CommandText =
+                @"CREATE TABLE messages(
+                    bridge_id TEXT PRIMARY KEY,
+                    entry_id TEXT NOT NULL,
+                    store_id TEXT NULL,
+                    item_kind TEXT NOT NULL,
+                    subject TEXT NULL,
+                    received_utc TEXT NULL,
+                    sent_utc TEXT NULL,
+                    importance INTEGER NULL,
+                    sensitivity INTEGER NULL,
+                    unread INTEGER NOT NULL,
+                    has_attachments INTEGER NOT NULL,
+                    message_class TEXT NULL,
+                    sender_name TEXT NULL,
+                    sender_email TEXT NULL,
+                    to_json TEXT NULL,
+                    cc_json TEXT NULL,
+                    body_preview TEXT NULL,
+                    protected_fields_available INTEGER NOT NULL,
+                    is_redacted INTEGER NOT NULL,
+                    last_seen_utc TEXT NOT NULL,
+                    sender_email_resolved TEXT NULL,
+                    from_email_address TEXT NULL,
+                    conversation_id TEXT NULL,
+                    meeting_message_type INTEGER NULL
+                );";
+            await ddl.ExecuteNonQueryAsync();
+            using var repo = new CacheRepository(connectionString);
+
+            var before = await ReadMessagesColumnNamesAsync(connectionString);
+            before
+                .Should()
+                .NotContain(
+                    "linked_global_appointment_id",
+                    "pre-#146 schema must intentionally omit the linkage column"
+                );
+
+            // Act
+            await repo.InitializeAsync();
+
+            // Assert — the ALTER branch added the missing column.
+            var after = await ReadMessagesColumnNamesAsync(connectionString);
+            after.Should().Contain("linked_global_appointment_id");
+
+            // And re-running the migration is idempotent (no duplicate-column error).
+            Func<Task> secondInit = async () => await repo.InitializeAsync();
+            await secondInit
+                .Should()
+                .NotThrowAsync("the messages linkage migration must be idempotent");
+        }
+    }
+
+    private static async Task<List<string>> ReadEventsColumnNamesAsync(string connectionString) =>
+        await ReadColumnNamesAsync(connectionString, "events");
+
+    private static async Task<List<string>> ReadMessagesColumnNamesAsync(string connectionString) =>
+        await ReadColumnNamesAsync(connectionString, "messages");
+
+    private static async Task<List<string>> ReadColumnNamesAsync(
+        string connectionString,
+        string table
+    )
     {
         await using var conn = new SqliteConnection(connectionString);
         await conn.OpenAsync();
         var cmd = conn.CreateCommand();
-        cmd.CommandText = "PRAGMA table_info(events);";
+        cmd.CommandText = $"PRAGMA table_info({table});";
         var columns = new List<string>();
         await using var reader = await cmd.ExecuteReaderAsync();
         while (await reader.ReadAsync())

@@ -148,6 +148,7 @@ internal static class Program
                 "limit"
             ),
             "get-event" => Req(id, BridgeMethods.GetEvent, opts, "id"),
+            "get-event-for-message" => Req(id, BridgeMethods.GetEventForMessage, opts, "id"),
             "send-mail" => BuildSendMail(id, opts),
             _ => null,
         };

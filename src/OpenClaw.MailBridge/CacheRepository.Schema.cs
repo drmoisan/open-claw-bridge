@@ -11,7 +11,7 @@ internal sealed partial class CacheRepository
 {
     private const string CreateTablesSql =
         @"
-CREATE TABLE IF NOT EXISTS messages(bridge_id TEXT PRIMARY KEY,entry_id TEXT NOT NULL,store_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,received_utc TEXT NULL,sent_utc TEXT NULL,importance INTEGER NULL,sensitivity INTEGER NULL,unread INTEGER NOT NULL,has_attachments INTEGER NOT NULL,message_class TEXT NULL,sender_name TEXT NULL,sender_email TEXT NULL,to_json TEXT NULL,cc_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_seen_utc TEXT NOT NULL,sender_email_resolved TEXT NULL,from_email_address TEXT NULL,conversation_id TEXT NULL,meeting_message_type INTEGER NULL);
+CREATE TABLE IF NOT EXISTS messages(bridge_id TEXT PRIMARY KEY,entry_id TEXT NOT NULL,store_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,received_utc TEXT NULL,sent_utc TEXT NULL,importance INTEGER NULL,sensitivity INTEGER NULL,unread INTEGER NOT NULL,has_attachments INTEGER NOT NULL,message_class TEXT NULL,sender_name TEXT NULL,sender_email TEXT NULL,to_json TEXT NULL,cc_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_seen_utc TEXT NOT NULL,sender_email_resolved TEXT NULL,from_email_address TEXT NULL,conversation_id TEXT NULL,meeting_message_type INTEGER NULL,linked_global_appointment_id TEXT NULL);
 CREATE TABLE IF NOT EXISTS events(bridge_id TEXT PRIMARY KEY,entry_id TEXT NULL,store_id TEXT NULL,global_appointment_id TEXT NULL,item_kind TEXT NOT NULL,subject TEXT NULL,start_utc TEXT NOT NULL,end_utc TEXT NOT NULL,location TEXT NULL,busy_status INTEGER NULL,meeting_status INTEGER NULL,is_recurring INTEGER NOT NULL,sensitivity INTEGER NULL,organizer TEXT NULL,required_attendees_json TEXT NULL,optional_attendees_json TEXT NULL,resources_json TEXT NULL,body_preview TEXT NULL,protected_fields_available INTEGER NOT NULL,is_redacted INTEGER NOT NULL,last_modified_utc TEXT NULL,last_seen_utc TEXT NOT NULL,response_status INTEGER NULL,categories_json TEXT NULL,is_organizer INTEGER NOT NULL DEFAULT 0,is_online_meeting INTEGER NOT NULL DEFAULT 0,allow_new_time_proposals INTEGER NOT NULL DEFAULT 0,ical_uid TEXT NULL,series_master_id TEXT NULL,body_full TEXT NULL,sensitivity_label TEXT NULL);
 CREATE TABLE IF NOT EXISTS scan_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);";
 
@@ -80,7 +80,8 @@ CREATE TABLE IF NOT EXISTS scan_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
 
     /// <summary>
     /// The issue-#73 resolved-field columns added to the <c>messages</c> table on existing databases
-    /// via guarded ALTER. Each entry is a column name plus its column definition.
+    /// via guarded ALTER, plus the issue-#146 <c>linked_global_appointment_id</c> message-to-event
+    /// linkage column. Each entry is a column name plus its column definition.
     /// </summary>
     private static readonly (string Name, string Definition)[] MessageFieldColumns =
     [
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS scan_state(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         ("from_email_address", "from_email_address TEXT NULL"),
         ("conversation_id", "conversation_id TEXT NULL"),
         ("meeting_message_type", "meeting_message_type INTEGER NULL"),
+        ("linked_global_appointment_id", "linked_global_appointment_id TEXT NULL"),
     ];
 
     /// <summary>

@@ -21,7 +21,8 @@ public sealed class CacheRepositoryMessageFieldsTests
         string? senderEmailResolved = "resolved@contoso.com",
         string? fromEmailAddress = "delegate@contoso.com",
         string? conversationId = "conv-xyz",
-        int? meetingMessageType = 0
+        int? meetingMessageType = 0,
+        string? linkedGlobalAppointmentId = "clean-global-object-id"
     )
     {
         var received = new DateTimeOffset(2026, 6, 9, 10, 0, 0, TimeSpan.Zero);
@@ -46,7 +47,8 @@ public sealed class CacheRepositoryMessageFieldsTests
             SenderEmailResolved: senderEmailResolved,
             FromEmailAddress: fromEmailAddress,
             ConversationId: conversationId,
-            MeetingMessageType: meetingMessageType
+            MeetingMessageType: meetingMessageType,
+            LinkedGlobalAppointmentId: linkedGlobalAppointmentId
         );
     }
 
@@ -70,6 +72,35 @@ public sealed class CacheRepositoryMessageFieldsTests
         loaded.FromEmailAddress.Should().Be("delegate@contoso.com");
         loaded.ConversationId.Should().Be("conv-xyz");
         loaded.MeetingMessageType.Should().Be(0);
+        loaded.LinkedGlobalAppointmentId.Should().Be("clean-global-object-id");
+    }
+
+    [TestMethod]
+    public async Task UpsertMessage_then_GetMessage_should_round_trip_linked_appointment_key()
+    {
+        // Arrange: issue #146 message-to-event linkage key round-trip (populated and null).
+        using var repo = new CacheRepository(
+            $"Data Source=msg-link-{Guid.NewGuid():N};Mode=Memory;Cache=Shared"
+        );
+        await repo.InitializeAsync();
+        var linked = BuildMessage("bridge-linked", linkedGlobalAppointmentId: "gaid-42");
+        var unlinked = BuildMessage(
+            "bridge-unlinked",
+            itemKind: "mail",
+            linkedGlobalAppointmentId: null
+        );
+
+        // Act
+        await repo.UpsertMessageAsync("entry-linked", "store-1", linked);
+        await repo.UpsertMessageAsync("entry-unlinked", "store-1", unlinked);
+        var loadedLinked = await repo.GetMessageAsync("bridge-linked");
+        var loadedUnlinked = await repo.GetMessageAsync("bridge-unlinked");
+
+        // Assert
+        loadedLinked.Should().NotBeNull();
+        loadedLinked!.LinkedGlobalAppointmentId.Should().Be("gaid-42");
+        loadedUnlinked.Should().NotBeNull();
+        loadedUnlinked!.LinkedGlobalAppointmentId.Should().BeNull();
     }
 
     [TestMethod]
