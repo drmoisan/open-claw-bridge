@@ -25,6 +25,7 @@ public static class BridgeMethods
     public const string ListRecentMeetingRequests = "list_recent_meeting_requests";
     public const string ListCalendarWindow = "list_calendar_window";
     public const string GetEvent = "get_event";
+    public const string GetEventForMessage = "get_event_for_message";
     public const string SendMail = "send_mail";
 
     public static readonly HashSet<string> All =
@@ -35,6 +36,7 @@ public static class BridgeMethods
         ListRecentMeetingRequests,
         ListCalendarWindow,
         GetEvent,
+        GetEventForMessage,
         SendMail,
     ];
 }
@@ -94,7 +96,8 @@ public sealed record MessageDto(
     string? SenderEmailResolved = null,
     string? FromEmailAddress = null,
     string? ConversationId = null,
-    int? MeetingMessageType = null
+    int? MeetingMessageType = null,
+    string? LinkedGlobalAppointmentId = null
 );
 
 public sealed record EventDto(

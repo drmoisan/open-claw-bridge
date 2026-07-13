@@ -44,13 +44,13 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 
 ### Phase 1 - MailBridge.Contracts: RPC method const and MessageDto linkage field
 
-- [ ] [P1-T1] Add `public const string GetEventForMessage` to `BridgeMethods` and add the same value to the `BridgeMethods.All` allow-list in `src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs`.
+- [x] [P1-T1] Add `public const string GetEventForMessage` to `BridgeMethods` and add the same value to the `BridgeMethods.All` allow-list in `src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs`.
   - AC: The const exists and its value is present in `All`; a method name absent from `All` is still rejected by `PipeRpcWorker.BuildResponseAsync` (unchanged behavior preserved).
-- [ ] [P1-T2] Append a nullable `string? LinkedGlobalAppointmentId` field to the `MessageDto` record in `src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs` as the last positional parameter with a `null` default.
+- [x] [P1-T2] Append a nullable `string? LinkedGlobalAppointmentId` field to the `MessageDto` record in `src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs` as the last positional parameter with a `null` default.
   - AC: `MessageDto` compiles with the new field positional-last and defaulting to `null`; all existing positional callers still compile without change (non-breaking).
-- [ ] [P1-T3] Extend `tests/OpenClaw.MailBridge.Tests/BridgeContractsCoverageTests.cs` to assert the new `BridgeMethods.GetEventForMessage` const/`All` membership and the new `MessageDto.LinkedGlobalAppointmentId` field default.
+- [x] [P1-T3] Extend `tests/OpenClaw.MailBridge.Tests/BridgeContractsCoverageTests.cs` to assert the new `BridgeMethods.GetEventForMessage` const/`All` membership and the new `MessageDto.LinkedGlobalAppointmentId` field default.
   - AC: New assertions fail if the const is removed from `All` or the field default is not `null`; tests pass against the Phase 1 implementation.
-- [ ] [P1-T4] Run the C# toolchain loop for Phase 1: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
+- [x] [P1-T4] Run the C# toolchain loop for Phase 1: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
 ### Phase 2 - MailBridge: migration, repository join, RPC handler, scanner seam, CLI verb
