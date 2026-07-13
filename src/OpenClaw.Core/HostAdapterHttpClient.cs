@@ -107,6 +107,20 @@ internal sealed class HostAdapterHttpClient(
         );
     }
 
+    public Task<ApiEnvelope<EventDto>> GetEventForMessageAsync(
+        string bridgeId,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    )
+    {
+        var id = Uri.EscapeDataString(options.HostAdapter.MailboxId);
+        return SendAsync<EventDto>(
+            $"users/{id}/messages/{Uri.EscapeDataString(bridgeId)}/event",
+            requestId,
+            cancellationToken
+        );
+    }
+
     public Task<ApiEnvelope<MailboxSettingsDto>> GetMailboxSettingsAsync(
         string? requestId = null,
         CancellationToken cancellationToken = default

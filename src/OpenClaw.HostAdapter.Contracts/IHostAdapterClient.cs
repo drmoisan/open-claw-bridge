@@ -101,6 +101,26 @@ public interface IHostAdapterClient
     );
 
     /// <summary>
+    /// Resolves the calendar event linked to a message via
+    /// <c>GET /users/{id}/messages/{messageId}/event</c> (issue #146).
+    /// </summary>
+    /// <remarks>
+    /// Honors the graceful-degradation contract: a genuinely unlinked message (ordinary mail, no
+    /// matching event, or absent message row) resolves to an <c>ok:true</c> / <c>data:null</c>
+    /// envelope rather than an error, so callers can map it to a clean <see langword="null"/>. A
+    /// malformed message bridge id is <c>INVALID_REQUEST</c> / HTTP 400.
+    /// </remarks>
+    /// <param name="bridgeId">The message bridge identifier rendered into the <c>{messageId}</c> route segment.</param>
+    /// <param name="requestId">An optional caller-supplied correlation identifier.</param>
+    /// <param name="cancellationToken">Cancels the outbound operation.</param>
+    /// <returns>The linked event (or a null-data envelope) wrapped in an API envelope.</returns>
+    Task<ApiEnvelope<EventDto>> GetEventForMessageAsync(
+        string bridgeId,
+        string? requestId = null,
+        CancellationToken cancellationToken = default
+    );
+
+    /// <summary>
     /// Retrieves the mailbox time zone and working hours via
     /// <c>GET /users/{id}/mailboxSettings</c>.
     /// </summary>

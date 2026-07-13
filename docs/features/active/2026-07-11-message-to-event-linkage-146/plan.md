@@ -95,15 +95,15 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 
 ### Phase 4 - HostAdapter.Contracts client method and both Core implementations
 
-- [ ] [P4-T1] Declare `Task<ApiEnvelope<EventDto>> GetEventForMessageAsync(string bridgeId, string? requestId = null, CancellationToken cancellationToken = default)` on `IHostAdapterClient` in `src/OpenClaw.HostAdapter.Contracts/IHostAdapterClient.cs`, with keyword-style optional params matching `GetEventAsync`.
+- [x] [P4-T1] Declare `Task<ApiEnvelope<EventDto>> GetEventForMessageAsync(string bridgeId, string? requestId = null, CancellationToken cancellationToken = default)` on `IHostAdapterClient` in `src/OpenClaw.HostAdapter.Contracts/IHostAdapterClient.cs`, with keyword-style optional params matching `GetEventAsync`.
   - AC: The interface method is declared with the exact signature; the solution does not yet build until both implementations are added (bound by parity).
-- [ ] [P4-T2] Implement `GetEventForMessageAsync` in `src/OpenClaw.Core/HostAdapterHttpClient.cs` as a real `SendAsync<EventDto>($"users/{id}/messages/{Uri.EscapeDataString(bridgeId)}/event", ...)`, honoring the null contract.
+- [x] [P4-T2] Implement `GetEventForMessageAsync` in `src/OpenClaw.Core/HostAdapterHttpClient.cs` as a real `SendAsync<EventDto>($"users/{id}/messages/{Uri.EscapeDataString(bridgeId)}/event", ...)`, honoring the null contract.
   - AC: The method issues an HTTP GET to the linked-event route, deserializes a 200 body into `ApiEnvelope<EventDto>` (including `Data == null`), and returns it without throwing on the null case.
-- [ ] [P4-T3] Implement `GetEventForMessageAsync` in `GraphHostAdapterClient` (extend `src/OpenClaw.Core/CloudGraph/GraphHostAdapterClient.Messages.cs` or add a partial) consistently with the null contract, returning an `ok:true`/`data:null` envelope rather than a `NOT_SUPPORTED` error for the read path.
+- [x] [P4-T3] Implement `GetEventForMessageAsync` in `GraphHostAdapterClient` (extend `src/OpenClaw.Core/CloudGraph/GraphHostAdapterClient.Messages.cs` or add a partial) consistently with the null contract, returning an `ok:true`/`data:null` envelope rather than a `NOT_SUPPORTED` error for the read path.
   - AC: The Graph implementation returns a structurally valid `ApiEnvelope<EventDto>` (event or null) and never emits `NOT_SUPPORTED` for this read; the touched file stays under 500 lines.
-- [ ] [P4-T4] Add MSTest + Moq tests under `tests/OpenClaw.Core.Tests/` covering `HostAdapterHttpClient` URL construction (extend `HostAdapterHttpClientSchedulingTests.cs`), the Graph implementation (extend `CloudGraph/GraphHostAdapterClientMessagesTests.cs`), and the parity gate (`CloudGraph/CloudGraphContractParityTests.cs`).
+- [x] [P4-T4] Add MSTest + Moq tests under `tests/OpenClaw.Core.Tests/` covering `HostAdapterHttpClient` URL construction (extend `HostAdapterHttpClientSchedulingTests.cs`), the Graph implementation (extend `CloudGraph/GraphHostAdapterClientMessagesTests.cs`), and the parity gate (`CloudGraph/CloudGraphContractParityTests.cs`).
   - AC: `CloudGraphContractParityTests` recognizes the new method on both implementations and passes; URL-construction and Graph null-contract tests pass; each test file is under 500 lines.
-- [ ] [P4-T5] Run the C# toolchain loop for Phase 4: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
+- [x] [P4-T5] Run the C# toolchain loop for Phase 4: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
 ### Phase 5 - Core rewire: HostAdapterSchedulingService
