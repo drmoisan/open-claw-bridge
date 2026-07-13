@@ -31,7 +31,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - `PipeRpcWorker.cs` (~438) is near the cap: the new dispatch handler goes into a `PipeRpcWorker` partial.
 - `CacheRepository.cs` (~480) is near the cap: the new repository resolution method goes into a `CacheRepository` partial (or `.Readers.cs`), not `CacheRepository.cs`.
 
-### Phase 0 — Policy Reads and C# Baseline Capture
+### Phase 0 - Policy Reads and C# Baseline Capture
 
 - [ ] [P0-T1] Read the repository policy files in the required order and record the read in `evidence/baseline/phase0-instructions-read.md`.
   - AC: Artifact exists with `Timestamp:`, `Policy Order:`, and an explicit file list covering `CLAUDE.md`, `.claude/rules/general-code-change.md`, `.claude/rules/general-unit-test.md`, `.claude/rules/quality-tiers.md`, and `.claude/rules/csharp.md`, in that order.
@@ -42,7 +42,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - [ ] [P0-T4] Capture baseline test-with-coverage state by running `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"` and record `evidence/baseline/baseline-test-coverage-<yyyy-MM-ddTHH-mm>.md`; retain the raw `coverage.cobertura.xml` and TRX under `artifacts/csharp/`.
   - AC: Artifact records `Timestamp:`, `Command:` (exact), `EXIT_CODE:`, and `Output Summary:` including numeric baseline line-coverage % and branch-coverage % read from the cobertura report, plus passed/failed test counts.
 
-### Phase 1 — MailBridge.Contracts: RPC method const and MessageDto linkage field
+### Phase 1 - MailBridge.Contracts: RPC method const and MessageDto linkage field
 
 - [ ] [P1-T1] Add `public const string GetEventForMessage` to `BridgeMethods` and add the same value to the `BridgeMethods.All` allow-list in `src/OpenClaw.MailBridge.Contracts/Models/BridgeContracts.cs`.
   - AC: The const exists and its value is present in `All`; a method name absent from `All` is still rejected by `PipeRpcWorker.BuildResponseAsync` (unchanged behavior preserved).
@@ -53,7 +53,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - [ ] [P1-T4] Run the C# toolchain loop for Phase 1: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
-### Phase 2 — MailBridge: migration, repository join, RPC handler, scanner seam, CLI verb
+### Phase 2 - MailBridge: migration, repository join, RPC handler, scanner seam, CLI verb
 
 - [ ] [P2-T1] Add `linked_global_appointment_id TEXT NULL` to the `messages` DDL and to the `MessageFieldColumns` guarded-ALTER array consumed by `MigrateMessagesSchemaAsync` in `src/OpenClaw.MailBridge/CacheRepository.Schema.cs`.
   - AC: A fresh database creates the column; running the migration against a database that already has the column does not error or duplicate it (idempotent).
@@ -80,7 +80,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - [ ] [P2-T12] Run the C# toolchain loop for Phase 2: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
-### Phase 3 — HostAdapter: route, command builder, null-tolerant projector
+### Phase 3 - HostAdapter: route, command builder, null-tolerant projector
 
 - [ ] [P3-T1] Add `BuildGetEventForMessage(string bridgeId)` to `src/OpenClaw.HostAdapter/HostAdapterCommandBuilder.cs`, mirroring `BuildGetEvent`/`BuildGetMessage` (`CreateBaseStartInfo("get-event-for-message")` + `AddOption("id", bridgeId)`).
   - AC: The builder produces a `ProcessStartInfo` invoking the `get-event-for-message` verb with the `id` option set to the supplied bridge id.
@@ -93,7 +93,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - [ ] [P3-T5] Run the C# toolchain loop for Phase 3: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
-### Phase 4 — HostAdapter.Contracts client method and both Core implementations
+### Phase 4 - HostAdapter.Contracts client method and both Core implementations
 
 - [ ] [P4-T1] Declare `Task<ApiEnvelope<EventDto>> GetEventForMessageAsync(string bridgeId, string? requestId = null, CancellationToken cancellationToken = default)` on `IHostAdapterClient` in `src/OpenClaw.HostAdapter.Contracts/IHostAdapterClient.cs`, with keyword-style optional params matching `GetEventAsync`.
   - AC: The interface method is declared with the exact signature; the solution does not yet build until both implementations are added (bound by parity).
@@ -106,7 +106,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - [ ] [P4-T5] Run the C# toolchain loop for Phase 4: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
-### Phase 5 — Core rewire: HostAdapterSchedulingService
+### Phase 5 - Core rewire: HostAdapterSchedulingService
 
 - [ ] [P5-T1] Rewire `GetEventForMessageAsync` in `src/OpenClaw.Core/Agent/Runtime/HostAdapterSchedulingService.cs` (lines 33-45) to call `hostAdapterClient.GetEventForMessageAsync(messageId, cancellationToken: ct)` and apply the existing `envelope is { Ok: true, Data: not null } ? mapper.MapEvent(envelope.Data) : null` guard, removing the `GetEventAsync` forward and the deferred-work comment.
   - AC: The method invokes `GetEventForMessageAsync` (not `GetEventAsync`), returns the mapped `SchedulingEventDto` on a linked hit, and returns `null` on `ok:true`/`data:null`.
@@ -115,7 +115,7 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 - [ ] [P5-T3] Run the C# toolchain loop for Phase 5: `csharpier format .`, then `dotnet build OpenClaw.MailBridge.sln`, then `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"`; restart from format if any step changes files or fails.
   - AC: Format, build (0 errors), and tests all pass in a single clean pass.
 
-### Phase 6 — Final QC, Coverage Delta, and Acceptance-Criteria Checkoff
+### Phase 6 - Final QC, Coverage Delta, and Acceptance-Criteria Checkoff
 
 - [ ] [P6-T1] Run the final format gate `csharpier check .` and record `evidence/qa-gates/finalqc-format-<yyyy-MM-ddTHH-mm>.md`.
   - AC: Artifact records `Timestamp:`, `Command: csharpier check .`, `EXIT_CODE:`, and `Output Summary:` confirming 0 files need formatting.
