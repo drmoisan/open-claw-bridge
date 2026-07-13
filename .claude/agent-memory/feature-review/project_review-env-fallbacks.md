@@ -240,3 +240,19 @@ going forward whenever a new test file introduces an unscoped `Mock <FunctionNam
 First FAIL-verdict (Blocking + remediation-inputs) artifact set for a `minor-audit` work mode in
 this repo. Newest validator-shaped PowerShell-only minor-audit template (FAIL-verdict):
 `2026-07-10-container-validation-stray-v1-and-env-target-144/*.2026-07-11T00-45.md`.
+
+#146 (2026-07-12, message-to-event-linkage, full-feature, C#, epic-child): base resolves to
+`origin/epic/openclaw-runtime-remediation-integration` (a NEW epic branch, distinct from the
+openclaw-vision epic). PR-context artifacts ABSENT (regen from git per #120 recipe).
+`validate_evidence_locations.py` genuinely absent from the repo (searched; not in scripts/dev_tools)
+— did the evidence-location scan manually with `git diff --name-only <base>...HEAD | grep -iE
+'^artifacts/(baselines|qa|evidence|coverage)/'` (zero matches; executor evidence correctly under
+`<FEATURE>/evidence/{baseline,qa-gates}/`). C# coverage output landed as per-project cobertura
+(`artifacts/csharp/{baseline,final}-{core,mailbridge,hostadapter}.cobertura.xml`), not the single
+`artifacts/csharp/coverage.xml` the policy table names — accept and parse the per-project reports.
+Reusable ruling: a project-AGGREGATE branch floor below 75% that is pre-existing, unrelated to the
+feature, and improved by it is NOT a #-scoped FAIL when new/modified-file and C#-aggregate
+(repo-wide-per-language) coverage all pass — here HostAdapter project branch 67.45% (baseline 67.19%)
+recorded as informational, feature's own HostAdapter code at 100% branch. Verdict PASS, zero blocking.
+Newest validator-shaped PASS C# full-feature template:
+`2026-07-11-message-to-event-linkage-146/*.2026-07-12T22-25.md`.
