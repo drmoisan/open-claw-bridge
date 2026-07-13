@@ -10,12 +10,14 @@ transition, and final integration-PR completion. Do not hand-edit during a live 
 - Kickoff: [epic-kickoff.md](epic-kickoff.md)
 - Current wave: **1 (complete)**
 - Session model budget: `fable_policy: available`
-- Last projected: 2026-07-13T04:15Z
-- Status: **ALL WAVES MERGED; final integration PR in progress.** Wave 0: #146
-  message-to-event-linkage merged (PR #149, CI green, `62de335`) and #147
-  installer-image-version-alignment merged (PR #150, CI green, `f35ee45`). Wave 1: #148
-  admin-access-automation merged (PR #151, CI green, `0008419`). All child worktrees removed.
-  Next: the integration-to-`main` PR (pr-author body, CI gate, merge on green).
+- Last projected: 2026-07-13T04:25Z
+- Status: **COMPLETE.** Wave 0: #146 message-to-event-linkage merged (PR #149, CI green,
+  `62de335`) and #147 installer-image-version-alignment merged (PR #150, CI green, `f35ee45`).
+  Wave 1: #148 admin-access-automation merged (PR #151, CI green, `0008419`). All child
+  worktrees removed. Final integration PR
+  [#152](https://github.com/drmoisan/open-claw-bridge/pull/152) merged into `main` at
+  2026-07-13T04:21Z (CI run 29223625309 success against head `22ad912`; merge commit
+  `2f4c014`). Issues #146, #147, #148 auto-closed.
 
 ## Feature status
 
