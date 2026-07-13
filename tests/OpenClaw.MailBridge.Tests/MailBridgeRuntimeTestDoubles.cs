@@ -262,7 +262,7 @@ internal sealed class TryGetComActiveObject : ComActiveObject
     }
 }
 
-internal sealed class FakeScanStateRepository : IBridgeRepository
+internal sealed partial class FakeScanStateRepository : IBridgeRepository
 {
     public bool Initialized { get; private set; }
     public int Touches { get; private set; }
@@ -354,26 +354,6 @@ internal sealed class FakeScanStateRepository : IBridgeRepository
     public Task<EventDto?> GetEventAsync(string bridgeId)
     {
         Events.TryGetValue(bridgeId, out var evt);
-        return Task.FromResult(evt);
-    }
-
-    public Task<EventDto?> GetEventForMessageAsync(
-        string messageBridgeId,
-        CancellationToken cancellationToken = default
-    )
-    {
-        if (
-            !Messages.TryGetValue(messageBridgeId, out var message)
-            || string.IsNullOrWhiteSpace(message.LinkedGlobalAppointmentId)
-        )
-        {
-            return Task.FromResult<EventDto?>(null);
-        }
-
-        var evt = Events
-            .Values.Where(x => x.GlobalAppointmentId == message.LinkedGlobalAppointmentId)
-            .OrderByDescending(x => x.StartUtc)
-            .FirstOrDefault();
         return Task.FromResult(evt);
     }
 

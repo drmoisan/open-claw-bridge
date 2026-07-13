@@ -69,26 +69,26 @@ instead of guessing from a time window, improving the correctness of scheduling 
 
 ## Acceptance Criteria
 
-- [ ] The scheduling pipeline resolves the linked calendar event for a meeting message through
+- [x] The scheduling pipeline resolves the linked calendar event for a meeting message through
       a new MailBridge RPC (`BridgeMethods.GetEventForMessage`), a new HostAdapter route
       (`GET /users/{id}/messages/{messageId}/event`), and a new
       `IHostAdapterClient.GetEventForMessageAsync` method.
-- [ ] Linkage is resolved by joining the message's stored `LinkedGlobalAppointmentId` (the
+- [x] Linkage is resolved by joining the message's stored `LinkedGlobalAppointmentId` (the
       appointment `GlobalAppointmentID`) to `events.global_appointment_id`, selecting the
       newest instance for a recurring series.
-- [ ] `HostAdapterSchedulingService.GetEventForMessageAsync` calls the new client method (not
+- [x] `HostAdapterSchedulingService.GetEventForMessageAsync` calls the new client method (not
       `GetEventAsync`) and returns the mapped event for a linked message.
-- [ ] A linked hit causes `SchedulingWorker` to use the resolved event and skip the
+- [x] A linked hit causes `SchedulingWorker` to use the resolved event and skip the
       calendar-view window fallback.
-- [ ] A genuinely unlinked message (ordinary mail, no matching event, or absent message row)
+- [x] A genuinely unlinked message (ordinary mail, no matching event, or absent message row)
       yields a clean `null` result via an `ok:true` / `data:null` / HTTP 200 envelope — no
       HTTP 400 and no HTTP 404 — and the pipeline continues via its existing calendar-view
       fallback, adding no error telemetry.
-- [ ] A malformed message bridge id surfaces as HTTP 400 (`INVALID_REQUEST`), distinct from
+- [x] A malformed message bridge id surfaces as HTTP 400 (`INVALID_REQUEST`), distinct from
       the null-degradation path; bridge-not-ready remains HTTP 409.
-- [ ] Both `HostAdapterHttpClient` and `GraphHostAdapterClient` implement the new method
+- [x] Both `HostAdapterHttpClient` and `GraphHostAdapterClient` implement the new method
       consistently with the null contract and satisfy `CloudGraphContractParityTests`.
-- [ ] Coverage on changed C# code meets repo thresholds (line >= 85%, branch >= 75%) with no
+- [x] Coverage on changed C# code meets repo thresholds (line >= 85%, branch >= 75%) with no
       regression on changed lines, using MSTest + Moq + FluentAssertions.
 
 ## Non-Goals
