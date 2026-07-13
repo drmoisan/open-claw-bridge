@@ -341,4 +341,28 @@ public sealed class GraphHostAdapterClientMessagesTests
         result.Data!.Items.Should().HaveCount(2);
         result.Data.Items.Should().OnlyContain(m => m.ItemKind == "meeting");
     }
+
+    [TestMethod]
+    public async Task GetEventForMessageAsync_ReturnsOkNullEnvelope_WithoutAnyHttpRoundTrip()
+    {
+        // Arrange: the handler fails the test if invoked; the Graph client honors the null contract
+        // (issue #146) by returning a clean ok:true/data:null envelope with no round-trip, never a
+        // NOT_SUPPORTED error.
+        var invoked = false;
+        var handler = new FakeHttpHandler(_ =>
+        {
+            invoked = true;
+            return Task.FromResult(Json("{}"));
+        });
+        var client = Client(handler);
+
+        // Act
+        var result = await client.GetEventForMessageAsync("mtg:abc", requestId: "req-link");
+
+        // Assert
+        result.Ok.Should().BeTrue();
+        result.Data.Should().BeNull();
+        result.Error.Should().BeNull();
+        invoked.Should().BeFalse("the cloud linkage read must not perform a Graph HTTP call");
+    }
 }

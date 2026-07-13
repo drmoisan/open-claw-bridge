@@ -347,6 +347,11 @@ public partial class MailBridgeRuntimeTests
 
         public Task<EventDto?> GetEventAsync(string bridgeId) => inner.GetEventAsync(bridgeId);
 
+        public Task<EventDto?> GetEventForMessageAsync(
+            string messageBridgeId,
+            CancellationToken cancellationToken = default
+        ) => inner.GetEventForMessageAsync(messageBridgeId, cancellationToken);
+
         public Task<ScanStateSnapshot> GetScanStateSnapshotAsync()
         {
             snapshotRequested.TrySetResult(true);

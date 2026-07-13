@@ -43,6 +43,15 @@ internal interface IMessageSource
     int? MeetingMessageType { get; }
 
     /// <summary>
+    /// The associated appointment's Clean Global Object ID (<c>GlobalAppointmentID</c>) for a meeting
+    /// item, read fail-soft (issue #146). This is the linkage key joined against
+    /// <c>events.global_appointment_id</c> to resolve the calendar event a message is linked to.
+    /// <see langword="null"/> for ordinary (non-meeting) mail or when the appointment cannot be read.
+    /// No concrete COM type appears on this member's surface (architecture-boundaries rule 1).
+    /// </summary>
+    string? LinkedGlobalAppointmentId { get; }
+
+    /// <summary>
     /// The To recipients (recipient type 1), each as a name/email pair using the existing attendee
     /// shape. Never null; an empty collection models a message with no To recipients.
     /// </summary>

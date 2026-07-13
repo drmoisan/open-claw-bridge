@@ -262,7 +262,7 @@ internal sealed class TryGetComActiveObject : ComActiveObject
     }
 }
 
-internal sealed class FakeScanStateRepository : IBridgeRepository
+internal sealed partial class FakeScanStateRepository : IBridgeRepository
 {
     public bool Initialized { get; private set; }
     public int Touches { get; private set; }

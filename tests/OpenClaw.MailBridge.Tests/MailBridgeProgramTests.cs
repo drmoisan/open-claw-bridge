@@ -249,6 +249,38 @@ public partial class MailBridgeProgramTests
     }
 
     /// <summary>
+    /// Verifies that <c>get-event-for-message</c> with the <c>id</c> option builds the linkage
+    /// request forwarding the required id to <c>BridgeMethods.GetEventForMessage</c> (issue #146).
+    /// </summary>
+    [TestMethod]
+    public void Build_WhenCommandIsGetEventForMessage_WithId_ReturnsGetEventForMessageRequest()
+    {
+        // Act
+        var req = ClientProgram.Build(
+            "get-event-for-message",
+            new Dictionary<string, string> { ["id"] = "mtg:abc" }
+        );
+
+        // Assert
+        req.Should().NotBeNull();
+        req!.Method.Should().Be(BridgeMethods.GetEventForMessage);
+        req.Params!["id"].Should().Be("mtg:abc");
+    }
+
+    /// <summary>
+    /// Verifies that <c>get-event-for-message</c> without the required <c>id</c> option returns null.
+    /// </summary>
+    [TestMethod]
+    public void Build_WhenCommandIsGetEventForMessage_WithMissingId_ReturnsNull()
+    {
+        // Act
+        var req = ClientProgram.Build("get-event-for-message", []);
+
+        // Assert
+        req.Should().BeNull();
+    }
+
+    /// <summary>
     /// Verifies that an unrecognized command returns null so that <c>RunAsync</c> exits
     /// with code 5 rather than sending a malformed RPC request.
     /// </summary>

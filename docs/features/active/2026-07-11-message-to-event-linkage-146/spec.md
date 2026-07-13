@@ -170,55 +170,55 @@ existing gates unchanged.
 
 ## Acceptance Criteria
 
-- [ ] `BridgeMethods.GetEventForMessage` is added as a `public const string` and included in
+- [x] `BridgeMethods.GetEventForMessage` is added as a `public const string` and included in
       the `BridgeMethods.All` allow-list, so `PipeRpcWorker.BuildResponseAsync` accepts the
       method and rejects it only when absent from `All`.
-- [ ] `MessageDto` carries a new nullable `LinkedGlobalAppointmentId` field appended
+- [x] `MessageDto` carries a new nullable `LinkedGlobalAppointmentId` field appended
       positional-last with a `null` default; the addition is non-breaking and covered by the
       contract coverage test.
-- [ ] The `messages` table gains a `linked_global_appointment_id TEXT NULL` column via the
+- [x] The `messages` table gains a `linked_global_appointment_id TEXT NULL` column via the
       guarded-ALTER migration idiom, and the migration is idempotent (re-running it does not
       error or duplicate the column).
-- [ ] `IBridgeRepository.GetEventForMessageAsync` decodes the message bridge id, loads the
+- [x] `IBridgeRepository.GetEventForMessageAsync` decodes the message bridge id, loads the
       message row, and resolves the matching event by exact-string join on
       `events.global_appointment_id`, selecting the newest instance
       (`ORDER BY start_utc DESC LIMIT 1`) for a recurring series.
-- [ ] The RPC handler returns `RpcResponse.Success(id, EventDto)` for a linked message and
+- [x] The RPC handler returns `RpcResponse.Success(id, EventDto)` for a linked message and
       `RpcResponse.Success(id, null)` for an unlinked message (ordinary mail, no matching
       event, or absent message row) — never `Failure(NOT_FOUND)` for those cases.
-- [ ] The RPC handler returns `RpcResponse.Failure(id, INVALID_REQUEST, ...)` for a malformed
+- [x] The RPC handler returns `RpcResponse.Failure(id, INVALID_REQUEST, ...)` for a malformed
       message bridge id (decode failure).
-- [ ] The MailBridge.Client exposes a `get-event-for-message` verb that forwards the required
+- [x] The MailBridge.Client exposes a `get-event-for-message` verb that forwards the required
       `id` option to `BridgeMethods.GetEventForMessage`.
-- [ ] A HostAdapter route `GET /users/{id}/messages/{messageId}/event` is registered following
+- [x] A HostAdapter route `GET /users/{id}/messages/{messageId}/event` is registered following
       the existing message route pattern, gated by `RequireReadyBridgeAsync<EventDto>` and
       `TryGetBridgeId` validation.
-- [ ] `HostAdapterCommandBuilder.BuildGetEventForMessage(bridgeId)` builds the CLI command for
+- [x] `HostAdapterCommandBuilder.BuildGetEventForMessage(bridgeId)` builds the CLI command for
       the new verb, mirroring `BuildGetEvent`/`BuildGetMessage`.
-- [ ] The route uses a null-tolerant `EventDto` projector so an `ok`/JSON-null RPC result
+- [x] The route uses a null-tolerant `EventDto` projector so an `ok`/JSON-null RPC result
       produces an `ok:true` / `data:null` / HTTP 200 envelope (not a 502 TRANSPORT_FAILURE),
       and an `ok`/event result produces `ok:true` / `data:event` / HTTP 200.
-- [ ] `IHostAdapterClient.GetEventForMessageAsync(string bridgeId, string? requestId = null,
+- [x] `IHostAdapterClient.GetEventForMessageAsync(string bridgeId, string? requestId = null,
       CancellationToken cancellationToken = default)` is declared, with keyword-style optional
       params matching `GetEventAsync`.
-- [ ] Both `HostAdapterHttpClient` and `GraphHostAdapterClient` implement
+- [x] Both `HostAdapterHttpClient` and `GraphHostAdapterClient` implement
       `GetEventForMessageAsync`, satisfy `CloudGraphContractParityTests`, and behave
       consistently with the null contract (no `NOT_SUPPORTED` error for this read path).
-- [ ] `HostAdapterSchedulingService.GetEventForMessageAsync` invokes
+- [x] `HostAdapterSchedulingService.GetEventForMessageAsync` invokes
       `hostAdapterClient.GetEventForMessageAsync` (verified to be the method called, not
       `GetEventAsync`) and applies the `{ Ok:true, Data:not null }` guard to return the mapped
       event on a linked hit.
-- [ ] An unlinked message resolves to a clean `null` in Core (via `ok:true`/`data:null`) with
+- [x] An unlinked message resolves to a clean `null` in Core (via `ok:true`/`data:null`) with
       no HTTP 400 and no HTTP 404, and `SchedulingWorker` degrades to the calendar-view
       fallback exactly as it does today; a linked hit skips the window fallback.
-- [ ] A malformed message bridge id surfaces as HTTP 400 (`INVALID_REQUEST`), distinct from
+- [x] A malformed message bridge id surfaces as HTTP 400 (`INVALID_REQUEST`), distinct from
       the null-degradation path; bridge-not-ready remains HTTP 409 via the existing gate.
-- [ ] Line coverage on changed C# code is >= 85% and branch coverage >= 75%, with no
+- [x] Line coverage on changed C# code is >= 85% and branch coverage >= 75%, with no
       regression on changed lines, and no production file is excluded from coverage.
-- [ ] Every changed or added source and test file remains under the 500-line cap (new logic
+- [x] Every changed or added source and test file remains under the 500-line cap (new logic
       placed in partials / `.Readers.cs` rather than the capped `OutlookScanner.cs`,
       `PipeRpcWorker.cs`, or `CacheRepository.cs`).
-- [ ] Tests are authored with MSTest + Moq + FluentAssertions, use an injected `TimeProvider`
+- [x] Tests are authored with MSTest + Moq + FluentAssertions, use an injected `TimeProvider`
       (`FakeTimeProvider`) with no wall-clock reads or sleeps, and use in-memory SQLite / seam
       fakes with no temporary files.
 

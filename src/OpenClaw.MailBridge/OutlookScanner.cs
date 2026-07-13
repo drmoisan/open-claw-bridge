@@ -413,7 +413,7 @@ internal sealed partial class OutlookScanner : IOutlookScanner
             MeetingMessageType: source.MeetingMessageType
         );
 
-        return new NormalizedMessage(entryId, storeId, dto);
+        return BuildLinkedNormalizedMessage(entryId, storeId, dto, source);
     }
 
     private NormalizedEvent? NormalizeEvent(object item)

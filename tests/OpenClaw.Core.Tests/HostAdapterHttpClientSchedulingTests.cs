@@ -4,6 +4,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using OpenClaw.HostAdapter.Contracts;
+using OpenClaw.MailBridge.Contracts.Models;
 
 namespace OpenClaw.Core.Tests;
 
@@ -77,6 +78,50 @@ public class HostAdapterHttpClientSchedulingTests
             new ApiMeta(requestId, "1.0", null),
             null
         );
+
+    private static ApiEnvelope<EventDto> MakeEventEnvelope(string requestId, EventDto? data) =>
+        new(true, data, new ApiMeta(requestId, "1.0", null), null);
+
+    /// <summary>
+    /// Verifies that <see cref="HostAdapterHttpClient.GetEventForMessageAsync"/> sends a GET request
+    /// to the exact <c>users/{id}/messages/{messageId}/event</c> path with the bridge id encoded.
+    /// </summary>
+    [TestMethod]
+    public async Task GetEventForMessageAsync_SendsGetToLinkedEventPath_WithBridgeIdEncoded()
+    {
+        string? capturedPath = null;
+        var handler = new FakeHttpHandler(req =>
+        {
+            capturedPath = req.RequestUri!.PathAndQuery;
+            return Task.FromResult(JsonResponse(MakeEventEnvelope("r-link", null)));
+        });
+        var client = BuildClient(handler, ConstantTokenReader("tok"));
+
+        await client.GetEventForMessageAsync("mtg:abc+def");
+
+        capturedPath
+            .Should()
+            .Be("/users/me/messages/" + Uri.EscapeDataString("mtg:abc+def") + "/event");
+    }
+
+    /// <summary>
+    /// Verifies that <see cref="HostAdapterHttpClient.GetEventForMessageAsync"/> honors the null
+    /// contract: an <c>ok:true</c> / <c>data:null</c> envelope round-trips without throwing.
+    /// </summary>
+    [TestMethod]
+    public async Task GetEventForMessageAsync_WhenDataIsNull_ReturnsOkNullEnvelope()
+    {
+        var handler = new FakeHttpHandler(_ =>
+            Task.FromResult(JsonResponse(MakeEventEnvelope("r-link-null", null)))
+        );
+        var client = BuildClient(handler, ConstantTokenReader("tok"));
+
+        var result = await client.GetEventForMessageAsync("mtg:abc", requestId: "r-link-null");
+
+        result.Ok.Should().BeTrue();
+        result.Error.Should().BeNull();
+        result.Data.Should().BeNull();
+    }
 
     /// <summary>
     /// Verifies that <see cref="HostAdapterHttpClient.GetMailboxSettingsAsync"/> sends a GET

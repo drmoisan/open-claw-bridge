@@ -19,6 +19,7 @@ public class BridgeContractsCoverageTests
                 BridgeMethods.ListRecentMeetingRequests,
                 BridgeMethods.ListCalendarWindow,
                 BridgeMethods.GetEvent,
+                BridgeMethods.GetEventForMessage,
                 BridgeMethods.SendMail,
             ]);
     }
@@ -28,6 +29,13 @@ public class BridgeContractsCoverageTests
     {
         BridgeMethods.SendMail.Should().Be("send_mail");
         BridgeMethods.All.Contains(BridgeMethods.SendMail).Should().BeTrue();
+    }
+
+    [TestMethod]
+    public void Bridge_methods_all_should_contain_get_event_for_message_verb()
+    {
+        BridgeMethods.GetEventForMessage.Should().Be("get_event_for_message");
+        BridgeMethods.All.Contains(BridgeMethods.GetEventForMessage).Should().BeTrue();
     }
 
     [TestMethod]
@@ -102,6 +110,10 @@ public class BridgeContractsCoverageTests
         message.BodyPreview.Should().Be("preview");
         message.ProtectedFieldsAvailable.Should().BeTrue();
         message.IsRedacted.Should().BeFalse();
+        message.LinkedGlobalAppointmentId.Should().BeNull();
+
+        var linkedMessage = message with { LinkedGlobalAppointmentId = "clean-goid" };
+        linkedMessage.LinkedGlobalAppointmentId.Should().Be("clean-goid");
 
         var evt = new EventDto(
             "e1",
