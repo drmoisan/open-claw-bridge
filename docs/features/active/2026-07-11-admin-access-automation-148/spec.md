@@ -363,51 +363,51 @@ The concrete function/parameter names are finalized at plan time. The expected s
 
 ## Acceptance Criteria
 
-- [ ] AC-1 The system constructs the Control UI URL of the shape
+- [x] AC-1 The system constructs the Control UI URL of the shape
   `http://127.0.0.1:<OPENCLAW_AGENT_PORT>/#token=<OPENCLAW_GATEWAY_TOKEN>` from the
   target `.env`, resolving `OPENCLAW_AGENT_PORT` (default `18789`) and reading
   `OPENCLAW_GATEWAY_TOKEN` from the same `.env`.
-- [ ] AC-2 The base64url gateway token is used in the fragment without re-encoding or
+- [x] AC-2 The base64url gateway token is used in the fragment without re-encoding or
   mutation.
-- [ ] AC-3 When `OPENCLAW_GATEWAY_TOKEN` is missing or empty, URL construction fails
+- [x] AC-3 When `OPENCLAW_GATEWAY_TOKEN` is missing or empty, URL construction fails
   with a clear error pointing to `Invoke-OpenClawAgentOnboarding.ps1` and emits no
   malformed URL.
-- [ ] AC-4 The gateway token value never appears in any output, verbose, debug, or log
+- [x] AC-4 The gateway token value never appears in any output, verbose, debug, or log
   stream during delivery.
-- [ ] AC-5 Device-token rotation writes a new cryptographically-generated non-empty
+- [x] AC-5 Device-token rotation writes a new cryptographically-generated non-empty
   secret to the host token file (`HOSTADAPTER_TOKEN_FILE`) before restarting consumers.
-- [ ] AC-6 Rotation restarts `openclaw-core` and `openclaw-agent` through the
+- [x] AC-6 Rotation restarts `openclaw-core` and `openclaw-agent` through the
   `Invoke-OpenClawDockerCommand` seam (never a direct `docker` call) so all consumers
   read the rotated value.
-- [ ] AC-7 Rotation is gated by `ShouldProcess` for the file write and each restart,
+- [x] AC-7 Rotation is gated by `ShouldProcess` for the file write and each restart,
   and is idempotent: re-running without an explicit force flag does not rotate an
   already-valid token.
-- [ ] AC-8 Rotation fails explicitly on an unreadable/unwritable token file and on a
+- [x] AC-8 Rotation fails explicitly on an unreadable/unwritable token file and on a
   docker restart failure, and directs the operator to the runbook when the host token
   file is absent (no silent placeholder creation).
-- [ ] AC-9 `web_search` provider provisioning adds or validates a provider entry in
+- [x] AC-9 `web_search` provider provisioning adds or validates a provider entry in
   `deploy/docker/openclaw-assistant/openclaw.json` referencing the provider API key via
   a SecretRef-style env interpolation, with no hard-coded key.
-- [ ] AC-10 Provisioning is made in the baked seed file (persisted via image rebuild),
+- [x] AC-10 Provisioning is made in the baked seed file (persisted via image rebuild),
   is idempotent (no duplicate provider entries), validates the resulting JSON, and
   fails explicitly on invalid JSON or a missing referenced provider key env var.
-- [ ] AC-11 A committed runbook covers every enumerated human-interaction /
+- [x] AC-11 A committed runbook covers every enumerated human-interaction /
   human-held-secret step (delivery browser auth; re-pair site-data clear and reopen;
   search-provider API key; Anthropic key; interactive HostAdapter restart; initial
   host token file provisioning).
-- [ ] AC-12 The spec distinguishes fully-automatable steps from
+- [x] AC-12 The spec distinguishes fully-automatable steps from
   human-interaction-required steps for all three capabilities, and human-held-secret
   steps are covered by the committed runbook rather than left as silent manual
   blockers.
-- [ ] AC-13 Token generation remains out of scope: `Invoke-OpenClawAgentOnboarding.ps1`
+- [x] AC-13 Token generation remains out of scope: `Invoke-OpenClawAgentOnboarding.ps1`
   is unchanged and no new token-generation path is introduced for the gateway token.
-- [ ] AC-14 The dependency on child B (installer-image-version-alignment) is stated,
+- [x] AC-14 The dependency on child B (installer-image-version-alignment) is stated,
   and version-dependent specifics (`web_search` provider config keys, Control UI
   port/URL) are pinned against B's aligned image rather than assumed in this worktree.
-- [ ] AC-15 No production, test, or reusable script file exceeds 500 lines; scripts are
+- [x] AC-15 No production, test, or reusable script file exceeds 500 lines; scripts are
   PowerShell 7+ advanced functions with `CmdletBinding()` and validated named
   parameters.
-- [ ] AC-16 Pester v5 tests mirror the production structure under `tests/scripts/...`,
+- [x] AC-16 Pester v5 tests mirror the production structure under `tests/scripts/...`,
   mock the wrapper seams (not executables), are deterministic (no network, no temp
   files, no sleeps), and achieve line coverage >= 85% and branch coverage >= 75% with
   no regression on changed lines.
