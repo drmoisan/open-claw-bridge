@@ -33,13 +33,13 @@ Note on CSharpier command form: this repository has no local dotnet-tool manifes
 
 ### Phase 0 - Policy Reads and C# Baseline Capture
 
-- [ ] [P0-T1] Read the repository policy files in the required order and record the read in `evidence/baseline/phase0-instructions-read.md`.
+- [x] [P0-T1] Read the repository policy files in the required order and record the read in `evidence/baseline/phase0-instructions-read.md`.
   - AC: Artifact exists with `Timestamp:`, `Policy Order:`, and an explicit file list covering `CLAUDE.md`, `.claude/rules/general-code-change.md`, `.claude/rules/general-unit-test.md`, `.claude/rules/quality-tiers.md`, and `.claude/rules/csharp.md`, in that order.
-- [ ] [P0-T2] Capture baseline format state by running `csharpier check .` and record `evidence/baseline/baseline-format-<yyyy-MM-ddTHH-mm>.md`.
+- [x] [P0-T2] Capture baseline format state by running `csharpier check .` and record `evidence/baseline/baseline-format-<yyyy-MM-ddTHH-mm>.md`.
   - AC: Artifact records `Timestamp:`, `Command: csharpier check .`, `EXIT_CODE:`, and `Output Summary:` stating pass/fail and count of files needing formatting.
-- [ ] [P0-T3] Capture baseline build state by running `dotnet build OpenClaw.MailBridge.sln` and record `evidence/baseline/baseline-build-<yyyy-MM-ddTHH-mm>.md`; retain the raw build log under `artifacts/csharp/`.
+- [x] [P0-T3] Capture baseline build state by running `dotnet build OpenClaw.MailBridge.sln` and record `evidence/baseline/baseline-build-<yyyy-MM-ddTHH-mm>.md`; retain the raw build log under `artifacts/csharp/`.
   - AC: Artifact records `Timestamp:`, `Command: dotnet build OpenClaw.MailBridge.sln`, `EXIT_CODE:`, and `Output Summary:` stating warning/error counts.
-- [ ] [P0-T4] Capture baseline test-with-coverage state by running `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"` and record `evidence/baseline/baseline-test-coverage-<yyyy-MM-ddTHH-mm>.md`; retain the raw `coverage.cobertura.xml` and TRX under `artifacts/csharp/`.
+- [x] [P0-T4] Capture baseline test-with-coverage state by running `dotnet test OpenClaw.MailBridge.sln --settings mailbridge.runsettings --collect:"XPlat Code Coverage"` and record `evidence/baseline/baseline-test-coverage-<yyyy-MM-ddTHH-mm>.md`; retain the raw `coverage.cobertura.xml` and TRX under `artifacts/csharp/`.
   - AC: Artifact records `Timestamp:`, `Command:` (exact), `EXIT_CODE:`, and `Output Summary:` including numeric baseline line-coverage % and branch-coverage % read from the cobertura report, plus passed/failed test counts.
 
 ### Phase 1 - MailBridge.Contracts: RPC method const and MessageDto linkage field
