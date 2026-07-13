@@ -75,7 +75,7 @@
 
 ## Implementation Plan (Atomic Tasks)
 
-### Phase 0 — Baseline Capture
+### Phase 0 - Baseline Capture
 
 - [ ] [P0-T1] Read `CLAUDE.md` at the repository root.
   - Acceptance: `FEATURE/evidence/baseline/phase0-instructions-read.<ts>.md` is created (or appended to) recording that `CLAUDE.md` was read, with a `Timestamp:` field.
@@ -94,7 +94,7 @@
 - [ ] [P0-T8] Capture the PowerShell test-and-coverage baseline: run `mcp__drm-copilot__run_poshqc_test`; when it fails on the known coverage-path defect, apply the corrected-runsettings workaround (see Conventions) and record the numeric result.
   - Acceptance: `FEATURE/evidence/baseline/poshqc-test.<ts>.md` exists with `Timestamp:`, `Command:` (both the failing MCP invocation and the corrected-runsettings `Invoke-PoshQCTest -Root <repo> -SettingsPath <corrected>` invocation), `EXIT_CODE:` for each, and `Output Summary:` containing pass/fail test counts and the numeric repo-wide baseline line-coverage and branch-coverage percentages (no placeholders such as UNVERIFIED).
 
-### Phase 1 — Capability 1: Gateway-Token Delivery via `#token=` URL (AC-1, AC-2, AC-3, AC-4, AC-13)
+### Phase 1 - Capability 1: Gateway-Token Delivery via `#token=` URL (AC-1, AC-2, AC-3, AC-4, AC-13)
 
 - [ ] [P1-T1] Create `tests/scripts/Get-OpenClawControlUiTokenUrl.Tests.ps1` with a `#Requires -Version 7.0` header, the `PSAvoidGlobalVars` suppression convention used by `tests/scripts/Invoke-OpenClawAgentOnboarding.Tests.ps1`, a `BeforeAll` defining `$script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Get-OpenClawControlUiTokenUrl.ps1'` and importing `OpenClawContainerValidation.psm1`, and a top-level `Describe 'scripts/Get-OpenClawControlUiTokenUrl.ps1'` block with in-memory `Test-Path`/`Get-Content` mocks serving a `$global:DeliveryTestFiles` hashtable.
   - Acceptance: the file exists and contains `Describe 'scripts/Get-OpenClawControlUiTokenUrl.ps1'` and the in-memory file-mock scaffold; no temp files are created.
@@ -113,7 +113,7 @@
 - [ ] [P1-T8] Run the PowerShell toolchain loop (`run_poshqc_format` -> `run_poshqc_analyze` -> `run_poshqc_test`) for the capability-1 batch; restart from format if any step fails or changes files.
   - Acceptance: `FEATURE/evidence/regression-testing/ps-c1-post-pass.<ts>.md` exists with `Timestamp:`, `Command:` for each of the three steps, `EXIT_CODE: 0` for each, and `Output Summary:` confirming all six capability-1 `It` blocks now pass with no formatting/lint changes required on the recorded clean pass.
 
-### Phase 2 — Capability 2: Device-Token Rotation/Reissue (AC-5, AC-6, AC-7, AC-8)
+### Phase 2 - Capability 2: Device-Token Rotation/Reissue (AC-5, AC-6, AC-7, AC-8)
 
 - [ ] [P2-T1] Create `tests/scripts/Invoke-OpenClawDeviceTokenRotation.Tests.ps1` with a `#Requires -Version 7.0` header, the `PSAvoidGlobalVars` suppression convention, a `BeforeAll` defining `$script:ScriptPath = Join-Path $PSScriptRoot '..\..\scripts\Invoke-OpenClawDeviceTokenRotation.ps1'` and importing `OpenClawContainerValidation.psm1`, in-memory `Test-Path`/`Get-Content`/`Set-Content` mocks over `$global:RotationTestFiles`, and a mock of `Invoke-OpenClawDockerCommand` with signature `param([string]$ExecutablePath, [string[]]$CommandArguments)` recording calls to `$global:RotationDockerCalls`.
   - Acceptance: the file exists, contains `Describe 'scripts/Invoke-OpenClawDeviceTokenRotation.ps1'`, and mocks the `Invoke-OpenClawDockerCommand` wrapper seam (not `docker`) with matching named parameters.
@@ -134,7 +134,7 @@
 - [ ] [P2-T9] Run the PowerShell toolchain loop for the capability-2 batch; restart from format if any step fails or changes files.
   - Acceptance: `FEATURE/evidence/regression-testing/ps-c2-post-pass.<ts>.md` exists with `Timestamp:`, `Command:` for each step, `EXIT_CODE: 0` for each, and `Output Summary:` confirming all nine capability-2 `It` blocks pass with no formatting/lint changes required on the recorded clean pass.
 
-### Phase 3 — Capability 3: `web_search` Provider Provisioning (AC-9, AC-10, AC-14)
+### Phase 3 - Capability 3: `web_search` Provider Provisioning (AC-9, AC-10, AC-14)
 
 - [ ] [P3-T1] Pin the version-dependent `web_search` provider name and config key schema and the Control UI port/URL against child B's aligned image (do not read B's artifacts; use B's matched-image guarantee). Record the pinned provider name, the concrete key path, and the SecretRef env var name; if B's schema is unavailable at execution time, record use of the research fallback shape (`plugins.entries.<provider>.config.webSearch.apiKey` = `${WEB_SEARCH_API_KEY}`, research section D.2).
   - Acceptance: AC-14 — `FEATURE/evidence/other/web-search-schema-pin.<ts>.md` exists with `Timestamp:`, the pinned provider name and key path, the SecretRef env var name, and an explicit statement of whether the pin came from B's aligned image or the documented fallback shape.
@@ -155,14 +155,14 @@
 - [ ] [P3-T9] Run the PowerShell toolchain loop for the capability-3 batch; restart from format if any step fails or changes files.
   - Acceptance: `FEATURE/evidence/regression-testing/ps-c3-post-pass.<ts>.md` exists with `Timestamp:`, `Command:` for each step, `EXIT_CODE: 0` for each, and `Output Summary:` confirming all six capability-3 `It` blocks pass with no formatting/lint changes required on the recorded clean pass.
 
-### Phase 4 — Capability 4: Committed Human-Held-Secret Runbook (AC-11, AC-12)
+### Phase 4 - Capability 4: Committed Human-Held-Secret Runbook (AC-11, AC-12)
 
 - [ ] [P4-T1] Add a committed admin-access runbook section to `docs/mailbridge-runbook.md` (or a dedicated admin-access runbook cross-linked from it) enumerating the six human-interaction / human-held-secret steps from the spec Automation Feasibility section: (1) open the `#token=` URL in a browser to complete Control UI authentication; (2) post-recreation site-data clear + reopen URL to re-pair (paired with automatable `openclaw devices clear`); (3) supply the search-provider API key into `.env`/secrets as a SecretRef; (4) supply the Anthropic API key in `secrets/.env.anthropic`; (5) provide/keep the initial HostAdapter device-token secret and restart an interactively-run HostAdapter during rotation; (6) provision the initial host token file value at `C:\ProgramData\OpenClaw\HostAdapter\adapter.token` when absent. Each step states what the operator supplies or does and where automation hands off to the operator.
   - Acceptance: AC-11 — `docs/mailbridge-runbook.md` contains all six enumerated steps, each with an operator action and handoff note, and the section is reachable from the canonical operator runbook (cross-linked or inline).
 - [ ] [P4-T2] Cross-link the runbook to the three automation entry points and record the automatable-vs-human-interaction distinction for each capability (delivery URL emission automatable, browser auth human; rotation container restarts automatable, interactive HostAdapter restart + initial provisioning human; provisioning seed edit automatable, provider API key human).
   - Acceptance: AC-12 — the runbook section references `scripts/Get-OpenClawControlUiTokenUrl.ps1`, `scripts/Invoke-OpenClawDeviceTokenRotation.ps1`, and `scripts/Set-OpenClawWebSearchProvider.ps1`, and explicitly separates automatable steps from human-interaction-required steps for all three capabilities.
 
-### Phase 5 — Final QC (Full PowerShell Toolchain Loop + Coverage Verification + AC Sync)
+### Phase 5 - Final QC (Full PowerShell Toolchain Loop + Coverage Verification + AC Sync)
 
 - [ ] [P5-T1] Run the full repo-wide PowerShell toolchain loop in order: `mcp__drm-copilot__run_poshqc_format`, then `mcp__drm-copilot__run_poshqc_analyze`, then `mcp__drm-copilot__run_poshqc_test`. If any step fails or changes files, restart from format until a single clean pass completes.
   - Acceptance: `FEATURE/evidence/qa-gates/final-format.<ts>.md`, `FEATURE/evidence/qa-gates/final-analyze.<ts>.md`, and `FEATURE/evidence/qa-gates/final-test.<ts>.md` each exist with `Timestamp:`, `Command:`, `EXIT_CODE: 0`, and `Output Summary:`; the format and analyze artifacts confirm 0 changes / 0 errors on the clean pass, and the test artifact confirms the full Pester suite passes.
