@@ -77,53 +77,53 @@ tokens.
 
 ### Capability 1 — gateway-token delivery via `#token=`
 
-- [ ] US-1.1 Running the delivery command with a present `OPENCLAW_GATEWAY_TOKEN`
+- [x] US-1.1 Running the delivery command with a present `OPENCLAW_GATEWAY_TOKEN`
   returns the URL `http://127.0.0.1:<OPENCLAW_AGENT_PORT>/#token=<token>`, with the
   port resolved from `OPENCLAW_AGENT_PORT` (default `18789`).
-- [ ] US-1.2 The base64url token is placed in the fragment unchanged (no re-encoding).
-- [ ] US-1.3 With a missing or empty token, the command fails with a clear error
+- [x] US-1.2 The base64url token is placed in the fragment unchanged (no re-encoding).
+- [x] US-1.3 With a missing or empty token, the command fails with a clear error
   pointing to `Invoke-OpenClawAgentOnboarding.ps1` and emits no URL.
-- [ ] US-1.4 The token value never appears in command output, verbose, debug, or logs.
-- [ ] US-1.5 The runbook documents opening the URL in a browser to complete Control UI
+- [x] US-1.4 The token value never appears in command output, verbose, debug, or logs.
+- [x] US-1.5 The runbook documents opening the URL in a browser to complete Control UI
   authentication and the post-recreation re-pair (clear browser site data + reopen).
 
 ### Capability 2 — device-token rotation/reissue
 
-- [ ] US-2.1 Running rotation writes a new cryptographically-generated non-empty secret
+- [x] US-2.1 Running rotation writes a new cryptographically-generated non-empty secret
   to the host device-token file before restarting consumers.
-- [ ] US-2.2 Rotation restarts `openclaw-core` and `openclaw-agent` via the
+- [x] US-2.2 Rotation restarts `openclaw-core` and `openclaw-agent` via the
   `Invoke-OpenClawDockerCommand` seam so all consumers read the rotated value.
-- [ ] US-2.3 Rotation prompts via `ShouldProcess` for the file write and each restart.
-- [ ] US-2.4 Re-running rotation without an explicit force flag does not rotate an
+- [x] US-2.3 Rotation prompts via `ShouldProcess` for the file write and each restart.
+- [x] US-2.4 Re-running rotation without an explicit force flag does not rotate an
   already-valid token (idempotent).
-- [ ] US-2.5 Rotation fails explicitly on an unreadable/unwritable token file or a
+- [x] US-2.5 Rotation fails explicitly on an unreadable/unwritable token file or a
   docker restart failure, and directs the operator to the runbook when the host token
   file is absent (no silent placeholder).
-- [ ] US-2.6 The device-token value never appears in output, verbose, debug, or logs.
-- [ ] US-2.7 The runbook documents supplying/keeping the initial device-token secret
+- [x] US-2.6 The device-token value never appears in output, verbose, debug, or logs.
+- [x] US-2.7 The runbook documents supplying/keeping the initial device-token secret
   and restarting an interactively-run HostAdapter during rotation.
 
 ### Capability 3 — `web_search` provider provisioning
 
-- [ ] US-3.1 Provisioning adds or validates a `web_search` provider entry in
+- [x] US-3.1 Provisioning adds or validates a `web_search` provider entry in
   `deploy/docker/openclaw-assistant/openclaw.json` referencing the provider API key via
   a SecretRef-style env interpolation, with no hard-coded key.
-- [ ] US-3.2 Provisioning is idempotent (no duplicate provider entries) and validates
+- [x] US-3.2 Provisioning is idempotent (no duplicate provider entries) and validates
   the resulting JSON, failing explicitly on invalid JSON or a missing referenced key.
-- [ ] US-3.3 The change is made in the baked seed file; the operator understands the
+- [x] US-3.3 The change is made in the baked seed file; the operator understands the
   image must be rebuilt for the change to persist.
-- [ ] US-3.4 The runbook documents supplying the search-provider API key (external
+- [x] US-3.4 The runbook documents supplying the search-provider API key (external
   SaaS-issued, human-held) into `.env`/secrets.
 
 ### Capability 4 — committed runbook for human-held-secret steps
 
-- [ ] US-4.1 A committed runbook enumerates every human-interaction / human-held-secret
+- [x] US-4.1 A committed runbook enumerates every human-interaction / human-held-secret
   step: browser Control UI authentication; post-recreation site-data clear and reopen;
   search-provider API key; Anthropic key in `secrets/.env.anthropic`; interactive
   HostAdapter restart during rotation; initial host token file provisioning.
-- [ ] US-4.2 Each runbook step states what the operator supplies or does and where
+- [x] US-4.2 Each runbook step states what the operator supplies or does and where
   automation hands off to the operator.
-- [ ] US-4.3 The runbook is cross-linked from or integrated with the canonical operator
+- [x] US-4.3 The runbook is cross-linked from or integrated with the canonical operator
   runbook so it is discoverable.
 
 ## Non-Goals
